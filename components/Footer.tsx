@@ -9,7 +9,7 @@ const Footer = () => {
         <div className="flex flex-col items-center md:items-start">
           <Image
             src="/trisikha-logo-img.png"
-            alt="Trisikha Logo"
+            alt="Trishikha Logo"
             width={150}
             height={50}
             className="object-contain mb-4"
@@ -58,7 +58,7 @@ const Footer = () => {
         <div className="flex flex-col items-center md:items-start">
           <h3 className="text-lg font-semibold mb-4">Contact Us</h3>
           <ul className="space-y-2 text-sm">
-            <li>Email: trisikhaorganic@gmail.com</li>
+            <li>Email: trishikhaorganic@gmail.com</li>
             <li>Phone: +91 79847 79369</li>
             <li>Address: Plot No 27, Swagat Industrial Area Park Vill. Dhanot, Kadi Chatral Road, Ta. Kalol, Distt: Gandhi Nagar Gujarat</li>
           </ul>
@@ -67,7 +67,7 @@ const Footer = () => {
 
       {/* Copyright */}
       <div className="mt-8 border-t border-[#e0dbb5]/30 pt-6 text-center text-sm">
-        &copy; {new Date().getFullYear()} Trisikha Organics. All rights reserved.
+        &copy; {new Date().getFullYear()} Trishikha Organics. All rights reserved.
       </div>
 
       

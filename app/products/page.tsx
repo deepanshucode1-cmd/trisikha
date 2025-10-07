@@ -5,15 +5,15 @@ import Link from 'next/link';
 
 const products = [
   {
-    id: "trisikha-gold-1kg",
-    name: "Trisikha Gold - 1kg",
+    id: "trishikha-gold-1kg",
+    name: "Trishikha Gold - 1kg",
     price: "₹ 135.00",
     image: "/product1.jpg",
     description: "Boost your garden's growth with nutrient rich formula.",
   },
   {
-    id: "trisikha-gold-5kg",
-    name: "Trisikha Gold - 5kg",
+    id: "trishikha-gold-5kg",
+    name: "Trishikha Gold - 5kg",
     price: "₹ 375.00",
     image: "/product2.jpg",
     description: "Boost your garden's growth with nutrient rich formula.",

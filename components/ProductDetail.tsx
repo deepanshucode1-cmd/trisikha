@@ -46,7 +46,7 @@ export default function ProductDetail(product : Product) {
             </p>    
 
             <ul className="list-disc list-inside mt-2 text-gray-700">
-                <li>Trisikha Gold Manure is completely natural and cultured organic fertilizer </li>
+                <li>Trishikha Gold Manure is completely natural and cultured organic fertilizer </li>
                 <li>Meet advanced needs of soil and plants typically addressed by harmful chemical fertilizers</li>
                 <li>Rich in NPK and in other nutrients</li>
                 <li>Provides complete nutrients to plants and crops</li>

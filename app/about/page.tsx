@@ -22,7 +22,7 @@ export default function AboutUs() {
                   className="object-cover brightness-75"
                 />
                 <div className="absolute text-center text-white z-10">
-                  <h1 className="text-5xl md:text-6xl font-bold mb-6">About Trisikha Organics</h1>
+                  <h1 className="text-5xl md:text-6xl font-bold mb-6">About Trishikha Organics</h1>
                   <p className="text-xl max-w-3xl mx-auto mb-8">
                     Pioneering sustainable agriculture with premium organic manure solutions. Rooted in nature, committed to a greener future.
                   </p>
@@ -36,7 +36,7 @@ export default function AboutUs() {
             <div>
               <h2 className="text-4xl font-bold mb-6">Our Story</h2>
               <p className="text-lg mb-4">
-                Founded in 2022, TrisikhaOrganics began as a small family farm dedicated to eco-friendly practices. Today, we&apos;re a leading provider of high-quality organic manure, helping farmers nationwide nurture their soil naturally.
+                Founded in 2022, TrishikhaOrganics began as a small family farm dedicated to eco-friendly practices. Today, we&apos;re a leading provider of high-quality organic manure, helping farmers nationwide nurture their soil naturally.
               </p>
               <p className="text-lg">
                 Our journey is driven by a passion for sustainability, innovation, and community empowerment.

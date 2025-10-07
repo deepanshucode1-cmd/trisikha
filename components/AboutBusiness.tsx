@@ -7,7 +7,7 @@ const AboutBusiness = () => {
       <div className="text-[#e0dbb5] flex flex-col justify-center">
         <h2 className="text-4xl md:text-5xl mb-6 text-center md:text-left">Our Commitment to Sustainability</h2>
         <p className='text-lg md:text-xl mb-8 md:mb-12 text-center md:text-left max-w-lg mx-auto md:mx-0'>
-          Trisikhaorganics is dedicated to promoting sustainable agricultural practices through our high-quality organic manure products.
+          Trishikhaorganics is dedicated to promoting sustainable agricultural practices through our high-quality organic manure products.
         </p>
         <div className="w-full flex justify-center md:justify-start">
           <div className="relative w-64 h-48 md:w-80 md:h-60 overflow-hidden rounded-xl shadow-lg transition-transform duration-300 hover:scale-105 hover:shadow-xl">

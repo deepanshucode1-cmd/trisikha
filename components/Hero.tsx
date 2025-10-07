@@ -8,7 +8,7 @@ const Hero = () => {
            <section className='relative w-full h-[800px]'>
                         <Image 
                         src="/organic_manure.jpg"
-                        alt="Trisikha Logo"
+                        alt="Trishikha Logo"
                         fill
                         className='object-cover'
                         />

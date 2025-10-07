@@ -12,7 +12,7 @@ const Header = () => {
       <Link href="/" className="flex items-center hover:scale-105 transition-transform duration-300">
         <Image
           src="/trisikha-logo-img.png"
-          alt="Trisikha Logo"
+          alt="Trishikha Logo"
           width={130}
           height={50}
           className="object-contain"

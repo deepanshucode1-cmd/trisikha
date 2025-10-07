@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TrisikhaOrganics",
-  description: "Trisikha organics is a leading provider of high-quality organic manure, helping farmers nationwide nurture their soil naturally.",
+  title: "TrishikhaOrganics",
+  description: "Trishikha organics is a leading provider of high-quality organic manure, helping farmers nationwide nurture their soil naturally.",
 };
 
 export default function RootLayout({
