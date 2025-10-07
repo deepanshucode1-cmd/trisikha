@@ -4,13 +4,13 @@ import Link from "next/link";
 const products = [
   {
     id: 1,
-    name: "Trisikha Gold - 1kg",
+    name: "Trishikha Gold - 1kg",
     price: "₹ 135.00",
     image: "/product1.jpg",
   },
   {
     id: 2,
-    name: "Trisikha Gold - 5kg",
+    name: "Trishikha Gold - 5kg",
     price: "₹ 375.00",
     image: "/product2.jpg",
   },

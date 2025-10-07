@@ -16,15 +16,15 @@ const  page : NextPage<PageProps> = async ({ params }) => {
         return React.createElement('div', null, 'Product ID not found')
     }
 
-    if(product_id === "trisikha-gold-1kg" ){
+    if(product_id === "trishikha-gold-1kg" ){
         return (
-            <ProductDetail name="Trisikha Gold - 1kg" price="₹ 135" image="/product_detail.jpg"/>
+            <ProductDetail name="Trishikha Gold - 1kg" price="₹ 135" image="/product_detail.jpg"/>
         )
     }
 
-    if(product_id === "trisikha-gold-5kg" ){
+    if(product_id === "trishikha-gold-5kg" ){
         return (
-            <ProductDetail name="Trisikha Gold - 5kg" price="₹ 375" image="/product_detail.jpg"/>
+            <ProductDetail name="Trishikha Gold - 5kg" price="₹ 375" image="/product_detail.jpg"/>
         )
     }
 

@@ -7,7 +7,7 @@ const Test = () => {
   <div className="flex-1">
     <h2 className="text-4xl font-bold mb-4">Commitment to Sustainability</h2>
     <p className="text-base leading-relaxed">
-      Founded in 2022, Trisikhaorganics specializes in organic manure production.
+      Founded in 2022, Trishikhaorganics specializes in organic manure production.
       We focus on raising awareness about our products while performing well in
       the local market, with ambitions for sales expansion.
     </p>
