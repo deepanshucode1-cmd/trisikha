@@ -2,6 +2,7 @@
 import { createClient } from "@/utils/supabase/client";
 import React, { useEffect, useState } from "react";
 import AvatarUpload from "./AvatarUpload";
+import ProgressBar from "./ProgressBar";
 
 type IdType = {
   id: string;
@@ -17,12 +18,15 @@ const EditProduct = ({ id }: IdType) => {
 
   useEffect(() => {
     const fetchProduct = async () => {
+      setLoading(true);
       const supabase = createClient();
       const { data: product, error } = await supabase
         .from("products")
         .select("*")
         .eq("id", id)
         .single();
+      
+      setLoading(false);
 
       if (error) {
         setMessage(`❌ ${error.message}`);
@@ -75,7 +79,11 @@ const EditProduct = ({ id }: IdType) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f6f5ef] to-[#e8e6da]">
+      
+      {!loading && ( 
       <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg border border-[#ece8d5]">
+
+        
         <h1 className="text-3xl font-bold text-center mb-8 text-[#3d3c30]">
           Edit Product
         </h1>
@@ -152,7 +160,17 @@ const EditProduct = ({ id }: IdType) => {
             {message}
           </p>
         )}
+        
+
+      
       </div>
+      )}
+        {loading && (
+          <div className="w-full h-full flex items-center justify-center">
+          <ProgressBar/>
+          </div>
+        )}
+        
     </div>
   );
 };

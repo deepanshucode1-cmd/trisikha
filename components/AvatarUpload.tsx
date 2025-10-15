@@ -74,10 +74,10 @@ const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
   };
 
   return (
-    <div>
+    <div className="w-full h-full">
   <ToastContainer />
   <div className="flex items-center justify-center">
-    <div className="relative w-24 h-24 rounded-full overflow-hidden">
+    <div className="relative w-full h-full overflow-hidden">
       <input
         type="file"
         accept="image/png, image/jpeg, image/webp"
@@ -86,7 +86,7 @@ const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
       />
 
       {imageSrc ? (
-        <div className="relative w-24 h-24 rounded-full overflow-hidden">
+        <div className="relative w-full h-[400px] overflow-hidden">
           <img
             src={imageSrc}
             alt="Profile"
@@ -137,7 +137,7 @@ const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
           type="button"
           onClick={uploadImages}
           disabled={isPending}
-          className="btn btn-accent text-white font-semibold py-2 px-4 mt-6 rounded focus:outline-none transition ease-in-out duration-300"
+          className="btn btn-primary text-grey font-semibold py-2 px-4 mt-6 rounded focus:outline-none transition ease-in-out duration-300"
         >
           Upload
         </button>

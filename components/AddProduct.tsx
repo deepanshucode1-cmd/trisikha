@@ -2,6 +2,7 @@
 import { createClient } from '@/utils/supabase/client';
 import React, { useState } from 'react'
 import AvatarUpload from './AvatarUpload';
+import ProgressBar from './ProgressBar';
 
 const AddProduct = () => {
 
@@ -130,6 +131,9 @@ const AddProduct = () => {
             {message}
           </p>
         )}
+
+        
+
       </div>
     </div>
   )
