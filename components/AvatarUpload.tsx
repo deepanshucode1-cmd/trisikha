@@ -10,9 +10,10 @@ import { createClient } from '@/utils/supabase/client';
 
 interface UploadUrlProps {
   setUrl : (url : string) => void
+  initial_image_url : string  
 }
 
-const AvatarUpload = ({  setUrl }: UploadUrlProps) => {
+const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
   const [imageUrls, setImageUrls] = useState<string>("");
 
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -22,6 +23,11 @@ const AvatarUpload = ({  setUrl }: UploadUrlProps) => {
 
   const [imageSrc, setImageSrc] = useState<string|null>(null);
   const [uploadedUrl, setUploadedUrl] = useState<string|null>(null);
+
+  useEffect(() => {
+    setImageSrc(initial_image_url);
+    console.log("setting image url: ",initial_image_url);
+  },[initial_image_url]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -221,11 +227,12 @@ export const uploadImage = async ({ file, bucket, folder }: UploadProps) => {
   const { data, error } = await storage.from(bucket).upload(path, file);
 
   if (error) {
+    console.error(error);
     return { imageUrl: "", error: "Image upload failed" };
   }
 
   const imageUrl = `${process.env
-    .NEXT_PUBLIC_PROJECT_URL!}/storage/v1/object/public/${bucket}/${
+    .NEXT_PUBLIC_SUPABASE_URL!}/storage/v1/object/public/${bucket}/${
     data?.path
   }`;
 
