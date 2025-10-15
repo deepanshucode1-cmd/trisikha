@@ -52,49 +52,85 @@ const AddProduct = () => {
       };
 
   return (
-    <div>
-                <div className="max-w-lg mx-auto bg-white p-8 rounded-2xl shadow-md">
-        <h1 className="text-2xl font-semibold mb-6 text-center">Add Product</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f6f5ef] to-[#e8e6da]">
+      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg border border-[#ece8d5]">
+        <h1 className="text-3xl font-bold text-center mb-8 text-[#3d3c30]">
+          Edit Product
+        </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            placeholder="Product Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-md"
-          />
-          <input
-            type="number"
-            placeholder="Price"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-md"
-          />
-          <input
-            type="number"
-            placeholder="Stock Quantity"
-            value={stock}
-            onChange={(e) => setStock(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-md"
-          />
-          <AvatarUpload setUrl={(url: string) => {
-            // convert a blob URL to a File and set the image state
-            setImageUrl(url);   
-          }} />
-          
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Product Name
+            </label>
+            <input
+              type="text"
+              placeholder="Enter product name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full p-3 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#3d3c30] focus:outline-none transition"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Price (₹)
+              </label>
+              <input
+                type="number"
+                placeholder="Price"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className="w-full p-3 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#3d3c30] focus:outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Stock
+              </label>
+              <input
+                type="number"
+                placeholder="Quantity"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                className="w-full p-3 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#3d3c30] focus:outline-none transition"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center mt-4">
+            <AvatarUpload
+              setUrl={(url: string) => setImageUrl(url)}
+              initial_image_url={imageUrl}
+            />
+            <p className="text-sm text-gray-500 mt-2">Click to upload/change image</p>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#3d3c30] text-[#e0dbb5] p-3 rounded-md hover:opacity-90"
+            className="w-full py-3 bg-[#3d3c30] text-[#e0dbb5] rounded-md font-medium hover:bg-[#4b493e] transition disabled:opacity-60"
           >
-            {loading ? "Uploading..." : "Add Product"}
+            {loading ? "Saving..." : "Save Changes"}
           </button>
         </form>
 
-        {message && <p className="mt-4 text-center text-sm">{message}</p>}
+        {message && (
+          <p
+            className={`mt-5 text-center text-sm ${
+              message.startsWith("✅")
+                ? "text-green-600"
+                : message.startsWith("⚠️")
+                ? "text-yellow-600"
+                : "text-red-600"
+            }`}
+          >
+            {message}
+          </p>
+        )}
       </div>
-
     </div>
   )
 }

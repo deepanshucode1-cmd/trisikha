@@ -30,41 +30,11 @@ const DashboardClient = () => {
       .catch(() => setProducts([]));
   }, []);
 
-  const updateStock = async (id: number, newStock: number) => {
-    await fetch("/api/seller/update-stock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, stock: newStock }),
-    });
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, stock: newStock } : p))
-    );
-  };
-
-  const updatePrice = async (id: number, newPrice: number) => {
-    await fetch("/api/seller/update-price", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, price: newPrice }),
-    });
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, price: newPrice } : p))
-    );
-  };
 
   const handleEdit = (product: Product) => {
-    setEditId(product.id);
-    setEditStock(product.stock);
-    setEditPrice(product.price);
+    window.location.href = "/edit-product/"+product.id;
   };
 
-  const handleSave = async (id: number) => {
-    await Promise.all([
-      updateStock(id, editStock),
-      updatePrice(id, editPrice),
-    ]);
-    setEditId(null);
-  };
 
   return (
     <div className="p-8 bg-[#f5f5f0] min-h-screen">
@@ -129,7 +99,6 @@ const DashboardClient = () => {
                   {editId === p.id ? (
                     <>
                       <button
-                        onClick={() => handleSave(p.id)}
                         className="px-3 py-1 bg-green-600 text-white rounded"
                       >
                         Save
