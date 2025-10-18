@@ -77,7 +77,7 @@ const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
     <div className="w-full h-full">
   <ToastContainer />
   <div className="flex items-center justify-center">
-    <div className="relative w-full h-full overflow-hidden">
+    <div className="relative w-full h-full min-h-[300px] overflow-hidden">
       <input
         type="file"
         accept="image/png, image/jpeg, image/webp"
@@ -101,7 +101,7 @@ const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
           <input type="file" id="profileImage" className="hidden" />
         </div>
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100  z-10">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -133,17 +133,24 @@ const AvatarUpload = ({  setUrl,initial_image_url }: UploadUrlProps) => {
   ) : (
     imageUrls.length !== 0 && (
       <div className="w-full flex justify-center">
+        <div className=" bg-blue-500 rounded-2xl text-gray-700 mt-4 flex items-center justify-center">
         <button
           type="button"
           onClick={uploadImages}
           disabled={isPending}
-          className="btn btn-primary text-grey font-semibold py-2 px-4 mt-6 rounded focus:outline-none transition ease-in-out duration-300"
+          className="btn btn-primary text-white font-semibold py-2 px-4 rounded focus:outline-none transition ease-in-out duration-300"
         >
           Upload
         </button>
+        </div>
       </div>
     )
   )}
+
+  {imageUrls.length === 0 && (
+    <p className="text-center text-gray-500 mt-2">Click to upload/change image</p>
+  )}
+
 </div>
   );
 };

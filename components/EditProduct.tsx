@@ -135,7 +135,7 @@ const EditProduct = ({ id }: IdType) => {
               setUrl={(url: string) => setImageUrl(url)}
               initial_image_url={imageUrl}
             />
-            <p className="text-sm text-gray-500 mt-2">Click to upload/change image</p>
+           
           </div>
 
           <button

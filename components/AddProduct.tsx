@@ -56,7 +56,7 @@ const AddProduct = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f6f5ef] to-[#e8e6da]">
       <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg border border-[#ece8d5]">
         <h1 className="text-3xl font-bold text-center mb-8 text-[#3d3c30]">
-          Edit Product
+          Add Product
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -101,12 +101,12 @@ const AddProduct = () => {
             </div>
           </div>
 
-          <div className="flex flex-col items-center mt-4">
+          <div className="w-full h-full items-center mt-4">
             <AvatarUpload
               setUrl={(url: string) => setImageUrl(url)}
               initial_image_url={imageUrl}
             />
-            <p className="text-sm text-gray-500 mt-2">Click to upload/change image</p>
+          
           </div>
 
           <button
