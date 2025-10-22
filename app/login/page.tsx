@@ -1,40 +1,29 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { createClient } from "@/utils/supabase/client";
 
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+export default function Login() {
+  const supabase = createClient();
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const router = useRouter();
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) alert(error.message);
-    else router.push('/dashboard');
-  }
+  const handleGoogleSignIn = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${location.origin}/api/auth/callback`,
+      },
+    });
+    if (error) console.error(error.message);
+  };
 
   return (
-    <form onSubmit={handleLogin} className="flex flex-col gap-4 p-6 max-w-sm mx-auto">
-      <input
-        className="border rounded p-2"
-        placeholder="Email"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <input
-        className="border rounded p-2"
-        placeholder="Password"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button className="bg-[#3d3c30] text-[#e0dbb5] py-2 rounded">Login</button>
-    </form>
+    <div className="flex flex-col items-center justify-center h-screen">
+      <h1 className="text-2xl font-semibold mb-4">Sign in to Continue</h1>
+      <button
+        onClick={handleGoogleSignIn}
+        className="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 transition"
+      >
+        Continue with Google
+      </button>
+    </div>
   );
 }

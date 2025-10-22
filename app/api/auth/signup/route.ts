@@ -18,12 +18,6 @@ if (error) {
   return NextResponse.json({ error: error.message }, { status: 500 });
 }
 
-console.log(users);
-
-if (users && users.users.length > 0) {
-  return NextResponse.json({ error: "Signups are closed." }, { status: 403 });
-}
-
   // Allow the very first signup
   const { data, error: signupError } = await supabase.auth.signUp({
     email,
