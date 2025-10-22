@@ -53,32 +53,7 @@ export default function AboutUs() {
         </section>
 
         {/* Mission & Values Section */}
-        <section className="bg-[#323025] py-16 px-6 lg:px-16 text-[#e0dbb5]">
-          <div className="max-w-5xl mx-auto">
-            <h2 className="text-4xl font-bold font-sans text-center mb-12">Our Mission & Values</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="text-center">
-                <h3 className="text-2xl font-semibold font-sans mb-4">Sustainability</h3>
-                <p className="text-lg">
-                  Promoting eco-friendly farming to preserve the planet for future generations.
-                </p>
-              </div>
-              <div className="text-center">
-                <h3 className="text-2xl font-semibold font-sans mb-4">Quality</h3>
-                <p className="text-lg">
-                  Delivering premium, nutrient-rich organic products backed by rigorous testing.
-                </p>
-              </div>
-              <div className="text-center">
-                <h3 className="text-2xl font-semibold font-sans mb-4">Innovation</h3>
-                <p className="text-lg">
-                  Continuously improving our processes to meet evolving agricultural needs.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
+       
 
         {/* Call to Action */}
         <section className="bg-[#3d3c30] py-16 px-6 lg:px-16 text-center text-[#e0dbb5]">
