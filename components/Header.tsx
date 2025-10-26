@@ -1,4 +1,5 @@
 "use client";
+import { ShoppingCart } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -7,7 +8,7 @@ const Header = () => {
   const pathname = usePathname();
 
   return (
-    <header className="bg-gradient-to-r from-[#3d3c30] to-[#2f2e25] text-[#e0dbb5] flex items-center  px-16 py-4 shadow-md">
+    <header className="bg-gradient-to-r from-[#3d3c30] to-[#2f2e25] text-[#e0dbb5] flex items-center  justify-between px-16 py-4 shadow-md">
       {/* Logo */}
       <Link href="/" className="flex items-center hover:scale-105 transition-transform duration-300">
         <Image
@@ -43,6 +44,18 @@ const Header = () => {
           </Link>
         ))}
       </nav>
+
+            <Link
+        href="/cart"
+        className="relative flex justify-end hover:scale-110 transition-transform duration-300"
+      >
+        <ShoppingCart className="w-7 h-7 text-[#e0dbb5]" />
+        {/* Example for cart count badge */}
+        <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-1.5 py-0.5">
+          2
+        </span>
+      </Link>
+    
     </header>
   );
 };

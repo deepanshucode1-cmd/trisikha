@@ -1,26 +1,12 @@
 import Footer from '@/components/Footer';
 import Header from '@/components/Header';
+import SellProducts from '@/components/Products';
+import { createClient } from '@/utils/supabase/server';
 import Image from 'next/image';
 import Link from 'next/link';
 
-const products = [
-  {
-    id: "trishikha-gold-1kg",
-    name: "Trishikha Gold - 1kg",
-    price: "₹ 135.00",
-    image: "/product1.jpg",
-    description: "Boost your garden's growth with nutrient rich formula.",
-  },
-  {
-    id: "trishikha-gold-5kg",
-    name: "Trishikha Gold - 5kg",
-    price: "₹ 375.00",
-    image: "/product2.jpg",
-    description: "Boost your garden's growth with nutrient rich formula.",
-  },
-];
-
 export default function Products() {
+
   return (
     <div className="min-h-screen bg-[#f5f5f0] text-[#3d3c30]">
       {/* Header - Reusing from previous */}
@@ -43,45 +29,8 @@ export default function Products() {
             </p>
           </div>
         </section>
-<section className="py-24 px-8 lg:px-24 bg-[#f5f5f0]">
-  <div className="max-w-6xl mx-auto flex flex-col gap-20">
-    {products.map((product, i) => (
-      <div
-        key={product.id}
-        className="bg-gradient-to-br from-white to-[#fafafa] rounded-3xl shadow-lg overflow-hidden p-12 flex flex-col md:flex-row items-center gap-12 hover:shadow-2xl transition duration-500"
-      >
-        {/* Left: Info */}
-        <div className="flex-1 text-center md:text-left">
-          <h2 className="text-4xl font-extrabold mb-4 tracking-wide text-[#2e2d25]">
-            {product.name}
-          </h2>
-          <p className="text-lg md:text-xl font-light text-gray-700 mb-6 leading-relaxed">
-            {product.description}
-          </p>
-          <p className="text-2xl font-semibold bg-gradient-to-r from-green-600 to-lime-500 bg-clip-text text-transparent mb-8">
-            {product.price}
-          </p>
-          <Link
-            href={`/products/${product.id}`}
-            className="inline-block bg-[#3d3c30] text-[#e0dbb5] px-8 py-3 rounded-full font-medium shadow-md hover:bg-[#2f2e25] hover:shadow-lg transition duration-300 ease-in-out"
-          >
-            Learn More
-          </Link>
-        </div>
 
-        {/* Right: Product Image */}
-        <div className="flex-1 relative h-72 md:h-80 w-full rounded-2xl overflow-hidden shadow-md hover:scale-[1.02] transition-transform duration-500">
-          <Image
-            src={product.image}
-            alt={product.name}
-            fill
-            className="object-cover"
-          />
-        </div>
-      </div>
-    ))}
-  </div>
-</section>
+        <SellProducts/>
 
 
         {/* Benefits Section - Elegant icons or simple list */}
