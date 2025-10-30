@@ -7,11 +7,6 @@ export async function POST(req: Request) {
 
     const {guest_email, cart_items, total_amount, shipping_address , billing_address} = await req.json();
 
-    const products = cart_items.map((item: any) => ({
-        product_id: item.id,
-        quantity: item.quantity,
-        price: item.price
-    }));
 
     const supabase = await createClient();
     const {data, error} = await supabase.from('products').select('*').in('id', cart_items.map((item: any) => item.id));
