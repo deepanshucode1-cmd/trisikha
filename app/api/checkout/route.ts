@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
@@ -16,7 +18,7 @@ export async function POST(req: Request) {
     }
 
     // Check stock availability
-    for (let item of cart_items) {
+    for (const item of cart_items) {
         const product = data.find((p: any) => p.id === item.id);
         if (!product || product.stock < item.quantity) {
             return new Response(JSON.stringify({error: `Insufficient stock for product ID: ${item.id}`}), {status: 400});

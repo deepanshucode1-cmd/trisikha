@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 "use client";
 import { createClient } from '@/utils/supabase/client';
 import React, { useState } from 'react'
