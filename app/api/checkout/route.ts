@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     }
 
     // Deduct stock
-    for (let item of cart_items) {
+    for (const item of cart_items) {
         const product = data.find((p: any) => p.id === item.id);
         const newStock = product.stock - item.quantity;
         const {error: updateError} = await supabase.from('products').update({stock: newStock}).eq('id', item.id);
