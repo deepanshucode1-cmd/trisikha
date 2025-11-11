@@ -26,14 +26,7 @@ export async function POST(req: Request) {
     }
 
     // Deduct stock
-    for (const item of cart_items) {
-        const product = data.find((p: any) => p.id === item.id);
-        const newStock = product.stock - item.quantity;
-        const {error: updateError} = await supabase.from('products').update({stock: newStock}).eq('id', item.id);
-        if (updateError) {
-            return new Response(JSON.stringify({error: updateError.message}), {status: 500});
-        }
-    }
+    
 
     // Create order
     const {data: orderData, error: orderError} = await supabase.from('orders').insert([{
@@ -58,6 +51,25 @@ export async function POST(req: Request) {
 
     if (orderError) {
         return new Response(JSON.stringify({error: orderError.message}), {status: 500});
+    }
+
+    for (const item of cart_items) {
+        const product = data.find((p: any) => p.id === item.id);
+        const newStock = product.stock - item.quantity;
+        const {error: updateError} = await supabase.from('products').update({stock: newStock}).eq('id', item.id);
+        if (updateError) {
+            return new Response(JSON.stringify({error: updateError.message}), {status: 500});
+        }
+
+    await supabase.from("order_items").insert({
+    order_id: orderData.id,
+    product_id: product.id,
+    product_name: product.name,
+    sku: product.sku,
+    hsn: product.hsn,
+    unit_price: product.price,
+    quantity: item.quantity,
+  });
     }
 
 
