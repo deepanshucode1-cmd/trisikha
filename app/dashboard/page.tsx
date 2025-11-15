@@ -1,4 +1,5 @@
 import DashboardClient from '@/components/DashboardClient';
+import ReadyToShipOrders from '@/components/ReadyToShipOrders';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -13,6 +14,6 @@ export default async function Dashboard() {
     redirect('/login');
   }
 
-  return <DashboardClient />;
+  return <ReadyToShipOrders />;
 
 }

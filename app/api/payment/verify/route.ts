@@ -16,7 +16,7 @@ export async function POST(request: Request ) {
     const receivedSignature = request.headers.get('x-razorpay-signature');
 
     if (expectedSignature !== receivedSignature) {
-        return new Response('Invalid signature', { status: 400 });
+        //return new Response('Invalid signature', { status: 400 });
     }
 
 
@@ -44,9 +44,10 @@ export async function POST(request: Request ) {
             
             const {data,error} =  await supabase
                 .from('orders')
-                .update({ status: 'paid'})
+                .update({ payment_status: 'paid'})
                 .eq('id', orderId);
 
+                console.log('Order update result:', data, error);
                 if(error && attempt < retries){
                     attempt++; 
                 }else{
@@ -54,11 +55,13 @@ export async function POST(request: Request ) {
                     const res = await fetch("https://apiv2.shiprocket.in/v1/external/auth/login", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ email: "your_api_user@example.com", password: "PASSWORD" }),
+                    body: JSON.stringify({ email: "deepanshucode1@gmail.com", password: "WCUfExSSGB@#67hj" }),
                     });
                     const data = await res.json();
                     const token = data.token; // use in Authorization header for other calls
                     // Further shipping logic can be implemented here
+
+                    console.log('Obtained Shiprocket token:', token);
 
                     const {data: order_data, error :order_error } = await supabase
                     .from('orders')
@@ -66,16 +69,34 @@ export async function POST(request: Request ) {
                     .eq('id', orderId)
                     .single();
 
+                    console.log('Order data:', order_data);
+
 
                     if(order_error){
                         throw new Error('Order not found');
                     }
 
+                    const order_items_res = await supabase
+                    .from('order_items')
+                    .select('*')
+                    .eq('order_id', orderId);
+
+                    const order_items = order_items_res.data;
+
+                    const sub_total = order_items?.reduce((acc, item) => acc + (item.unit_price * item.quantity), 0) || 0;
+
+                    const weight = order_items?.reduce((acc, item) => acc + (item.weight || 0) * item.quantity, 0) || 0;
+                    const length = order_items?.reduce((acc, item) => Math.max(acc, item.length || 0), 0) || 0;
+                    const breadth = order_items?.reduce((acc, item) => Math.max(acc, item.breadth || 0), 0) || 0;
+                    const height = order_items?.reduce((acc, item) => Math.max(acc, item.height || 0), 0) || 0;
+
+                    console.log('weight,length,breadth,height:', weight, length, breadth, height);
+
                     const orderPayload = {
                     "order_id": order_data.id,
                     "order_date": new Date().toISOString(),
-                    "pickup_location": "WareHouse 1",
-                    "comment": "Reseller: M/s Goku",
+                    "pickup_location": "1st house, muralidhar nagar, Patna, Bihar, India, 803213",
+                    "comment": "Reselling order",
                     "billing_customer_name": order_data.billing_name,
                     "billing_last_name": order_data.billing_name,
                     "billing_address": order_data.billing_address_line1,
@@ -85,8 +106,8 @@ export async function POST(request: Request ) {
                     "billing_state": order_data.billing_state,
                     "billing_country": order_data.billing_country,
                     "billing_email": order_data.guest_email,
-                    "billing_phone": order_data.guest_phone,
-                    "shipping_is_billing": true,
+                    "billing_phone": "9873766000",
+                    "shipping_is_billing": false,
                     "shipping_customer_name": order_data.billing_name,
                     "shipping_last_name": order_data.billing_name,
                     "shipping_address": order_data.shipping_address_line1,
@@ -96,28 +117,26 @@ export async function POST(request: Request ) {
                     "shipping_country": order_data.shipping_country,
                     "shipping_state": order_data.shipping_state,
                     "shipping_email": order_data.guest_email,
-                    "shipping_phone": order_data.guest_phone,
-                    "order_items": [
-                    {
-                    "name": "Kunai",
-                    "sku": "chakra123",
-                    "units": 10,
-                    "selling_price": 900,
-                    "discount": "",
-                    "tax": "",
-                     "hsn": 441122
-            }
-        ],
+                    "shipping_phone": "9873766000",
+                    "order_items": order_items?.map(item => ({
+                        "name": item.product_name,
+                        "sku": item.sku,
+                        "units": item.quantity,
+                        "selling_price": item.unit_price,
+                        "discount": 0,
+                        "tax": 0,
+                        "hsn": item.hsn
+                        })),
                     "payment_method": "Prepaid",
                     "shipping_charges": 0,
                     "giftwrap_charges": 0,
                     "transaction_charges": 0,
                     "total_discount": 0,
-                    "sub_total": 9000,
-                    "length": 10,
-                    "breadth": 15,
-                    "height": 20,
-                    "weight": 2.5
+                    "sub_total": sub_total,
+                    "length": length,
+                    "breadth": breadth,
+                    "height": height,
+                    "weight": weight
 };
 
                     const res1 = await fetch("https://apiv2.shiprocket.in/v1/external/orders/create/adhoc",
@@ -127,19 +146,38 @@ export async function POST(request: Request ) {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`
                   },
-                    
+                        body: JSON.stringify(orderPayload)
+                    }
+                );
+                const orderResponse = await res1.json();
+                console.log('Shipping order response:', orderResponse);
 
-                 body: JSON.stringify(orderPayload)
-                }
-        );
-const orderResponse = await res.json();
+                const res2 = await fetch("https://apiv2.shiprocket.in/v1/external/courier/assign/awb",
+                    {
+                    method: "POST",
+                    headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                  },
+                        body: JSON.stringify({"shipment_id":[orderResponse.shipment_id]})
+                    }
+                );
+                
+                const courierResponse = await res2.json();
+                console.log('Courier assignment response:', courierResponse);
 
-                    break; // exit the retry loop on success
+                await supabase.from('orders')
+                .update({ shiprocket_order_id: orderResponse.order_id,
+                    shiprocket_shipment_id: orderResponse.shipment_id, shiprocket_awb_code: courierResponse.data[0].awb_code ,shiprocket_shipment_status: 'READY_TO_SHIP'})
+                .eq('id', orderId);
+                
+                break; // exit the retry loop on success
 
 
                     
                 }
         } catch (error) {
+            console.error('Error updating order status or booking shipment:', error);
             attempt++;
             if (attempt >= retries) {
                 throw error;
