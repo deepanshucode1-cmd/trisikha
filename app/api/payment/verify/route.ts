@@ -1,6 +1,8 @@
 import { retryPaymentUpdateStatus } from '@/utils/retry';
+import { retryAssignAWB } from '@/utils/shiprocket';
 import { createClient } from '@/utils/supabase/server';
 import crypto from 'crypto';
+import { NextResponse } from 'next/server';
 
 export async function POST(request: Request ) {
 
@@ -37,7 +39,7 @@ export async function POST(request: Request ) {
             const orderId = payload.payload.payment.entity.notes.order_id;
             // You can update your order status in the database here using the orderId
              let attempt = 0;
-             const retries = 3;
+             const retries = 1;
     while (attempt < retries) {
         try {
             const supabase = await createClient();
@@ -95,7 +97,7 @@ export async function POST(request: Request ) {
                     const orderPayload = {
                     "order_id": order_data.id,
                     "order_date": new Date().toISOString(),
-                    "pickup_location": "1st house, muralidhar nagar, Patna, Bihar, India, 803213",
+                    "pickup_location": "Home",
                     "comment": "Reselling order",
                     "billing_customer_name": order_data.billing_name,
                     "billing_last_name": order_data.billing_name,
@@ -138,7 +140,7 @@ export async function POST(request: Request ) {
                     "height": height,
                     "weight": weight
 };
-
+                    console.log('Order payload for Shiprocket:', orderPayload);
                     const res1 = await fetch("https://apiv2.shiprocket.in/v1/external/orders/create/adhoc",
                     {
                     method: "POST",
@@ -149,32 +151,27 @@ export async function POST(request: Request ) {
                         body: JSON.stringify(orderPayload)
                     }
                 );
+                console.log(res1);
+                if(!res1.ok || res1.status !== 200){
+                    return NextResponse.json({ status: 'error', message: 'Failed to create shipping order' }, { status: 500 });
+                }
                 const orderResponse = await res1.json();
                 console.log('Shipping order response:', orderResponse);
 
-                const res2 = await fetch("https://apiv2.shiprocket.in/v1/external/courier/assign/awb",
-                    {
-                    method: "POST",
-                    headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`
-                  },
-                        body: JSON.stringify({"shipment_id":[orderResponse.shipment_id]})
-                    }
-                );
-                
-                const courierResponse = await res2.json();
-                console.log('Courier assignment response:', courierResponse);
+               
+                const awbResponse =  await retryAssignAWB({
+                    token : token,
+                    shipmentId: orderResponse.shipment_id,
+                    orderId: orderResponse.order_id,
+                    supabase : supabase
+                });
 
-                await supabase.from('orders')
-                .update({ shiprocket_order_id: orderResponse.order_id,
-                    shiprocket_shipment_id: orderResponse.shipment_id, shiprocket_awb_code: courierResponse.data[0].awb_code ,shiprocket_shipment_status: 'READY_TO_SHIP'})
-                .eq('id', orderId);
+                if (awbResponse && !awbResponse.success) {
+                     console.log("AWB assignment deferred. Admin must retry later.");
+                    return NextResponse.json({ status: 'awb_pending' }, { status: 200 });
+                } 
                 
                 break; // exit the retry loop on success
-
-
-                    
                 }
         } catch (error) {
             console.error('Error updating order status or booking shipment:', error);

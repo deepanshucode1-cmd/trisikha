@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createClient } from "@/utils/supabase/server";
+import { Weight } from "lucide-react";
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 
@@ -61,15 +62,24 @@ export async function POST(req: Request) {
             return new Response(JSON.stringify({error: updateError.message}), {status: 500});
         }
 
-    await supabase.from("order_items").insert({
+    const  {data: data1,error:orderItemError} =  await supabase.from("order_items").insert({
     order_id: orderData.id,
     product_id: product.id,
     product_name: product.name,
     sku: product.sku,
     hsn: product.hsn,
     unit_price: product.price,
+    weight : product.weight,
+    length : product.length,
+    breadth : product.breadth,
+    height : product.height,
     quantity: item.quantity,
   });
+
+
+    console.log(data1);
+    console.log(orderItemError);
+
     }
 
 

@@ -112,7 +112,7 @@ export default function ReadyToShipOrders() {
 
   // Generic helper to call seller APIs. Update endpoints as needed.
   const callSellerApi = async (path: string, body: any) => {
-    const res = await fetch(`/api/seller/${path}`, {
+    const res = await fetch(`/api/seller/shiprocket/${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -127,7 +127,7 @@ export default function ReadyToShipOrders() {
   const generateLabel = async (orderId: string) => {
     try {
       setOrderActionLoading(orderId, true);
-      await callSellerApi("generate-label", { order_id: orderId });
+      await callSellerApi("generate-label", { orderId: orderId });
       alert("Label generated successfully.");
       // optionally refresh orders or order detail
     } catch (err: any) {
@@ -157,7 +157,7 @@ export default function ReadyToShipOrders() {
 
     try {
       setOrderActionLoading(orderId, true);
-      await callSellerApi("schedule-pickup", { order_id: orderId });
+      await callSellerApi("schedule-pickup", { orderId: orderId });
       alert("Pickup scheduled successfully.");
       // Optionally refresh order status
     } catch (err: any) {
@@ -293,16 +293,7 @@ export default function ReadyToShipOrders() {
                         ) : null}
                         Generate Label
                       </button>
-                      <button
-                        onClick={() => generateManifest(order.id)}
-                        disabled={isLoading}
-                        className="w-full justify-center px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {isLoading ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 inline-block mr-2"></div>
-                        ) : null}
-                        Generate Manifest
-                      </button>
+                      
                       <button
                         onClick={() => schedulePickup(order.id)}
                         disabled={isLoading}
