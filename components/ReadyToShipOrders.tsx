@@ -9,7 +9,8 @@ type Order = {
   shiprocket_status?: string | null;
   created_at?: string | null;
   total_amount?: number | null;
-  shipping_name?: string | null;
+  shipping_first_name?: string | null;
+  shipping_last_name?: string | null;
 };
 
 export default function ReadyToShipOrders() {
@@ -79,9 +80,10 @@ export default function ReadyToShipOrders() {
         const { data, error } = await supabase
           .from("orders")
           .select(
-            "id, shiprocket_status, created_at, total_amount, shipping_name"
+            "id, shiprocket_status, created_at, total_amount, shipping_first_name, shipping_last_name"
           )
-          .eq("shiprocket_status", "READY_TO_SHIP")
+          .eq("shiprocket_status", "NEW")
+          .eq("payment_status", "paid")
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -167,6 +169,41 @@ export default function ReadyToShipOrders() {
       setOrderActionLoading(orderId, false);
     }
   };
+
+  const processOrder = async (orderId: string) => {
+  if (!confirm("Create Shiprocket order and assign AWB?")) return;
+
+  try {
+    setOrderActionLoading(orderId, true);
+
+    const res = await fetch(
+      "/api/seller/shiprocket/assign-awb", 
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_id: orderId }),
+      }
+    );
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || "Failed!");
+    }
+
+    const data = await res.json();
+    alert("Order registered and AWB assigned successfully!");
+
+    // Optional: refresh orders list
+    window.location.reload();
+
+  } catch (err: any) {
+    console.error("Shiprocket error:", err);
+    alert(err.message ?? "Failed to process order");
+  } finally {
+    setOrderActionLoading(orderId, false);
+  }
+};
+
 
   if (loading) {
     return (
@@ -268,8 +305,8 @@ export default function ReadyToShipOrders() {
                     <div className="space-y-3">
                       <div>
                         <p className="text-2xl font-bold text-gray-900">₹{order.total_amount?.toLocaleString('en-IN')}</p>
-                        {order.shipping_name && (
-                          <p className="text-sm text-gray-600 mt-1">{order.shipping_name}</p>
+                        {order.shipping_first_name && (
+                          <p className="text-sm text-gray-600 mt-1">{order.shipping_first_name}</p>
                         )}
                       </div>
                       <p className="text-sm text-gray-500">Created: {formattedDate}</p>
@@ -283,6 +320,21 @@ export default function ReadyToShipOrders() {
                   </div>
                   <div className="p-4 pt-0 border-t border-gray-100">
                     <div className="space-y-2">
+                      
+                      <button
+                        onClick={() => processOrder(order.id)}
+                        disabled={isLoading}
+                        className="w-full justify-center px-4 py-2 text-sm border border-gray-300 
+                        text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 
+                        disabled:cursor-not-allowed transition-colors"
+                      >
+                      {isLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 inline-block mr-2"></div>
+                      ) : null}
+                       Register & Assign AWB
+                      </button>
+
+
                       <button
                         onClick={() => generateLabel(order.id)}
                         disabled={isLoading}

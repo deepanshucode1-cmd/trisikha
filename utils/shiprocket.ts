@@ -16,15 +16,15 @@ async function login() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      email: "deepanshucode1@gmail.com",
-      password: "WCUfExSSGB@#67hj",
+      email: "nishant_304@yahoo.co.in",
+      password: "Ws!&PPER!9Vs@!2E",
     }),
   });
 
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data.message || "Shiprocket login failed");
+    throw new Error(data.message || "Unable to authenticate with shipping partner");
   }
 
   cachedToken = data.token;
@@ -70,11 +70,13 @@ export async function retryAssignAWB({
   shipmentId,
   maxRetries = 3,
   orderId,
+  shiprocket_order_id,
   supabase
 }: {
   token: string;
   shipmentId: number;
   orderId: string;
+  shiprocket_order_id : string;
   maxRetries?: number;
   supabase: any;
 }) {
@@ -103,15 +105,19 @@ export async function retryAssignAWB({
       // If AWB assignment succeeded
       if (result?.awb_assign_status === 1) {
         // Save in database
-        await supabase
+        const {data , error} =  await supabase
           .from("orders")
           .update({
             shiprocket_awb_code: result.response.data.awb_code,
-            shiprocket_status: "READY_TO_SHIP",
+            shiprocket_status: "PICKUP_SCHEDULED",
             shiprocket_shipment_id : shipmentId,
-            shiprocker_order_id : orderId
+            shiprocket_order_id : shiprocket_order_id
           })
           .eq("id", orderId);
+        
+        console.log("AWB Database update for order_id:", orderId);  
+        console.log("Database update success result:", data); 
+        console.log("Database update error (if any):", error);
 
         console.log("AWB assigned successfully!");
         return { success: true, result };

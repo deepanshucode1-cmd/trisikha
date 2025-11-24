@@ -1,3 +1,4 @@
+import shiprocket from "./shiprocket";
 import { createClient } from "./supabase/server";
 
 
@@ -24,10 +25,10 @@ export const retryPaymentUpdateStatus = async (status : string , orderId : strin
     while (attempt < retries) {
         try {
             const supabase = await createClient();
-            
+            if(status === 'paid'){
             const {data,error} =  await supabase
                 .from('orders')
-                .update({ status: status})
+                .update({ payment_status: status,shiprocket_status : 'NEW'})
                 .eq('id', orderId);
 
                 if(error && attempt < retries){
@@ -35,6 +36,21 @@ export const retryPaymentUpdateStatus = async (status : string , orderId : strin
                 }else{
                     return;
                 }
+
+            }else if(status === 'failed'){
+                const {data,error} =  await supabase
+                .from('orders')
+                .update({ payment_status: status})
+                .eq('id', orderId);
+
+                if(error && attempt < retries){
+                    attempt++; 
+                }else{
+                    return;
+                }
+            }
+
+                
         } catch (error) {
             attempt++;
             if (attempt >= retries) {

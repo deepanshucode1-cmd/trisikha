@@ -8,7 +8,7 @@ import Razorpay from "razorpay";
 
 export async function POST(req: Request) {
 
-    const {guest_email, cart_items, total_amount, shipping_address , billing_address} = await req.json();
+    const {guest_email, guest_phone, cart_items, total_amount, shipping_address , billing_address} = await req.json();
 
 
     const supabase = await createClient();
@@ -33,15 +33,18 @@ export async function POST(req: Request) {
     const {data: orderData, error: orderError} = await supabase.from('orders').insert([{
         user_id : null,
         guest_email: guest_email,
+        guest_phone: guest_phone,
         total_amount:total_amount,
-        shipping_name: shipping_address.name,
+        shipping_first_name: shipping_address.first_name,
+        shipping_last_name: shipping_address.last_name,
         shipping_address_line1: shipping_address.address_line1,
         shipping_address_line2: shipping_address.address_line2,
         shipping_city: shipping_address.city,
         shipping_state: shipping_address.state,
         shipping_pincode: shipping_address.pincode,
         shipping_country: shipping_address.country,
-        billing_name: billing_address.name,
+        billing_first_name: billing_address.first_name,
+        billing_last_name: billing_address.last_name,
         billing_address_line1: billing_address.address_line1,
         billing_address_line2: billing_address.address_line2,
         billing_city: billing_address.city,

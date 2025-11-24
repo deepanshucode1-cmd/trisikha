@@ -19,6 +19,14 @@ export default function CheckoutPage() {
   const { items, clearCart } = useCartStore();
   const [sameAsShipping, setSameAsShipping] = useState(true);
 
+
+  const [shippingOptions, setShippingOptions] = useState<any[]>([]);
+  const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
+  const [shippingCharge, setShippingCharge] = useState<number | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [shippingCalculated, setShippingCalculated] = useState(false);
+
+
   const [shipping, setShipping] = useState({
     firstName: "",
     lastName: "",
@@ -51,6 +59,39 @@ export default function CheckoutPage() {
     document.body.appendChild(script);
   }
 }, []);
+
+const calculateShipping = async (pincode: string) => {
+  try {
+    setEstimating(true);
+    setShippingCalculated(false);
+
+    const res = await fetch("/api/seller/shiprocket/estimate-shipping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        destination_pincode: pincode,
+        cart_items: items,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      setShippingOptions(data.couriers);
+
+      // Auto select cheapest
+      const first = data.couriers[0];
+      setSelectedCourier(first);
+      setShippingCharge(first.rate);
+      setShippingCalculated(true);
+    } else {
+      alert(data.error || "Could not estimate shipping cost");
+    }
+  } finally {
+    setEstimating(false);
+  }
+};
+
 
 
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -87,10 +128,12 @@ export default function CheckoutPage() {
       },
       body: JSON.stringify({
         guest_email: email,
+        guest_phone: shipping.phone,
         cart_items: items,
         total_amount: total,
         shipping_address: {
-          name: `${shipping.firstName} ${shipping.lastName}`,
+          first_name : shipping.firstName,
+          last_name : shipping.lastName,
           address_line1: shipping.address,
           address_line2: shipping.apartment,
           city: shipping.city,
@@ -99,7 +142,8 @@ export default function CheckoutPage() {
           country: "India",
         },
         billing_address: {
-          name: `${finalBilling.firstName} ${finalBilling.lastName}`,
+          first_name: finalBilling.firstName,
+          last_name: finalBilling.lastName,
           address_line1: finalBilling.address,
           address_line2: finalBilling.apartment,
           city: finalBilling.city,
@@ -262,7 +306,14 @@ export default function CheckoutPage() {
                 name="pincode"
                 required
                 value={shipping.pincode}
-                onChange={(e) => handleChange(e, "shipping")}
+                onChange={(e) => {handleChange(e, "shipping")
+
+                   if (e.target.value.length === 6) {
+                      calculateShipping(e.target.value);
+                    }
+                  }
+
+                }
                 className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
               />
             </div>
@@ -278,6 +329,36 @@ export default function CheckoutPage() {
               className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
             />
           </div>
+
+          {estimating && (
+  <p className="text-sm text-yellow-500">Calculating shipping…</p>
+)}
+
+{shippingOptions.length > 0 && (
+  <div className="mb-6 bg-[#3d3c30] p-3 border border-[#6a684d] rounded-lg">
+    <label className="block mb-2 text-sm font-medium">
+      Select Shipping Courier
+    </label>
+    <select
+      className="bg-black border border-[#6a684d] rounded-lg w-full p-2"
+      value={selectedCourier?.id}
+      onChange={(e) => {
+        const selected = shippingOptions.find(
+          (c) => c.id == e.target.value
+        );
+        setSelectedCourier(selected);
+        setShippingCharge(selected.rate);
+      }}
+    >
+      {shippingOptions.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name} – ₹{c.rate} ({c.etd || "ETA N/A"})
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+
 
           {/* Billing Section */}
           <div className="flex items-center mb-4">
@@ -410,6 +491,20 @@ export default function CheckoutPage() {
               <span>Total</span>
               <span>₹{total}</span>
             </div>
+
+            {shippingCharge !== null && (
+              <div className="flex justify-between text-[#e0dbb5] mb-2">
+                <span>Shipping</span>
+                <span>₹{shippingCharge}</span>
+              </div>
+          )}
+
+            {selectedCourier?.etd && (
+               <div className="text-xs text-[#d0cca8] mb-2">
+                Estimated delivery: {selectedCourier.etd}
+              </div>
+        )}
+
           </div>
 
           {/* Buttons */}
