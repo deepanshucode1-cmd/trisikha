@@ -16,8 +16,8 @@ async function login() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      email: "nishant_304@yahoo.co.in",
-      password: "Ws!&PPER!9Vs@!2E",
+      email: "deepanshucode1@gmail.com",
+      password: "WCUfExSSGB@#67hj",
     }),
   });
 

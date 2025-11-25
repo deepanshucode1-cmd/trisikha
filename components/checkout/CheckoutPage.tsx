@@ -94,7 +94,7 @@ const calculateShipping = async (pincode: string) => {
 
 
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0) + (shippingCharge || 0);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -306,11 +306,12 @@ const calculateShipping = async (pincode: string) => {
                 name="pincode"
                 required
                 value={shipping.pincode}
+                onBlur={() => {
+                  if (shipping.pincode.length === 6) {
+                    calculateShipping(shipping.pincode);
+                  }
+                }}
                 onChange={(e) => {handleChange(e, "shipping")
-
-                   if (e.target.value.length === 6) {
-                      calculateShipping(e.target.value);
-                    }
                   }
 
                 }
@@ -487,10 +488,7 @@ const calculateShipping = async (pincode: string) => {
               </div>
             ))}
             <hr className="border-[#6a684d] my-3" />
-            <div className="flex justify-between font-semibold text-lg">
-              <span>Total</span>
-              <span>₹{total}</span>
-            </div>
+            
 
             {shippingCharge !== null && (
               <div className="flex justify-between text-[#e0dbb5] mb-2">
@@ -498,6 +496,11 @@ const calculateShipping = async (pincode: string) => {
                 <span>₹{shippingCharge}</span>
               </div>
           )}
+
+          <div className="flex justify-between font-semibold text-lg">
+              <span>Total</span>
+              <span>₹{total}</span>
+            </div>
 
             {selectedCourier?.etd && (
                <div className="text-xs text-[#d0cca8] mb-2">
@@ -519,10 +522,13 @@ const calculateShipping = async (pincode: string) => {
 
             <button
               type="submit"
-              className="bg-[#4f4d3e] hover:bg-[#6a684d] text-[#e0dbb5] px-6 py-3 rounded-full transition"
-            >
-              Place Order
-            </button>
+              disabled={!shippingCalculated || estimating}
+              className={`${
+                shippingCalculated ? "bg-[#4f4d3e]" : "bg-gray-600 cursor-not-allowed"
+                } text-[#e0dbb5] px-6 py-3 rounded-full`}
+              >
+                Place Order
+              </button>
           </div>
         </form>
       )}
