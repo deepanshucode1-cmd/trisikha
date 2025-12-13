@@ -1,4 +1,5 @@
 import DashboardClient from '@/components/DashboardClient';
+import DashboardNav from '@/components/DashboardNav';
 import ReadyToShipOrders from '@/components/ReadyToShipOrders';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
@@ -14,6 +15,16 @@ export default async function Dashboard() {
     redirect('/login');
   }
 
-  return <ReadyToShipOrders />;
+  const { data: userProfile, error } = await supabase
+    .from('user_role')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error !== null || !userProfile || !userProfile.role || userProfile.role !== 'admin') {
+    redirect('/login');
+  }
+
+  return <ReadyToShipOrders/>;
 
 }

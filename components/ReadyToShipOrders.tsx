@@ -43,7 +43,7 @@ export default function ReadyToShipOrders() {
     setSubmitting(true);
 
     try {
-      const res = await fetch("/api/seller/generate-manifest-batch", {
+      const res = await fetch("/api/seller/shiprocket/generate-manifest-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order_ids: selected }),

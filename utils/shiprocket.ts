@@ -209,6 +209,18 @@ export async function generateAWB(shipmentId: string) {
   );
 }
 
+export async function cancelShipment(order_id:string) {
+  return authedFetch(
+    `https://apiv2.shiprocket.in/v1/external/orders/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        ids: [order_id]
+      }),
+    }
+  );
+}
+
 export default {
   login,
   retryAssignAWB,

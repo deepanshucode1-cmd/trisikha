@@ -28,7 +28,7 @@ export const retryPaymentUpdateStatus = async (status : string , orderId : strin
             if(status === 'paid'){
             const {data,error} =  await supabase
                 .from('orders')
-                .update({ payment_status: status,shiprocket_status : 'NEW'})
+                .update({ payment_status: status,shiprocket_status : 'NOT_SHIPPED'})
                 .eq('id', orderId);
 
                 if(error && attempt < retries){

@@ -35,6 +35,7 @@ export async function POST(req: Request) {
         guest_email: guest_email,
         guest_phone: guest_phone,
         total_amount:total_amount,
+        order_status: 'CHECKED_OUT',
         shipping_first_name: shipping_address.first_name,
         shipping_last_name: shipping_address.last_name,
         shipping_address_line1: shipping_address.address_line1,

@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
     if(shiprocket_order_not_created.length>0){
       return NextResponse.json(
-        { error: `Shiprocket order not created for orders: ${shiprocket_order_not_created.join(", ")}` },
+        { error: `Shiprocket order not created for orders: ${shiprocket_order_not_created.join(", ")}, Please assign AWB first` },
         { status: 400 }
       );
     }

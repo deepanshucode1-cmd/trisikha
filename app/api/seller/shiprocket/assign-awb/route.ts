@@ -111,7 +111,7 @@ export async function POST(request: Request) {
                     "shipping_country": order_data.shipping_country,
                     "shipping_state": order_data.shipping_state,
                     "shipping_email": order_data.guest_email,
-                    "shipping_phone": "9873766000",
+                    "shipping_phone": order_data.guest_phone,
                     "order_items": order_items?.map(item => ({
                         "name": item.product_name,
                         "sku": item.sku,
@@ -155,6 +155,7 @@ export async function POST(request: Request) {
                     token : token,
                     shipmentId: orderResponse.shipment_id,
                     orderId: order_id,
+                    shiprocket_order_id : orderResponse.order_id,
                     supabase : supabase
                 });
 

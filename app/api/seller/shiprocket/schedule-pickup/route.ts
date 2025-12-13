@@ -5,8 +5,10 @@ import shiprocket from "@/utils/shiprocket";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const orderId = body.order_id;
+    const orderId = body.orderId;
 
+    console.log(body);
+    console.log("Scheduling pickup for order ID:", orderId);
     if (!orderId) {
       return NextResponse.json(
         { error: "Missing orderId" },

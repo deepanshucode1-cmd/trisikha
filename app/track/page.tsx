@@ -62,6 +62,7 @@ export default function TrackOrderPage() {
   const timelineActivities = useMemo(() => {
     let activities: any[] = [];
 
+    if(result === null) return activities;
     if(result.stage === "PAYMENT_NOT_CONFIRMED"){
       activities.push({
         srStatusLabel: "PAYMENT NOT CONFIRMED",
@@ -69,7 +70,7 @@ export default function TrackOrderPage() {
         detail: "Awaiting payment confirmation to proceed with order processing.",
         location: null,
         originalDate: new Date(), // Current time as placeholder
-        time: new Date().toLocaleString('en-IN', { 
+        time: new Date(result.order.updated_at).toLocaleString('en-IN', { 
           year: 'numeric', month: 'short', day: 'numeric', 
           hour: '2-digit', minute: '2-digit' 
         }),
@@ -83,12 +84,17 @@ export default function TrackOrderPage() {
         detail: "Your order has been confirmed and is waiting for courier assignment by seller.",
         location: null,
         originalDate: new Date(), // Current time as placeholder
-        time: new Date().toLocaleString('en-IN', { 
+        time: new Date(result.order.updated_at).toLocaleString('en-IN', { 
           year: 'numeric', month: 'short', day: 'numeric', 
           hour: '2-digit', minute: '2-digit' 
         }),
         isDone: true,
       });
+
+      console.log('result.order.updated_at:', new Date(result.order.updated_at).toLocaleString('en-IN', { 
+          year: 'numeric', month: 'short', day: 'numeric', 
+          hour: '2-digit', minute: '2-digit' 
+        }));
     }  
 
     if (result?.shiprocket?.tracking_data?.shipment_track_activities?.length > 0) {
@@ -225,9 +231,6 @@ export default function TrackOrderPage() {
       {trackingData && (
         <section className="max-w-4xl mx-auto px-4 mb-16">
           <div className="bg-[#464433]/80 backdrop-blur-sm border border-[#6a684d]/50 p-8 rounded-3xl shadow-2xl">
-            <h2 className="text-3xl font-bold mb-8 text-center bg-gradient-to-r from-[#d1cd9f] to-[#e0dbb5] bg-clip-text text-transparent">
-              Order Status: {currentStatus}
-            </h2>
 
             {/* Progress Steps - Horizontal Stepper for Desktop, Vertical for Mobile */}
             <div className="mb-8 relative">

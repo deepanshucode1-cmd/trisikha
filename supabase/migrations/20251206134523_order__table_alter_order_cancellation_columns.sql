@@ -1,0 +1,34 @@
+ALTER TABLE public.orders
+ADD CONSTRAINT orders_order_status_check
+CHECK (
+  order_status IN (
+    'PLACED',
+    'PAYMENT_CONFIRMED',
+    'PAYMENT_FAILED',
+    'READY_TO_SHIP',
+    'SHIPPED',
+    'DELIVERED',
+    'CANCELLATION_REQUESTED',
+    'CANCELLED',
+    'RETURN_REQUESTED',
+    'RETURNED'
+  )
+),
+
+ADD CONSTRAINT orders_cancellation_status_check
+CHECK (
+  cancellation_status IN (
+    'OTP_SENT',
+    'OTP_VERIFIED',
+
+    'SHIPPING_CANCELLATION_REQUESTED',
+    'SHIPPING_CANCELLED',
+    'SHIPPING_CANCELLATION_FAILED',
+
+    'REFUND_REQUESTED',
+    'REFUND_INITIATED',
+    'REFUND_FAILED',
+    'REFUNDED',
+    'CANCELLATION_REJECTED'
+  )
+);
