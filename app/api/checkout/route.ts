@@ -111,10 +111,12 @@ export async function POST(req: Request) {
       }
     });
 
+    console.log("Razorpay Order Created:", razorpayOrder);
+
     // 3️⃣ Update local DB with Razorpay order ID
     await supabase
       .from("orders")
-      .update({ payment_id: razorpayOrder.id })
+      .update({ razorpay_order_id: razorpayOrder.id })
       .eq("id", orderData.id);
 
     // 4️⃣ Respond with details for frontend checkout

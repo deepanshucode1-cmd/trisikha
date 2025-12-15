@@ -69,45 +69,40 @@ export default function ReadyToShipOrders() {
   };
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    const fetchOrders = async () => {
-      setLoading(true);
-      setError(null);
+  const fetchOrders = async () => {
+    setLoading(true);
+    setError(null);
 
-      try {
-        const supabase = await createClient();
-        const { data, error } = await supabase
-          .from("orders")
-          .select(
-            "id, shiprocket_status, created_at, total_amount, shipping_first_name, shipping_last_name"
-          )
-          .eq("shiprocket_status", "NEW")
-          .eq("payment_status", "paid")
-          .order("created_at", { ascending: false });
+    try {
+      const res = await fetch("/api/orders/get-new-orders");
 
-        if (error) {
-          console.error("Supabase error:", error);
-          if (mounted) setError("Failed to load orders.");
-          return;
-        }
-
-        if (mounted) setOrders((data as Order[]) || []);
-      } catch (err) {
-        console.error("Fetch orders failed:", err);
-        if (mounted) setError("Failed to load orders.");
-      } finally {
-        if (mounted) setLoading(false);
+      if (!res.ok) {
+        throw new Error("Failed to fetch orders");
       }
-    };
 
-    fetchOrders();
+      const json = await res.json();
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      if (mounted) {
+        setOrders(json.orders || []);
+      }
+    } catch (err) {
+      console.error("Fetch orders failed:", err);
+      if (mounted) setError("Failed to load orders.");
+    } finally {
+      if (mounted) setLoading(false);
+    }
+  };
 
+  fetchOrders();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
+
+  
   const setOrderActionLoading = (orderId: string, val: boolean) => {
     setActionLoading((s) => ({ ...s, [orderId]: val }));
   };

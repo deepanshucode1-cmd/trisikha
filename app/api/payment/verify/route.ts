@@ -36,13 +36,14 @@ export async function POST(request: Request ) {
             // Handle payment captured event
             console.log('Payment captured:', payload.payload.payment.entity);
 
+            const razorpay_payment_id = payload.payload.payment.entity.id;
             const orderId = payload.payload.payment.entity.notes.order_id;
-            retryPaymentUpdateStatus('paid', orderId, 3, 2000);
+            retryPaymentUpdateStatus('paid', orderId, razorpay_payment_id, 3, 2000);
             
             break;
         case 'payment.failed':
             // Handle payment failed event
-            retryPaymentUpdateStatus('failed', payload.payload.payment.entity.notes.order_id, 3, 2000);
+            retryPaymentUpdateStatus('failed', payload.payload.payment.entity.notes.order_id,"", 3, 2000);
             console.log('Payment failed:', payload.payload.payment.entity);
             break;
         // Add more cases as needed

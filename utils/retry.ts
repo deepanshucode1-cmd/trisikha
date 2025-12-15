@@ -20,7 +20,7 @@ const retry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promis
 
 export default retry;
 
-export const retryPaymentUpdateStatus = async (status : string , orderId : string, retries = 3, delay = 1000): Promise<void> => {
+export const retryPaymentUpdateStatus = async (status : string , orderId : string,  payment_id : string,retries = 3, delay = 1000): Promise<void> => {
     let attempt = 0;
     while (attempt < retries) {
         try {
@@ -28,7 +28,7 @@ export const retryPaymentUpdateStatus = async (status : string , orderId : strin
             if(status === 'paid'){
             const {data,error} =  await supabase
                 .from('orders')
-                .update({ payment_status: status,shiprocket_status : 'NOT_SHIPPED'})
+                .update({ payment_status: status,order_status : 'CONFIRMED', shiprocket_status : 'NOT_SHIPPED',payment_id : payment_id})
                 .eq('id', orderId);
 
                 if(error && attempt < retries){

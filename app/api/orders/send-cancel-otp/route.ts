@@ -22,6 +22,7 @@ export async function POST(req: Request) {
   await supabase
     .from("orders")
     .update({
+      cancellation_status: "OTP_SENT",
       otp_code: otp,
       otp_expires_at: expiresAt,
     })

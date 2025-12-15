@@ -4,8 +4,8 @@ import { createClient } from "@/utils/supabase/server";
 import shiprocket from "@/utils/shiprocket";
 
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY!,
-  key_secret: process.env.RAZORPAY_SECRET!,
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
 
 export async function POST(req: Request) {
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
     
     // ✅ 2. OTP Verification (Only on first cancellation request)
-    if (order.cancellation_status === null) {
+    if (order.cancellation_status === "OTP_SENT") {
       if (
         order.otp_code !== otp ||
         new Date(order.otp_expires_at) < new Date()
@@ -81,8 +81,9 @@ export async function POST(req: Request) {
       freshOrder.shiprocket_order_id &&
       (
         freshOrder.order_status === "CANCELLATION_REQUESTED" && (
-        freshOrder.cancellation_status === "CANCELLATION_REQUESTED" ||
-        freshOrder.shiprocket_status === "SHIPPING_CANCELLATION_FAILED")
+        freshOrder.cancellation_status === "CANCELLATION_REQUESTED" &&
+        (freshOrder.shiprocket_status === "SHIPPING_CANCELLATION_FAILED" 
+          || freshOrder.shiprocket_status === "AWB_ASSIGNED" || freshOrder.shiprocket_status === "PICKUP_SCHEDULED" ))
       )
     ) {
       const token = await shiprocket.login();
@@ -124,21 +125,45 @@ export async function POST(req: Request) {
     // ✅ 5. REFUND (Only AFTER shipping cancelled)
     if (
           freshOrder.payment_status === "paid" &&
-          freshOrder.shiprocket_status === "CANCELLED" &&
+          (freshOrder.shiprocket_status === "SHIPPING_CANCELLED" || freshOrder.shiprocket_status === "NOT_SHIPPED") &&
           freshOrder.refund_status !== "REFUND_INITIATED" &&
           freshOrder.refund_status !== "REFUNDED"
         ){
       try {
-        await razorpay.payments.refund(freshOrder.payment_id, {
-          amount: freshOrder.total_amount * 100,
+        console.log("payment id:", freshOrder.payment_id);  
+        const payment = await razorpay.payments.fetch("pay_RaOtLlHPPhuTQb");
+        console.log(payment);
+
+       const razorpay_refund_result =  await razorpay.payments.refund("pay_RaOtLlHPPhuTQb", {
+          amount: 100,
         });
 
+        console.log("Razorpay refund result:", razorpay_refund_result); 
+
+        if(razorpay_refund_result.status !== "processed"){
         await supabase.from("orders").update({
           refund_status: "REFUND_INITIATED",
-          cancellation_reason: reason,
+          reason_for_cancellation: reason,
           otp_code: null,
           otp_expires_at: null,
         }).eq("id", orderId);
+      }else if(razorpay_refund_result.status === "processed"){
+        const  {data : refund_update_data, error : refund_update_error} = await supabase.from("orders").update({
+          refund_status: "REFUND_COMPLETED",
+          order_status: "CANCELLED",
+          cancellation_status : "CANCELLED",
+          refund_id : razorpay_refund_result.id,
+          refund_amount : razorpay_refund_result.amount,
+          refund_initiated_at : new Date().toISOString(),
+          refund_completed_at : new Date().toISOString(),
+          reason_for_cancellation: reason,
+          otp_code: null,
+          otp_expires_at: null,
+        }).eq("id", orderId);
+
+        console.log("Refund update data:", refund_update_data);
+        console.log("Refund update error:", refund_update_error); 
+      }
 
         return NextResponse.json({ success: true });
 
@@ -147,6 +172,7 @@ export async function POST(req: Request) {
           refund_status: "REFUND_FAILED",
         }).eq("id", orderId);
 
+        console.log("Refund error:", err);
         return NextResponse.json({ error: "Refund failed" }, { status: 500 });
       }
     }
