@@ -24,6 +24,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid order" }, { status: 400 });
     }
 
+    if(order.cancellation_status === null){
+      return NextResponse.json({ error: "Cancellation not initiated" }, { status: 400 });
+    }
+
+    if(order.cancellation_status === "CANCELLED"){
+      return NextResponse.json({ message: "Order already cancelled" });
+    }
+
+
     if(order.order_status === "CHECKED_OUT"){ 
       return NextResponse.json({ error: "Order not confirmed yet" }, { status: 400 });
     }
@@ -45,8 +54,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Refund already in process" });
     }
 
-    if(order.refund_status === "REFUNDED" ){
+    if(order.refund_status === "REFUND_COMPLETED" ){
       return NextResponse.json({ message: "Order already refunded" });
+    }
+
+    if(order.order_status === "PICKED_UP"){
+      return NextResponse.json({ error: "Picked up orders cannot be cancelled" }, { status: 400 });
+    }
+
+    if(order.order_status === "DELIVERED"){
+      return NextResponse.json({ error: "Delivered orders cannot be cancelled" }, { status: 400 });
     }
 
     
@@ -122,20 +139,36 @@ export async function POST(req: Request) {
       }).eq("id", orderId);
     }
 
+    const { data: lockResult, error : refund_fetch_error } = await supabase
+    .from("orders")
+    .update({
+      refund_status: "REFUND_INITIATED",
+      refund_initiated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId)
+    .is("refund_status", null)
+    .eq("payment_status", "paid")   // 👈 CRITICAL
+    .select("*");
+
+    if(refund_fetch_error || !lockResult || lockResult.length === 0){
+     return NextResponse.json({ error: "Unable to initiate refund" }, { status: 400 });
+    }
+
+    console.log("Lock result:", lockResult);
+
+
     // ✅ 5. REFUND (Only AFTER shipping cancelled)
     if (
-          freshOrder.payment_status === "paid" &&
-          (freshOrder.shiprocket_status === "SHIPPING_CANCELLED" || freshOrder.shiprocket_status === "NOT_SHIPPED") &&
-          freshOrder.refund_status !== "REFUND_INITIATED" &&
-          freshOrder.refund_status !== "REFUNDED"
+          lockResult[0].payment_status === "paid" &&
+          (lockResult[0].shiprocket_status === "SHIPPING_CANCELLED" || lockResult[0].shiprocket_status === "NOT_SHIPPED")
         ){
       try {
-        console.log("payment id:", freshOrder.payment_id);  
-        const payment = await razorpay.payments.fetch("pay_RaOtLlHPPhuTQb");
-        console.log(payment);
-
-       const razorpay_refund_result =  await razorpay.payments.refund("pay_RaOtLlHPPhuTQb", {
-          amount: 100,
+        console.log("payment id:", freshOrder.payment_id);
+        
+        
+        
+       const razorpay_refund_result =  await razorpay.payments.refund(lockResult[0].payment_id, {
+          amount: lockResult[0].total_amount * 100, // amount in paise
         });
 
         console.log("Razorpay refund result:", razorpay_refund_result); 
@@ -181,7 +214,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       message: "Cancellation already in progress",
       status: freshOrder.cancellation_status,
-    });
+    }, { status: 200 });
 
   } catch (err) {
     console.error("Cancellation API Error:", err);
