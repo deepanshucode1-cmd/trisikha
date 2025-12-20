@@ -62,10 +62,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Picked up orders cannot be cancelled" }, { status: 400 });
     }
 
-    if(order.order_status === "DELIVERED"){
-      return NextResponse.json({ error: "Delivered orders cannot be cancelled" }, { status: 400 });
-    }
-
     
     // ✅ 2. OTP Verification (Only on first cancellation request)
     if (order.cancellation_status === "OTP_SENT") {
@@ -79,6 +75,8 @@ export async function POST(req: Request) {
       await supabase.from("orders").update({
         order_status: "CANCELLATION_REQUESTED",
         cancellation_status: "CANCELLATION_REQUESTED",
+        otp_code: null,
+        otp_expires_at: null,
       }).eq("id", orderId);
     }
 
@@ -106,7 +104,9 @@ export async function POST(req: Request) {
       const token = await shiprocket.login();
       if (!token) {
         await supabase.from("orders").update({
-          cancellation_status: "SHIPPING_CANCELLATION_FAILED",
+          shiprocket_status: "SHIPPING_CANCELLATION_FAILED",
+          otp_code: null,
+          otp_expires_at: null,
         }).eq("id", orderId);
 
         return NextResponse.json({ error: "Shiprocket auth failed" }, { status: 500 });
@@ -129,6 +129,8 @@ export async function POST(req: Request) {
       if (!srRes.ok) {
         await supabase.from("orders").update({
           shiprocket_status: "SHIPPING_CANCELLATION_FAILED",
+          otp_code: null,
+          otp_expires_at: null,
         }).eq("id", orderId);
 
         return NextResponse.json({ error: "Shipping cancellation failed" }, { status: 400 });
@@ -136,13 +138,27 @@ export async function POST(req: Request) {
 
       await supabase.from("orders").update({
         shiprocket_status: "SHIPPING_CANCELLED",
+        otp_code: null,
+        otp_expires_at: null,
       }).eq("id", orderId);
     }
+
+    if (
+  freshOrder.shiprocket_order_id &&
+  freshOrder.shiprocket_status === "SHIPPING_CANCELLATION_FAILED"
+) {
+  return NextResponse.json({
+    error: "Unable to cancel shipment. Please retry or contact support."
+  }, { status: 409 });
+}
+
 
     const { data: lockResult, error : refund_fetch_error } = await supabase
     .from("orders")
     .update({
       refund_status: "REFUND_INITIATED",
+      otp_code: null,
+      otp_expires_at: null,
       refund_initiated_at: new Date().toISOString(),
     })
     .eq("id", orderId)
@@ -157,15 +173,12 @@ export async function POST(req: Request) {
     console.log("Lock result:", lockResult);
 
 
-    // ✅ 5. REFUND (Only AFTER shipping cancelled)
+    // ✅ 5. REFUND (Only AFTER shipping cancelled) or not shipped yet
     if (
-          lockResult[0].payment_status === "paid" &&
-          (lockResult[0].shiprocket_status === "SHIPPING_CANCELLED" || lockResult[0].shiprocket_status === "NOT_SHIPPED")
+          (lockResult[0].order_status === "CANCELLATION_REQUESTED" &&  lockResult[0].cancellation_status === "CANCELLATION_REQUESTED" && 
+            (lockResult[0].shiprocket_status === "SHIPPING_CANCELLED" || lockResult[0].shiprocket_status === "NOT_SHIPPED"))
         ){
       try {
-        console.log("payment id:", freshOrder.payment_id);
-        
-        
         
        const razorpay_refund_result =  await razorpay.payments.refund(lockResult[0].payment_id, {
           amount: lockResult[0].total_amount * 100, // amount in paise
@@ -173,16 +186,10 @@ export async function POST(req: Request) {
 
         console.log("Razorpay refund result:", razorpay_refund_result); 
 
-        if(razorpay_refund_result.status !== "processed"){
-        await supabase.from("orders").update({
-          refund_status: "REFUND_INITIATED",
-          reason_for_cancellation: reason,
-          otp_code: null,
-          otp_expires_at: null,
-        }).eq("id", orderId);
-      }else if(razorpay_refund_result.status === "processed"){
+        if(razorpay_refund_result.status === "processed"){
         const  {data : refund_update_data, error : refund_update_error} = await supabase.from("orders").update({
           refund_status: "REFUND_COMPLETED",
+          payment_status : "refunded",
           order_status: "CANCELLED",
           cancellation_status : "CANCELLED",
           refund_id : razorpay_refund_result.id,
@@ -203,6 +210,11 @@ export async function POST(req: Request) {
       } catch (err) {
         await supabase.from("orders").update({
           refund_status: "REFUND_FAILED",
+          refund_error_code : (err as any).error.code || "UNKNOWN_ERROR",
+          refund_error_reason : (err as any).error.reason || "No reason",
+          refund_error_description : (err as any).error.description || "No description",
+          otp_code: null,
+          otp_expires_at: null,
         }).eq("id", orderId);
 
         console.log("Refund error:", err);
