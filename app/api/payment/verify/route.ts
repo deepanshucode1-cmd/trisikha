@@ -1,58 +1,93 @@
-import { retryPaymentUpdateStatus } from '@/utils/retry';
-import { retryAssignAWB } from '@/utils/shiprocket';
-import { createClient } from '@/utils/supabase/server';
-import crypto from 'crypto';
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import crypto from "crypto";
+import Razorpay from "razorpay";
+import { createClient } from "@/utils/supabase/server";
 
-export async function POST(request: Request ) {
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
+});
 
-    const body = await request.text();
+export async function POST(req: Request) {
+  try {
+    const { order_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = await req.json();
 
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+    if (!order_id || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json({ error: "Missing params" }, { status: 400 });
+    }
 
+    // 1. Verify Signature using timingSafeEqual
+    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
     const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(body)
-        .digest('hex');
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET!)
+      .update(body)
+      .digest("hex");
 
-    const receivedSignature = request.headers.get('x-razorpay-signature');
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(razorpay_signature)
+    );
 
-    if (expectedSignature !== receivedSignature) {
-        //return new Response('Invalid signature', { status: 400 });
+    if (!isValid) return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+
+    // 2. Double-check status with Razorpay
+    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    if (payment.status !== "captured" && payment.status !== "authorized") {
+       return NextResponse.json({ error: "Payment failed at gateway" }, { status: 400 });
     }
 
-
-    // Process the webhook payload
-
-    const payload = JSON.parse(body);
-    console.log('Webhook payload:', payload);
-
-    // Handle different event types
-    const eventType = payload.event;
+    // 3. Update Database
+    // 3. Update Database
     const supabase = await createClient();
+const { data, error } = await supabase
+  .from("orders")
+  .update({
+    payment_status: "paid",
+    payment_id: razorpay_payment_id,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", order_id)
+  .eq("payment_status", "initiated") // This prevents double-processing
+  .select();
 
-    switch (eventType) {
-        case 'payment.captured':
-            // Handle payment captured event
-            console.log('Payment captured:', payload.payload.payment.entity);
+// If there's a genuine Postgres error (connection, syntax, etc.)
+if (error) {
+  // 🚨 CRITICAL: Money is gone, but DB failed to update.
+  // 1. Log this with HIGH PRIORITY (e.g., Sentry, Slack alert, console.error)
+  console.error("CRITICAL: Payment captured but DB update failed", {
+    order_id,
+    razorpay_payment_id,
+    db_error: error
+  });
 
-            const razorpay_payment_id = payload.payload.payment.entity.id;
-            const orderId = payload.payload.payment.entity.notes.order_id;
-            retryPaymentUpdateStatus('paid', orderId, razorpay_payment_id, 3, 2000);
-            
-            break;
-        case 'payment.failed':
-            // Handle payment failed event
-            retryPaymentUpdateStatus('failed', payload.payload.payment.entity.notes.order_id,"", 3, 2000);
-            console.log('Payment failed:', payload.payload.payment.entity);
-            break;
-        // Add more cases as needed
-        default:
-            console.log('Unhandled event type:', eventType);
-    }
+  // 2. DO NOT return an error to the user.
+  // Return success so the frontend redirects them to a "Success" page.
+  // The user will see "Order Placed" (even if the internal status is laggy).
+  return NextResponse.json({ 
+    success: true, 
+    warning: "Payment captured, order status pending sync" 
+  });
+}
 
-    
-    // You can add your logic here to handle different event types
-    return new Response('ok', { status: 200 });
+// If no rows were updated, it means the order is already 'paid' 
+// or the order_id doesn't exist.
+if (data.length === 0) {
+  // We check if it's already paid to confirm success
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select("payment_status")
+    .eq("id", order_id)
+    .single();
 
+  if (existingOrder?.payment_status === "paid") {
+    return NextResponse.json({ success: true, message: "Already processed" });
+  }
+
+  return NextResponse.json({ error: "Order not found" }, { status: 404 });
+}else{
+    return NextResponse.json({ success: true });
+}
+  } catch (err) {
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

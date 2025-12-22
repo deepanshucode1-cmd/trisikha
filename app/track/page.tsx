@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import { Search, Package, CheckCircle, Clock, MapPin, Truck, DollarSign, UserCheck, ArrowUpRight, FileText } from "lucide-react"; // Added FileText for manifest
+import { useSearchParams } from "next/dist/client/components/navigation";
 
 export default function TrackOrderPage() {
   const [input, setInput] = useState("");
@@ -11,6 +12,13 @@ export default function TrackOrderPage() {
   const [trackingData, setTrackingData] = useState<any>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<any>(null);
+
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get("order_id");
+
+  if(orderId && !input){
+    setInput(orderId);
+  }
 
   const handleTrack = async () => {
     if (!input.trim()) return;

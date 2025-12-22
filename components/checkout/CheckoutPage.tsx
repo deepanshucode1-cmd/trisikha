@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useCartStore } from "@/utils/store/cartStore";
 import Link from "next/link";
+import  {useRouter} from 'next/navigation';
 
 const states = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -17,6 +18,7 @@ const states = [
 
 export default function CheckoutPage() {
   const { items, clearCart } = useCartStore();
+  const router = useRouter();
   const [sameAsShipping, setSameAsShipping] = useState(true);
 
 
@@ -50,6 +52,8 @@ export default function CheckoutPage() {
   });
 
   const [email, setEmail] = useState("");
+
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
   if (!(window as any).Razorpay) {
@@ -163,21 +167,56 @@ const calculateShipping = async (pincode: string) => {
   amount: data.amount * 100,
   currency: data.currency,
   order_id: data.razorpay_order_id,
-  name: "Organic Bazar",
+  name: "Trishikha Organics",
   description: "Order Payment",
-  handler: async function () {
-    // Called when payment is successful
+ handler: async function (response: any) {
+  console.log("Razorpay payment success:", response);
 
-  },
+  setVerifying(true);
+
+  try {
+    const verifyRes = await fetch("/api/payment/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        order_id: data.order_id, // YOUR DB ORDER ID
+        razorpay_order_id: response.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+      }),
+    });
+
+    const verifyData = await verifyRes.json();
+
+    if (verifyRes.ok) {
+      clearCart();
+      router.push(`/payment/success?orderId=${data.order_id}`);
+    } else {
+      console.error("Verification failed:", verifyData);
+      router.push(`/payment/failed?reason=verification_failed`);
+    }
+  } catch (err) {
+    console.error("Verification error:", err);
+    router.push(`/payment/failed?reason=server_error`);
+  }
+},
   prefill: {
     email: data.email,
     contact: data.phone
+  },
+  modal: {
+    ondismiss: function () {
+      router.push(`/payment/failed?reason=cancelled`);
+    },
   },
   theme: { color: "#2f2e25" }
 };
 
     console.log("Razorpay options:", options);
     const razorpay = new (window as any).Razorpay(options);
+    razorpay.on("payment.failed", function () {
+    router.push(`/payment/failed?reason=failed`);
+  });
     razorpay.open();
     console.log("Razorpay checkout opened");
 
@@ -199,6 +238,43 @@ const calculateShipping = async (pincode: string) => {
   return (
     <div className="bg-[#3d3c30] text-[#e0dbb5] min-h-screen py-12 px-6 md:px-20">
       <h1 className="text-4xl font-bold mb-10 text-center">Checkout</h1>
+
+        {verifying && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    role="dialog"
+    aria-modal="true"
+    aria-live="polite"
+  >
+    <div className="bg-[#3d3c30] border border-[#6a684d] rounded-2xl shadow-2xl p-8 w-[90%] max-w-sm text-center">
+      
+      {/* Spinner */}
+      <div className="flex justify-center mb-5">
+        <div className="h-12 w-12 rounded-full border-4 border-[#6a684d] border-t-[#d1cd9f] animate-spin" />
+      </div>
+
+      {/* Title */}
+      <h2 className="text-xl font-semibold text-[#e0dbb5]">
+        Verifying Payment
+      </h2>
+
+      {/* Description */}
+      <p className="text-sm text-[#d1cd9f] mt-3 leading-relaxed">
+        Please wait while we securely confirm your payment.
+        <br />
+        <span className="text-[#bfb98f]">
+          Do not refresh or close this page.
+        </span>
+      </p>
+
+      {/* Trust hint */}
+      <div className="mt-5 text-xs text-[#9f9b7a]">
+        This may take a few seconds ⏳
+      </div>
+    </div>
+  </div>
+)}
+
 
       {items.length === 0 ? (
         <div className="text-center text-lg">
@@ -531,6 +607,7 @@ const calculateShipping = async (pincode: string) => {
               </button>
           </div>
         </form>
+      
       )}
     </div>
   );
