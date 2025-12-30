@@ -43,6 +43,7 @@ const { data, error } = await supabase
   .from("orders")
   .update({
     payment_status: "paid",
+    order_status : 'CONFIRMED', shiprocket_status : 'NOT_SHIPPED',
     payment_id: razorpay_payment_id,
     updated_at: new Date().toISOString(),
   })

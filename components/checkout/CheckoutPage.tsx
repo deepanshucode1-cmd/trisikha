@@ -2,10 +2,11 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCartStore } from "@/utils/store/cartStore";
 import Link from "next/link";
 import  {useRouter} from 'next/navigation';
+import ProgressBar from "../ProgressBar";
 
 const states = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -20,6 +21,7 @@ export default function CheckoutPage() {
   const { items, clearCart } = useCartStore();
   const router = useRouter();
   const [sameAsShipping, setSameAsShipping] = useState(true);
+  const [placingOrder, setPlacingOrder] = useState(false);
 
 
   const [shippingOptions, setShippingOptions] = useState<any[]>([]);
@@ -110,8 +112,25 @@ const calculateShipping = async (pincode: string) => {
       : setBilling({ ...billing, [name]: value });
   };
 
+  const pincodeRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+useEffect(() => {
+  // Check if pincode is valid (exactly 6 digits for India)
+  // and we haven't already calculated shipping for this specific pincode
+  if (shipping.pincode.length === 6 && !shippingCalculated) {
+    calculateShipping(shipping.pincode);
+  } else if (shipping.pincode.length !== 6 && shippingCalculated) {
+    // Reset if they change it to something invalid
+    setShippingCalculated(false);
+    setShippingCharge(null);
+  }
+}, [shipping.pincode]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (placingOrder) return; // Prevent multiple submissions
+    setPlacingOrder(true);
 
     const finalBilling = sameAsShipping ? shipping : billing;
     const payload = {
@@ -192,6 +211,7 @@ const calculateShipping = async (pincode: string) => {
       clearCart();
       router.push(`/payment/success?orderId=${data.order_id}`);
     } else {
+      
       console.error("Verification failed:", verifyData);
       router.push(`/payment/failed?reason=verification_failed`);
     }
@@ -224,11 +244,13 @@ const calculateShipping = async (pincode: string) => {
         // Redirect to payment gateway or confirmation page
         //window.location.href = data.payment_url;
       } else {
+        setPlacingOrder(false);
         const errorData = await res.json();
         console.error("Checkout error:", errorData);
         alert("An error occurred during checkout. Please try again.");
       }
     }).catch((error) => {
+      setPlacingOrder(false);
       console.error("Fetch error:", error);
       alert("An error occurred during checkout. Please try again.");
     });
@@ -285,6 +307,7 @@ const calculateShipping = async (pincode: string) => {
         </div>
       ) : (
         <form
+          ref = {formRef}
           onSubmit={handleSubmit}
           className="bg-[#464433] rounded-2xl p-8 max-w-4xl mx-auto shadow-lg"
         >
@@ -380,7 +403,9 @@ const calculateShipping = async (pincode: string) => {
               <label className="block text-sm mb-1">PIN code</label>
               <input
                 name="pincode"
+                autoComplete="postal-code"
                 required
+                ref = {pincodeRef}
                 value={shipping.pincode}
                 onBlur={() => {
                   if (shipping.pincode.length === 6) {
@@ -411,30 +436,6 @@ const calculateShipping = async (pincode: string) => {
   <p className="text-sm text-yellow-500">Calculating shipping…</p>
 )}
 
-{shippingOptions.length > 0 && (
-  <div className="mb-6 bg-[#3d3c30] p-3 border border-[#6a684d] rounded-lg">
-    <label className="block mb-2 text-sm font-medium">
-      Select Shipping Courier
-    </label>
-    <select
-      className="bg-black border border-[#6a684d] rounded-lg w-full p-2"
-      value={selectedCourier?.id}
-      onChange={(e) => {
-        const selected = shippingOptions.find(
-          (c) => c.id == e.target.value
-        );
-        setSelectedCourier(selected);
-        setShippingCharge(selected.rate);
-      }}
-    >
-      {shippingOptions.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.name} – ₹{c.rate} ({c.etd || "ETA N/A"})
-        </option>
-      ))}
-    </select>
-  </div>
-)}
 
 
           {/* Billing Section */}
@@ -552,6 +553,32 @@ const calculateShipping = async (pincode: string) => {
             </div>
           )}
 
+          {shippingOptions.length > 0 && (
+  <div className="mb-6 bg-[#3d3c30] p-3 border border-[#6a684d] rounded-lg">
+    <label className="block mb-2 text-sm font-medium">
+      Select Shipping Courier
+    </label>
+    <select
+      className="bg-black border border-[#6a684d] rounded-lg w-full p-2"
+      value={selectedCourier?.id}
+      onChange={(e) => {
+        const selected = shippingOptions.find(
+          (c) => c.id == e.target.value
+        );
+        setSelectedCourier(selected);
+        setShippingCharge(selected.rate);
+      }}
+    >
+      {shippingOptions.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name} – ₹{c.rate} ({c.etd || "ETA N/A"})
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+
+
           {/* Order Summary */}
           <div className="bg-[#3d3c30] border border-[#6a684d] rounded-xl p-4 mb-8">
             <h2 className="text-xl font-semibold mb-4">Order Summary</h2>
@@ -596,7 +623,10 @@ const calculateShipping = async (pincode: string) => {
               Clear Cart
             </button>
 
-            <button
+            {placingOrder ? (
+            <ProgressBar/>
+          ) : (
+        <button
               type="submit"
               disabled={!shippingCalculated || estimating}
               className={`${
@@ -605,6 +635,7 @@ const calculateShipping = async (pincode: string) => {
               >
                 Place Order
               </button>
+      )}
           </div>
         </form>
       

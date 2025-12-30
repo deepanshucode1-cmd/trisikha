@@ -24,3 +24,14 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* put in globals.css */
+input:-webkit-autofill {
+  animation-name: autofill;
+  animation-duration: 1ms;
+}
+
+@keyframes autofill {
+  from {}
+  to {}
+}

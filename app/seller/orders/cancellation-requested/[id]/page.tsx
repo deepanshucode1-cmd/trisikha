@@ -3,32 +3,31 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 
-export default function SellerOrderDetails({ params }: any) {
-  const orderId = params;
-
+export default function SellerOrderDetails (){
+    const params = useParams();
+  const orderId = params?.id as string;
+  
   const [order, setOrder] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
+  
   useEffect(() => {
+    if (!orderId) return;
+
     const fetchOrder = async () => {
-      const supabase = createClient();
+      try {
+        const res = await fetch(`/api/orders/get-order-detail/${orderId}`);
+        const json = await res.json();
 
-      const { data: orderData } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", orderId)
-        .single();
-
-      const { data: itemData } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", orderId);
-
-      setOrder(orderData);
-      setItems(itemData || []);
-      setLoading(false);
+        setOrder(json.order);
+        setItems(json.items);
+      } catch (err) {
+        console.error("Error fetching order:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchOrder();
@@ -37,37 +36,6 @@ export default function SellerOrderDetails({ params }: any) {
   if (loading) return <p className="p-6">Loading...</p>;
   if (!order) return <p className="p-6">Order not found.</p>;
 
-  const assignAwb = async () => {
-    await fetch("/api/seller/shiprocket/assign-awb", {
-      method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
-    });
-    alert("AWB assigned (if possible)");
-  };
-
-  const generateLabel = async () => {
-    await fetch("/api/seller/shiprocket/label", {
-      method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
-    });
-    alert("Label generated");
-  };
-
-  const generateManifest = async () => {
-    await fetch("/api/seller/shiprocket/manifest", {
-      method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
-    });
-    alert("Manifest generated");
-  };
-
-  const schedulePickup = async () => {
-    await fetch("/api/seller/shiprocket/pickup", {
-      method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
-    });
-    alert("Pickup scheduled");
-  };
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
@@ -84,11 +52,18 @@ export default function SellerOrderDetails({ params }: any) {
       {/* ORDER SUMMARY */}
       <div className="bg-white shadow rounded-2xl p-4 space-y-2">
         <h2 className="text-lg font-semibold">Order Summary</h2>
-
+        <p><strong>Order id:</strong> {order.id}</p>
         <p><strong>Date:</strong> {new Date(order.created_at).toLocaleString()}</p>
+
         <p><strong>Total Amount:</strong> ₹{order.total_amount}</p>
         <p><strong>Payment:</strong> {order.payment_status}</p>
-        <p><strong>Shiprocket Status:</strong> {order.shiprocket_status}</p>
+        <p><strong>Shipping Status:</strong> {order.shiprocket_status}</p>
+        <p><strong>Order Status:</strong> {order.order_status}</p>
+        <p><strong>Cancellation Status:</strong> {order.cancellation_status}</p>
+        <p><strong>Refund Status:</strong> {order.refund_status}</p>
+        <p><strong>Refund error code:</strong> {order.refund_error_code}</p>
+        <p><strong>Refund error reason:</strong> {order.refund_error_reason}</p>
+        <p><strong>Refund error description:</strong> {order.refund_error_description}</p>
         {order.awb_code && (
           <p><strong>AWB:</strong> {order.awb_code}</p>
         )}
@@ -145,29 +120,6 @@ export default function SellerOrderDetails({ params }: any) {
       <div className="bg-white shadow rounded-2xl p-4 space-y-3">
         <h2 className="text-lg font-semibold">Actions</h2>
 
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={assignAwb}
-            className="bg-blue-600 text-white p-2 rounded-lg"
-          >
-            Assign AWB
-          </button>
-
-          <button
-            onClick={generateLabel}
-            className="bg-gray-700 text-white p-2 rounded-lg"
-          >
-            Generate Label
-          </button>
-
-          <button
-            onClick={generateManifest}
-            className="bg-purple-600 text-white p-2 rounded-lg"
-          >
-            Generate Manifest
-          </button>
-
-        </div>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ interface CartStore {
   addToCart: (item: CartItem) => void;
   removeFromCart: (id: string) => void;
   clearCart: () => void;
-
+  updateQuantity: (id: string, quantity: number) => void;
 }
 
 import { persist } from "zustand/middleware";
@@ -36,6 +36,12 @@ export const useCartStore = create<CartStore>()(
         }
         set({ items: updatedCart });
       },
+      updateQuantity: (id, quantity) => {
+  const updatedCart = get().items.map((i) =>
+    i.id === id ? { ...i, quantity } : i
+  );
+  set({ items: updatedCart });
+},
       removeFromCart: (id) => {
         const updatedCart = get().items.filter((i) => i.id !== id);
         console.log(get().items.map(i => i.id));
@@ -44,6 +50,7 @@ export const useCartStore = create<CartStore>()(
       },
       clearCart: () => set({ items: [] }),
     }),
+
     {
       name: "cart", // key in localStorage
        storage: {

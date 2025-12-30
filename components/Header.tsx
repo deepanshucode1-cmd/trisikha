@@ -3,9 +3,14 @@ import { ShoppingCart } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCartStore } from "@/utils/store/cartStore";
 
 const Header = () => {
   const pathname = usePathname();
+ const itemsInCart = useCartStore(
+  (state) => state.items.reduce((sum, item) => sum + item.quantity, 0)
+);
+ console.log("Items in cart:", itemsInCart);
 
   return (
     <header className="bg-gradient-to-r from-[#3d3c30] to-[#2f2e25] text-[#e0dbb5] flex items-center  justify-between px-16 py-4 shadow-md">
@@ -52,7 +57,7 @@ const Header = () => {
         <ShoppingCart className="w-7 h-7 text-[#e0dbb5]" />
         {/* Example for cart count badge */}
         <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full px-1.5 py-0.5">
-          2
+          {itemsInCart}
         </span>
       </Link>
     

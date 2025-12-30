@@ -1,99 +1,154 @@
 "use client";
-import React, { useEffect, useState } from 'react'
-import Image from 'next/image'
-import Link from 'next/link'
+import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 import { toast, ToastContainer } from 'react-toastify';
 import { useCartStore } from '@/utils/store/cartStore';
 
-interface Product{
-    id :string,
-    name :string,
-    price : number,
-    stock : number,
-    image_url : string
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+  image_url: string;
 }
 
 const SellProducts = () => {
+  const addToCart = useCartStore((state) => state.addToCart);
 
-    const addToCart = useCartStore((state) => state.addToCart);
+  const [products, setProducts] = useState<Product[]>([]);
 
-    const [products,setProducts] = useState<Product[]>([]);
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const supabase = createClient();
+      const { data, error: err } = await supabase.from('products').select('*');
+      if (err) {
+        console.log(err);
+        toast.error("An error occurred");
+        return;
+      }
+      setProducts(data || []);
+    };
 
-    useEffect(() => {
-        const fetchProducts = async ()=>{
-            const supabase = createClient();
-            const  {data  , error : err} = await supabase.from('products').select('*');
-            if(err){
-                console.log(err);
-                toast.error("An error occurred");
-                return;
-            }
-            console.log(data);
-            console.log(err);
-            setProducts(data || []);
-        } ;
+    fetchProducts();
+  }, []);
 
-       fetchProducts();
-    },[]);
+  const handleAddToCart = (product: Product) => {
+    if (product.stock === 0) {
+      toast.error("This product is out of stock!");
+      return;
+    }
+    addToCart({ ...product, quantity: 1 });
+    toast.success(`${product.name} added to cart!`, {
+      position: "top-center",
+      autoClose: 3000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      theme: "colored",
+      style: {
+        background: "#10B981",
+        color: "white",
+        borderRadius: "8px",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+      },
+    });
+  };
 
   return (
     <div>
-        <section className="py-24 px-8 lg:px-24 bg-[#f5f5f0]">
-            <ToastContainer/>
-  <div className="max-w-6xl mx-auto flex flex-col gap-20">
-    {products !== null && products.map((product, i) => (
-      <div
-        key={product.id}
-        className="bg-gradient-to-br from-white to-[#fafafa] rounded-3xl shadow-lg overflow-hidden p-12 flex flex-col md:flex-row items-center gap-12 hover:shadow-2xl transition duration-500"
-      >
-        {/* Left: Info */}
-        <div className="flex-1 text-center md:text-left">
-          <h2 className="text-4xl font-extrabold mb-4 tracking-wide text-[#2e2d25]">
-            {product.name}
-          </h2>
-          <p className="text-lg md:text-xl font-light text-gray-700 mb-6 leading-relaxed">
-            {product.name}
-          </p>
-          <p className="text-2xl font-semibold bg-gradient-to-r from-green-600 to-lime-500 bg-clip-text text-transparent mb-8">
-            {product.price}
-          </p>
-          <Link
-            href={`/products/${product.id}`}
-            className="inline-block bg-[#3d3c30] text-[#e0dbb5] px-8 py-3 rounded-full font-medium shadow-md hover:bg-[#2f2e25] hover:shadow-lg transition duration-300 ease-in-out"
-          >
-            Learn More
-          </Link>
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-[#f8f9fa] to-[#e9ecef]">
+        <ToastContainer
+          position="top-center"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="colored"
+        />
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 tracking-tight">
+              Discover Our Organic Essentials
+            </h1>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Premium, earth-friendly products grown with care for a healthier you and planet.
+            </p>
+          </div>
 
-           <button
-        onClick={() =>
-          addToCart({ ...product, quantity: 1 })
-        }
-        className="bg-[#4f4d3e] hover:bg-[#6a684d] px-4 py-2 rounded-lg mt-3 transition"
-      >
-        Add to Cart
-      </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
+            {products.map((product) => (
+              <article
+                key={product.id}
+                className="group bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-xl transition-all duration-500 hover:-translate-y-2"
+              >
+                {/* Product Image */}
+                <div className="relative h-64 overflow-hidden bg-gray-50">
+                  <Image
+                    src={product.image_url}
+                    alt={product.name}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  {product.stock === 0 && (
+                    <div className="absolute inset-0 bg-red-500 bg-opacity-50 flex items-center justify-center">
+                      <span className="text-white text-lg font-semibold">Out of Stock</span>
+                    </div>
+                  )}
+                </div>
 
-          
+                {/* Product Info */}
+                <div className="p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-green-700 transition-colors">
+                    {product.name}
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-4 line-clamp-3">
+                    Premium organic {product.name.toLowerCase()}. Sustainably sourced and packed with natural goodness for vibrant health.
+                  </p>
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="text-2xl font-bold text-green-600">
+                      ₹{product.price}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {product.stock} in stock
+                    </span>
+                  </div>
 
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Link
+                      href={`/products/${product.id}`}
+                      className="flex-1 bg-gradient-to-r from-green-600 to-green-700 text-white py-3 px-6 rounded-lg text-center font-medium shadow-md hover:from-green-700 hover:to-green-800 transition-all duration-300 text-sm"
+                    >
+                      Learn More
+                    </Link>
+                    <button
+                      onClick={() => handleAddToCart(product)}
+                      disabled={product.stock === 0}
+                      className="flex-1 bg-gray-900 text-white py-3 px-6 rounded-lg font-medium shadow-md hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-300 text-sm"
+                    >
+                      Add to Cart
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {products.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">No products available at the moment. Check back soon!</p>
+            </div>
+          )}
         </div>
-
-        {/* Right: Product Image */}
-        <div className="flex-1 relative h-72 md:h-80 w-full rounded-2xl overflow-hidden shadow-md hover:scale-[1.02] transition-transform duration-500">
-          <Image
-            src={product.image_url}
-            alt={product.name}
-            fill
-            className="object-cover"
-          />
-        </div>
-      </div>
-    ))}
-  </div>
-</section>
-
+      </section>
     </div>
-  )
-}
+  );
+};
 
-export default SellProducts
+export default SellProducts;
