@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 
 export async function POST(req: Request) {
   const { orderId, emailOrPhone } = await req.json();
@@ -28,8 +29,23 @@ export async function POST(req: Request) {
     })
     .eq("id", orderId);
 
-  // ✅ SEND OTP VIA SMS / EMAIL HERE
-  console.log("OTP:", otp);
+
+  const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: emailOrPhone,
+      subject: "TrishikhaOrganics: Your OTP for Order Cancellation",
+      text: `Hi,\n\n Your OTP for cancelling order ${orderId} is: ${otp}. It is valid for 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nThank you,\nTrishikhaOrganics Team`,
+    });
 
   return NextResponse.json({ success: true });
 }

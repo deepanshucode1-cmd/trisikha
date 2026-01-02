@@ -59,7 +59,7 @@ const Footer = () => {
           <h3 className="text-lg font-semibold mb-4">Contact Us</h3>
           <ul className="space-y-2 text-sm">
             <li>Email: trishikhaorganic@gmail.com</li>
-            <li>Phone: +91 79847 79369</li>
+            <li>Phone: +91 79841 30253</li>
             <li>Address: Plot No 27, Swagat Industrial Area Park Vill. Dhanot, Kadi Chatral Road, Ta. Kalol, Distt: Gandhi Nagar Gujarat</li>
           </ul>
         </div>

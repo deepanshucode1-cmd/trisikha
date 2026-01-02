@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import Razorpay from "razorpay";
 import { createClient } from "@/utils/supabase/server";
+import nodemailer from "nodemailer";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -74,11 +75,15 @@ if (error) {
 // or the order_id doesn't exist.
 if (data.length === 0) {
   // We check if it's already paid to confirm success
-  const { data: existingOrder } = await supabase
+  const { data: existingOrder, error : err } = await supabase
     .from("orders")
     .select("payment_status")
     .eq("id", order_id)
     .single();
+
+  if(err){
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
 
   if (existingOrder?.payment_status === "paid") {
     return NextResponse.json({ success: true, message: "Already processed" });
@@ -86,6 +91,28 @@ if (data.length === 0) {
 
   return NextResponse.json({ error: "Order not found" }, { status: 404 });
 }else{
+
+      const {data : order_items, error :order_items_error} = await supabase.from("order_items").select("*").eq("order_id", order_id);
+
+      const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com",
+          port: 587,
+          secure: false,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+        });
+    
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: data[0].guest_email,
+          subject: "TrishikhaOrganics: Your Order is Confirmed",
+          text: `Hi,\n\n Your order with Order ID: ${order_id} has been successfully placed and confirmed.
+          Here are the details of your order:\n\n${order_items && order_items.map((item: any) => `- ${item.product_name} (Quantity: ${item.quantity})`).join('\n')}\n\nTotal Amount Paid: ₹${data[0].total_amount}\n\nWe will notify you once your order is shipped.
+          \n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
+        });
+    
     return NextResponse.json({ success: true });
 }
   } catch (err) {

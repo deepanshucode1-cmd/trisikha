@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { createClient } from "@/utils/supabase/server";
 import shiprocket from "@/utils/shiprocket";
+import nodemailer from "nodemailer";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -112,6 +113,11 @@ export async function POST(req: Request) {
         });
 
         if (result.status === "processed") {
+
+           let refund_amount = 0;
+          if(result.amount){
+            refund_amount = result.amount / 100;
+          }
           await supabase.from("orders")
             .update({
               refund_status: "REFUND_COMPLETED",
@@ -119,11 +125,32 @@ export async function POST(req: Request) {
               order_status: "CANCELLED",
               cancellation_status: "CANCELLED",
               refund_id: result.id,
-              refund_amount: result.amount,
+              refund_amount: refund_amount,
               refund_initiated_at: new Date().toISOString(),
               refund_completed_at: new Date().toISOString(),
             })
             .eq("id", orderId);
+
+
+                      const transporter = nodemailer.createTransport({
+                          host: "smtp.gmail.com",
+                          port: 587,
+                          secure: false,
+                          auth: {
+                            user: process.env.EMAIL_USER,
+                            pass: process.env.EMAIL_PASS,
+                          },
+                        });
+                    
+                        await transporter.sendMail({
+                          from: process.env.EMAIL_USER,
+                          to: order.guest_email,
+                          subject: "TrishikhaOrganics: Order has been Cancelled and Refunded",
+                          text: `Hi,\n\n Your order with Order ID: ${orderId} has been successfully cancelled and refunded.
+                          \n\nRefund Amount: ₹${refund_amount}\n\nThe amount should reflect in your account within 5-7 business days depending on your bank's processing time.
+                          \n\nWe apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.
+                          \n\nThank you,\nTrishikhaOrganics Team`,
+                        });
 
           return NextResponse.json({ success: true });
         }

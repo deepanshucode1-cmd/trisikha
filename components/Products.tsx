@@ -17,18 +17,27 @@ export interface Product {
 const SellProducts = () => {
   const addToCart = useCartStore((state) => state.addToCart);
 
-  const [products, setProducts] = useState<Product[]>([]);
+ const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchProducts = async () => {
-      const supabase = createClient();
-      const { data, error: err } = await supabase.from('products').select('*');
-      if (err) {
-        console.log(err);
-        toast.error("An error occurred");
-        return;
+      try {
+        setLoading(true);
+        const res = await fetch("/api/products");
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch products");
+        }
+
+        const data = await res.json();
+        setProducts(data);
+      } catch (err) {
+        console.error(err);
+        toast.error("An error occurred while loading products");
+      } finally {
+        setLoading(false);
       }
-      setProducts(data || []);
     };
 
     fetchProducts();
@@ -81,6 +90,14 @@ const SellProducts = () => {
               Premium, earth-friendly products grown with care for a healthier you and planet.
             </p>
           </div>
+
+                {/* Loader */}
+      {loading && (
+        <div className="flex justify-center items-center py-20">
+          <div className="h-12 w-12 border-4 border-[#e0dbb5] border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
             {products.map((product) => (
@@ -140,7 +157,7 @@ const SellProducts = () => {
             ))}
           </div>
 
-          {products.length === 0 && (
+          {!loading && products.length === 0 && (
             <div className="text-center py-12">
               <p className="text-gray-500 text-lg">No products available at the moment. Check back soon!</p>
             </div>

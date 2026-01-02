@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { createClient } from "@/utils/supabase/server";
 import shiprocket from "@/utils/shiprocket";
+import nodemailer from "nodemailer";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -187,13 +188,14 @@ export async function POST(req: Request) {
         console.log("Razorpay refund result:", razorpay_refund_result); 
 
         if(razorpay_refund_result.status === "processed"){
+          const refund_amount = razorpay_refund_result.amount / 100;
         const  {data : refund_update_data, error : refund_update_error} = await supabase.from("orders").update({
           refund_status: "REFUND_COMPLETED",
           payment_status : "refunded",
           order_status: "CANCELLED",
           cancellation_status : "CANCELLED",
           refund_id : razorpay_refund_result.id,
-          refund_amount : razorpay_refund_result.amount,
+          refund_amount : razorpay_refund_result.amount/100,
           refund_initiated_at : new Date().toISOString(),
           refund_completed_at : new Date().toISOString(),
           reason_for_cancellation: reason,
@@ -203,6 +205,26 @@ export async function POST(req: Request) {
 
         console.log("Refund update data:", refund_update_data);
         console.log("Refund update error:", refund_update_error); 
+
+          const transporter = nodemailer.createTransport({
+              host: "smtp.gmail.com",
+              port: 587,
+              secure: false,
+              auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+              },
+            });
+        
+            await transporter.sendMail({
+              from: process.env.EMAIL_USER,
+              to: order.guest_email,
+              subject: "TrishikhaOrganics: Order has been Cancelled and Refunded",
+              text: `Hi,\n\n Your order with Order ID: ${orderId} has been successfully cancelled and refunded.
+              \n\nRefund Amount: ₹${razorpay_refund_result.amount}\n\nThe amount should reflect in your account within 5-7 business days depending on your bank's processing time.
+              \n\nWe apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.
+              \n\nThank you,\nTrishikhaOrganics Team`,
+            });
       }
 
         return NextResponse.json({ success: true });

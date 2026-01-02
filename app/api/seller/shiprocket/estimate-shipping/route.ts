@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   const { destination_pincode, cart_items } = await req.json();
 
+  console.log(cart_items);
   // Calculate total weight of order
   const totalWeight = cart_items.reduce(
     (sum: number, item: any) =>
