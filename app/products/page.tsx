@@ -8,14 +8,14 @@ const products = [
     id: "trishikha-gold-1kg",
     name: "Trishikha Gold - 1kg",
     price: "₹ 135.00",
-    image: "/product1.jpg",
+    image: "/product1.jpeg",
     description: "Boost your garden's growth with nutrient rich formula.",
   },
   {
     id: "trishikha-gold-5kg",
     name: "Trishikha Gold - 5kg",
     price: "₹ 375.00",
-    image: "/product2.jpg",
+    image: "/product22.png",
     description: "Boost your garden's growth with nutrient rich formula.",
   },
 ];

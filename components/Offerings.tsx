@@ -6,13 +6,13 @@ const products = [
     id: 1,
     name: "Trishikha Gold - 1kg",
     price: "₹ 135.00",
-    image: "/product1.jpg",
+    image: "/product1.jpeg",
   },
   {
     id: 2,
     name: "Trishikha Gold - 5kg",
     price: "₹ 375.00",
-    image: "/product2.jpg",
+    image: "/product22.png",
   },
 ];
 
@@ -45,7 +45,7 @@ export default function Offerings() {
                 src={product.image}
                 alt={product.name}
                 fill
-                className="object-cover"
+                className="object-cover mt-2"
               />
             </div>
 
