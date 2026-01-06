@@ -48,14 +48,14 @@ export default function Products() {
     {products.map((product, i) => (
       <div
         key={product.id}
-        className="bg-gradient-to-br from-white to-[#fafafa] rounded-3xl shadow-lg overflow-hidden p-12 flex flex-col md:flex-row items-center gap-12 hover:shadow-2xl transition duration-500"
+        className="bg-gradient-to-br from-white to-[#fafafa] rounded-3xl shadow-lg overflow-hidden p-8 md:p-12 flex flex-col-reverse md:flex-row items-center gap-10 hover:shadow-2xl transition duration-500"
       >
         {/* Left: Info */}
         <div className="flex-1 text-center md:text-left">
-          <h2 className="text-4xl font-extrabold mb-4 tracking-wide text-[#2e2d25]">
+          <h2 className="text-3xl md:text-4xl font-extrabold mb-4 tracking-wide text-[#2e2d25]">
             {product.name}
           </h2>
-          <p className="text-lg md:text-xl font-light text-gray-700 mb-6 leading-relaxed">
+          <p className="text-lg font-light text-gray-700 mb-6 leading-relaxed">
             {product.description}
           </p>
           <p className="text-2xl font-semibold bg-gradient-to-r from-green-600 to-lime-500 bg-clip-text text-transparent mb-8">
@@ -63,26 +63,28 @@ export default function Products() {
           </p>
           <Link
             href={`/products/${product.id}`}
-            className="inline-block bg-[#3d3c30] text-[#e0dbb5] px-8 py-3 rounded-full font-medium shadow-md hover:bg-[#2f2e25] hover:shadow-lg transition duration-300 ease-in-out"
+            className="inline-block bg-[#3d3c30] text-[#e0dbb5] px-8 py-3 rounded-full font-medium shadow-md hover:bg-[#2f2e25] transition duration-300"
           >
             Learn More
           </Link>
         </div>
 
         {/* Right: Product Image */}
-        <div className="flex-1 relative h-72 md:h-80 w-full rounded-2xl overflow-hidden shadow-md hover:scale-[1.02] transition-transform duration-500">
+        {/* We add 'min-h-[300px]' to ensure the container exists on mobile */}
+        <div className="flex-1 relative w-full h-64 md:h-80 min-h-[250px] rounded-2xl overflow-hidden shadow-md">
           <Image
             src={product.image}
             alt={product.name}
             fill
+            sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover"
+            priority={i === 0} // Preloads the first image for better mobile speed
           />
         </div>
       </div>
     ))}
   </div>
 </section>
-
 
         {/* Benefits Section - Elegant icons or simple list */}
         <section className="py-24 px-8 lg:px-24 bg-gradient-to-r from-[#323025] to-[#3d3c30] text-[#e0dbb5] font-sans">
