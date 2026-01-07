@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { logAuth, logError } from "@/lib/logger";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    // Require admin role
+    const { supabase, user } = await requireRole("admin");
+
+    logAuth("admin_access_new_orders", { userId: user.id });
 
     const { data, error } = await supabase
       .from("orders")
@@ -15,7 +19,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Supabase error:", error);
+      logError(new Error(error.message), { endpoint: "/api/orders/get-new-orders", userId: user.id });
       return NextResponse.json(
         { error: "Failed to load orders" },
         { status: 500 }
@@ -23,11 +27,7 @@ export async function GET() {
     }
 
     return NextResponse.json({ orders: data ?? [] });
-  } catch (err) {
-    console.error("API error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleAuthError(error);
   }
 }

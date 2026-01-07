@@ -46,7 +46,7 @@ export async function GET(request: Request) {
   let redirectPath = "/";
   switch (profile.role) {
     case "admin":
-      redirectPath = "/dashboard";
+      redirectPath = "/admin";
       break;
     default:
       redirectPath = "/products";

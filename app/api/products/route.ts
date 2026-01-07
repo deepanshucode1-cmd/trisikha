@@ -1,6 +1,8 @@
 // app/api/products/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { handleApiError } from "@/lib/errors";
+import { logError } from "@/lib/logger";
 
 export async function GET() {
   try {
@@ -8,22 +10,19 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("products")
-      .select("*");
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error);
+      logError(new Error(error.message), { endpoint: "/api/products" });
       return NextResponse.json(
-        { message: "Failed to fetch products" },
+        { error: "Failed to fetch products" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(data, { status: 200 });
+    return NextResponse.json(data || [], { status: 200 });
   } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 }
-    );
+    return handleApiError(err, { endpoint: "/api/products" });
   }
 }
