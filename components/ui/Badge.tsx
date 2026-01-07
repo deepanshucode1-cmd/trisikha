@@ -1,12 +1,20 @@
 import * as React from "react";
 
+type BadgeVariant = "default" | "success" | "warning" | "danger" | "primary";
+
+interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  children: React.ReactNode;
+  className?: string;
+  variant?: BadgeVariant;
+}
+
 export function Badge({
   children,
   className = "",
   variant = "default",
   ...props
-}) {
-  const variants = {
+}: BadgeProps) {
+  const variants: Record<BadgeVariant, string> = {
     default: "bg-gray-200 text-gray-800",
     success: "bg-green-100 text-green-800",
     warning: "bg-yellow-100 text-yellow-800",

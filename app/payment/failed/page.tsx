@@ -2,8 +2,9 @@
 
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 
-export default function PaymentFailedPage() {
+function PaymentFailedContent() {
   const searchParams = useSearchParams();
 
   const orderId = searchParams.get("orderId");
@@ -68,5 +69,17 @@ export default function PaymentFailedPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function PaymentFailedPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#3d3c30] text-[#e0dbb5] flex items-center justify-center">
+        <div className="animate-pulse">Loading...</div>
+      </div>
+    }>
+      <PaymentFailedContent />
+    </Suspense>
   );
 }

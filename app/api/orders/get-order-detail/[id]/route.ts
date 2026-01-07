@@ -5,7 +5,7 @@ import { verifyOrderAccess, AuthError, requireAuth } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Use service client to bypass RLS for guest order access
     const supabase = createServiceClient();

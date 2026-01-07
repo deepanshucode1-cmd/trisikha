@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 export default function CancelOrderPage() {
   const [step, setStep] = useState<"FORM" | "OTP" | "DONE">("FORM");
@@ -171,12 +172,12 @@ export default function CancelOrderPage() {
               automatically in 5–7 business days.
             </p>
 
-            <a
+            <Link
               href="/"
               className="inline-block mt-4 px-6 py-2 bg-green-700 text-white rounded-md"
             >
               Back to Home
-            </a>
+            </Link>
           </div>
         )}
       </div>

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Suspense } from "react";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
-import { Search, Package, CheckCircle, Clock, MapPin, Truck, DollarSign, UserCheck, ArrowUpRight, FileText } from "lucide-react"; // Added FileText for manifest
-import { useSearchParams } from "next/dist/client/components/navigation";
+import { Search, Package, CheckCircle, Clock, MapPin, Truck, UserCheck, ArrowUpRight, FileText } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
-export default function TrackOrderPage() {
+function TrackOrderContent() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [trackingData, setTrackingData] = useState<any>(null);
@@ -355,5 +355,17 @@ export default function TrackOrderPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function TrackOrderPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#3d3c30] text-[#e0dbb5] flex items-center justify-center">
+        <div className="animate-pulse">Loading...</div>
+      </div>
+    }>
+      <TrackOrderContent />
+    </Suspense>
   );
 }

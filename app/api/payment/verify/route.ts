@@ -104,7 +104,7 @@ export async function POST(req: Request) {
     }
 
     // Verify amount (payment.amount is in paise, orderCheck.total_amount is in rupees)
-    const paymentAmountInRupees = payment.amount / 100;
+    const paymentAmountInRupees = Number(payment.amount) / 100;
     if (Math.abs(paymentAmountInRupees - orderCheck.total_amount) > 0.01) {
       logSecurityEvent("payment_amount_mismatch", {
         orderId: order_id,
