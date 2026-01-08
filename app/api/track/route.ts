@@ -39,6 +39,14 @@ export async function GET(req: Request) {
     // Validate input
     const validatedData = trackOrderSchema.parse({ order_id: orderId });
 
+    // Email is required for tracking - prevents unauthorized access
+    if (!email) {
+      return NextResponse.json(
+        { error: "Email is required for order tracking" },
+        { status: 400 }
+      );
+    }
+
     // Use service client to bypass RLS for guest tracking
     const supabase = createServiceClient();
     const { data: order, error } = await supabase
@@ -51,13 +59,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Verify email matches order (optional but recommended for security)
-    if (email && order.guest_email !== email) {
+    // Verify email matches order - MANDATORY for security
+    if (order.guest_email !== email) {
       logSecurityEvent("tracking_email_mismatch", {
         orderId: validatedData.order_id,
         providedEmail: email,
         ip,
       });
+      // Return generic error to avoid leaking order existence
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 

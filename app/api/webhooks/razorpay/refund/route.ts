@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/utils/supabase/server";
+import { logSecurityEvent, logError } from "@/lib/logger";
 
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-function verifySignature(body: string, signature: string | null) {
+function verifySignature(body: string, signature: string | null): boolean {
   if (!WEBHOOK_SECRET || !signature) return false;
   const expected = crypto.createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");
-  return expected === signature;
+  // Use timing-safe comparison to prevent timing attacks
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -38,10 +44,13 @@ export async function POST(req: Request) {
     const rawBody = await req.text();
     const signature = req.headers.get("x-razorpay-signature");
 
-    // verify signature
+    // verify signature - CRITICAL: reject invalid signatures
     if (!verifySignature(rawBody, signature)) {
-      console.warn("Razorpay webhook: invalid signature");
-      //return NextResponse.json({ error: "invalid signature" }, { status: 400 });
+      logSecurityEvent("invalid_webhook_signature", {
+        endpoint: "/api/webhooks/razorpay/refund",
+        hasSignature: !!signature,
+      });
+      return NextResponse.json({ error: "invalid signature" }, { status: 400 });
     }
 
     const payload = JSON.parse(rawBody);
@@ -50,7 +59,10 @@ export async function POST(req: Request) {
     const refund = extractRefundEntity(payload);
     if (!refund) {
       // Nothing to do: not a refund payload or unknown shape
-      console.warn("Razorpay webhook: refund entity not found", payload?.event);
+      logSecurityEvent("refund_entity_not_found", {
+        endpoint: "/api/webhooks/razorpay/refund",
+        event: payload?.event,
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -85,14 +97,14 @@ export async function POST(req: Request) {
     }
 
     if (fetchErr) {
-      console.error("Supabase error while finding order for refund webhook:", fetchErr);
+      logError(new Error("Supabase error while finding order for refund webhook"), { error: fetchErr });
       // still return 200 to avoid retries from Razorpay — but log/alert in production
       return NextResponse.json({ ok: false }, { status: 200 });
     }
 
     if (!order) {
       // Might be a refund for a payment we don't have (ignore)
-      console.warn("Razorpay webhook: no matching order for payment/refund", { paymentId, refundId });
+      logSecurityEvent("no_matching_order_for_refund", { paymentId, refundId });
       return NextResponse.json({ ok: true });
     }
 
@@ -128,14 +140,14 @@ export async function POST(req: Request) {
       .eq("id", order.id);
 
     if (updateErr) {
-      console.error("Supabase error updating order from refund webhook:", updateErr);
+      logError(new Error("Supabase error updating order from refund webhook"), { error: updateErr, orderId: order.id });
       // still return 200 to Razorpay, but log the error for manual reconciliation
       return NextResponse.json({ ok: false }, { status: 200 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Razorpay refund webhook handler error:", err);
+    logError(err as Error, { endpoint: "/api/webhooks/razorpay/refund" });
     // respond 200 so Razorpay does not keep retrying if you already logged/alerted
     return NextResponse.json({ error: "handler_error" }, { status: 200 });
   }

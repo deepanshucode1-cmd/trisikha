@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import shiprocket from "@/utils/shiprocket";
+import { logError } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -64,10 +65,10 @@ export async function POST(req: Request) {
       success: true,
       label_url: labelRes.label_url,
     });
-  } catch (err: any) {
-    console.error("Generate label error:", err);
+  } catch (err) {
+    logError(err as Error, { endpoint: "/api/seller/shiprocket/generate-label" });
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: (err as Error).message || "Internal server error" },
       { status: 500 }
     );
   }
