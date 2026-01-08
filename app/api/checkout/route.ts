@@ -7,6 +7,7 @@ import { checkoutSchema } from "@/lib/validation";
 import { checkoutRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logPayment, logSecurityEvent, logError } from "@/lib/logger";
+import shiprocket from "@/utils/shiprocket";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     // Parse and validate input
     const body = await req.json();
     const validatedData = checkoutSchema.parse(body);
-    const { guest_email, guest_phone, cart_items, shipping_address, billing_address } = validatedData;
+    const { guest_email, guest_phone, cart_items, shipping_address, billing_address, selected_courier } = validatedData;
 
     // Calculate total amount from cart items
     // Use service client to bypass RLS for guest checkout
@@ -100,6 +101,66 @@ export async function POST(req: Request) {
       calculatedTotal += product.price * item.quantity;
     }
 
+    // Verify shipping cost from Shiprocket
+    let verifiedShippingCost = selected_courier.rate;
+    try {
+      const token = await shiprocket.login();
+
+      // Calculate total weight
+      const totalWeight = cart_items.reduce((sum: number, item: any) => {
+        const product = products.find((p: any) => p.id === item.id);
+        return sum + ((product?.weight || 0.5) * item.quantity);
+      }, 0);
+
+      // Call Shiprocket serviceability API to verify rate
+      const srRes = await fetch(
+        `https://apiv2.shiprocket.in/v1/external/courier/serviceability?pickup_postcode=${process.env.STORE_PINCODE}&delivery_postcode=${shipping_address.pincode}&weight=${totalWeight}&cod=0`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const srData = await srRes.json();
+      const couriers = srData?.data?.available_courier_companies || [];
+
+      // Find the selected courier and use its verified rate
+      const matchedCourier = couriers.find((c: any) => c.courier_company_id === selected_courier.id);
+
+      if (matchedCourier) {
+        verifiedShippingCost = matchedCourier.rate;
+        logOrder("shipping_verified", {
+          courierId: selected_courier.id,
+          courierName: selected_courier.name,
+          originalRate: selected_courier.rate,
+          verifiedRate: verifiedShippingCost,
+          email: guest_email,
+        });
+      } else {
+        // Courier not available - use original rate but log warning
+        logSecurityEvent("courier_not_found", {
+          courierId: selected_courier.id,
+          courierName: selected_courier.name,
+          availableCouriers: couriers.map((c: any) => c.courier_company_id),
+          email: guest_email,
+        });
+      }
+    } catch (shippingError) {
+      // If Shiprocket verification fails, use the frontend rate but log the error
+      logError(new Error("Shiprocket verification failed"), {
+        endpoint: "/api/checkout",
+        email: guest_email,
+        selectedCourier: selected_courier,
+        error: (shippingError as Error).message,
+      });
+    }
+
+    // Add shipping to total
+    const totalWithShipping = calculatedTotal + verifiedShippingCost;
+
     // Create order first
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
@@ -107,7 +168,11 @@ export async function POST(req: Request) {
         user_id: null,
         guest_email: guest_email,
         guest_phone: guest_phone,
-        total_amount: calculatedTotal,
+        total_amount: totalWithShipping,
+        subtotal_amount: calculatedTotal,
+        shipping_cost: verifiedShippingCost,
+        courier_id: selected_courier.id,
+        courier_name: selected_courier.name,
         currency: "INR",
         order_status: 'CHECKED_OUT',
         payment_status: 'initiated',
@@ -143,7 +208,11 @@ export async function POST(req: Request) {
     logOrder("order_created", {
       orderId: orderData.id,
       email: guest_email,
-      total: calculatedTotal,
+      subtotal: calculatedTotal,
+      shipping: verifiedShippingCost,
+      total: totalWithShipping,
+      courierId: selected_courier.id,
+      courierName: selected_courier.name,
       itemCount: cart_items.length,
     });
 
@@ -205,7 +274,7 @@ export async function POST(req: Request) {
     // Create Razorpay order
     try {
       const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(calculatedTotal * 100), // amount in paise
+        amount: Math.round(totalWithShipping * 100), // amount in paise
         currency: "INR",
         receipt: orderData.id.toString(),
         notes: {
@@ -217,7 +286,9 @@ export async function POST(req: Request) {
       logPayment("razorpay_order_created", {
         orderId: orderData.id,
         razorpayOrderId: razorpayOrder.id,
-        amount: calculatedTotal,
+        amount: totalWithShipping,
+        subtotal: calculatedTotal,
+        shipping: verifiedShippingCost,
       });
 
       // Update order with Razorpay order ID
@@ -230,7 +301,9 @@ export async function POST(req: Request) {
       return NextResponse.json({
         order_id: orderData.id,
         razorpay_order_id: razorpayOrder.id,
-        amount: calculatedTotal,
+        amount: totalWithShipping,
+        subtotal: calculatedTotal,
+        shipping: verifiedShippingCost,
         currency: "INR",
         key: process.env.RAZORPAY_KEY_ID,
         status: "initiated"

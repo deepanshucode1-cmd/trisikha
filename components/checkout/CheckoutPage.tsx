@@ -174,6 +174,7 @@ useEffect(() => {
           pincode: finalBilling.pincode,
           country: "India",
         },
+        selected_courier: selectedCourier,
       }),
     });
 
@@ -209,7 +210,8 @@ useEffect(() => {
 
     if (verifyRes.ok) {
       clearCart();
-      router.push(`/payment/success?orderId=${data.order_id}`);
+      router.push(`/payment/success?orderId=${data.order_id}?email=${email}`);
+      setVerifying(false);
     } else {
       
       console.error("Verification failed:", verifyData);

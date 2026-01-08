@@ -21,6 +21,14 @@ export const cartItemSchema = z.object({
   image_url: z.string().optional(),
 });
 
+// Selected courier from Shiprocket
+export const selectedCourierSchema = z.object({
+  id: z.number().int("Courier ID must be an integer"),
+  name: z.string().min(1, "Courier name is required"),
+  rate: z.number().positive("Shipping rate must be positive"),
+  etd: z.string().nullable().optional(),
+});
+
 // Checkout validation (matches frontend payload)
 export const checkoutSchema = z.object({
   guest_email: z.string().email("Invalid email address").max(255, "Email too long"),
@@ -29,6 +37,7 @@ export const checkoutSchema = z.object({
   total_amount: z.number().optional(),
   shipping_address: addressSchema,
   billing_address: addressSchema,
+  selected_courier: selectedCourierSchema,
 });
 
 // OTP validation
