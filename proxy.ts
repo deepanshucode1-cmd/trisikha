@@ -24,7 +24,7 @@ function isWebhookRoute(pathname: string): boolean {
   return WEBHOOK_ROUTES.some((route) => pathname.startsWith(route));
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip non-API routes
