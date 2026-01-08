@@ -1,6 +1,7 @@
 import winston from 'winston';
-import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
+
+const isProduction = process.env.NODE_ENV === 'production';
 
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -8,12 +9,22 @@ const logFormat = winston.format.combine(
   winston.format.json()
 );
 
-const logger = winston.createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  format: logFormat,
-  defaultMeta: { service: 'trisikha-api' },
-  transports: [
-    // Error logs
+// Build transports based on environment
+const transports: winston.transport[] = [];
+
+// Console transport - always enabled in production (for serverless logs)
+// and in development with colorized output
+if (isProduction) {
+  transports.push(
+    new winston.transports.Console({
+      format: logFormat
+    })
+  );
+} else {
+  // In development, use file transports + colorized console
+  const DailyRotateFile = require('winston-daily-rotate-file');
+
+  transports.push(
     new DailyRotateFile({
       filename: path.join(process.cwd(), 'logs', 'error-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
@@ -23,8 +34,6 @@ const logger = winston.createLogger({
       createSymlink: true,
       symlinkName: 'error-current.log',
     }),
-
-    // Combined logs
     new DailyRotateFile({
       filename: path.join(process.cwd(), 'logs', 'combined-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
@@ -33,17 +42,20 @@ const logger = winston.createLogger({
       createSymlink: true,
       symlinkName: 'combined-current.log',
     }),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  );
+}
 
-    // Console output in development
-    ...(process.env.NODE_ENV !== 'production' ? [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.colorize(),
-          winston.format.simple()
-        )
-      })
-    ] : [])
-  ]
+const logger = winston.createLogger({
+  level: isProduction ? 'info' : 'debug',
+  format: logFormat,
+  defaultMeta: { service: 'trisikha-api' },
+  transports
 });
 
 // Security event logger
