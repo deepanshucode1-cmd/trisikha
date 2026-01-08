@@ -59,6 +59,10 @@ export function proxy(request: NextRequest) {
       allowedOrigins.push(process.env.NEXT_PUBLIC_SITE_URL);
     }
 
+    if(process.env.NEXT_PUBLIC_STAGING_SITE_URL){
+      allowedOrigins.push(process.env.NEXT_PUBLIC_STAGING_SITE_URL);
+    }
+
     // In development, allow localhost variants
     if (process.env.NODE_ENV === "development") {
       allowedOrigins.push("http://localhost:3000");

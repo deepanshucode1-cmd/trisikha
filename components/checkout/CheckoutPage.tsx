@@ -2,11 +2,60 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useCartStore } from "@/utils/store/cartStore";
 import Link from "next/link";
-import  {useRouter} from 'next/navigation';
-import ProgressBar from "../ProgressBar";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+
+// Validation rules based on backend schema
+interface ValidationRule {
+  pattern?: RegExp;
+  minLength?: number;
+  maxLength?: number;
+  message: string;
+}
+
+const validation: Record<string, ValidationRule> = {
+  email: {
+    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    maxLength: 255,
+    message: "Please enter a valid email address",
+  },
+  phone: {
+    pattern: /^[0-9]{10,15}$/,
+    message: "Phone must be 10-15 digits",
+  },
+  firstName: {
+    pattern: /^[a-zA-Z\s.'-]+$/,
+    minLength: 1,
+    maxLength: 50,
+    message: "First name is required (letters only, max 50 chars)",
+  },
+  lastName: {
+    pattern: /^[a-zA-Z\s.'-]*$/,
+    maxLength: 50,
+    message: "Last name can only contain letters (max 50 chars)",
+  },
+  address: {
+    minLength: 5,
+    maxLength: 200,
+    message: "Address must be 5-200 characters",
+  },
+  apartment: {
+    maxLength: 200,
+    message: "Max 200 characters",
+  },
+  city: {
+    minLength: 2,
+    maxLength: 100,
+    message: "City must be 2-100 characters",
+  },
+  pincode: {
+    pattern: /^[0-9]{6}$/,
+    message: "Pincode must be exactly 6 digits",
+  },
+};
 
 const states = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -23,13 +72,11 @@ export default function CheckoutPage() {
   const [sameAsShipping, setSameAsShipping] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
 
-
   const [shippingOptions, setShippingOptions] = useState<any[]>([]);
   const [selectedCourier, setSelectedCourier] = useState<any | null>(null);
   const [shippingCharge, setShippingCharge] = useState<number | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [shippingCalculated, setShippingCalculated] = useState(false);
-
 
   const [shipping, setShipping] = useState({
     firstName: "",
@@ -54,53 +101,121 @@ export default function CheckoutPage() {
   });
 
   const [email, setEmail] = useState("");
-
   const [verifying, setVerifying] = useState(false);
 
-  useEffect(() => {
-  if (!(window as any).Razorpay) {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
-  }
-}, []);
+  // Validation errors state
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-const calculateShipping = async (pincode: string) => {
-  try {
-    setEstimating(true);
-    setShippingCalculated(false);
-
-    const res = await fetch("/api/seller/shiprocket/estimate-shipping", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        destination_pincode: pincode,
-        cart_items: items,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (res.ok) {
-      setShippingOptions(data.couriers);
-
-      // Auto select cheapest
-      const first = data.couriers[0];
-      setSelectedCourier(first);
-      setShippingCharge(first.rate);
-      setShippingCalculated(true);
-    } else {
-      alert(data.error || "Could not estimate shipping cost");
+  // Validation helper functions
+  const validateField = useCallback((field: string, value: string, isRequired = true): string => {
+    if (!value && isRequired) {
+      return `${field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, " $1")} is required`;
     }
-  } finally {
-    setEstimating(false);
-  }
-};
+    if (!value && !isRequired) return "";
 
+    const rules = validation[field];
+    if (!rules) return "";
 
+    if (rules.minLength !== undefined && value.length < rules.minLength) {
+      return rules.message;
+    }
+    if (rules.maxLength !== undefined && value.length > rules.maxLength) {
+      return rules.message;
+    }
+    if (rules.pattern && !rules.pattern.test(value)) {
+      return rules.message;
+    }
+    return "";
+  }, []);
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0) + (shippingCharge || 0);
+  const handleBlur = (field: string, value: string, isRequired = true) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const error = validateField(field, value, isRequired);
+    setErrors((prev) => ({ ...prev, [field]: error }));
+  };
+
+  const validateAllFields = useCallback((): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    // Email
+    newErrors.email = validateField("email", email);
+
+    // Shipping fields
+    newErrors.firstName = validateField("firstName", shipping.firstName);
+    newErrors.lastName = validateField("lastName", shipping.lastName, false);
+    newErrors.address = validateField("address", shipping.address);
+    newErrors.apartment = validateField("apartment", shipping.apartment, false);
+    newErrors.city = validateField("city", shipping.city);
+    newErrors.pincode = validateField("pincode", shipping.pincode);
+    newErrors.phone = validateField("phone", shipping.phone);
+
+    if (!shipping.state) {
+      newErrors.state = "Please select a state";
+    }
+
+    // Billing fields (if different)
+    if (!sameAsShipping) {
+      newErrors.billingFirstName = validateField("firstName", billing.firstName);
+      newErrors.billingLastName = validateField("lastName", billing.lastName, false);
+      newErrors.billingAddress = validateField("address", billing.address);
+      newErrors.billingApartment = validateField("apartment", billing.apartment, false);
+      newErrors.billingCity = validateField("city", billing.city);
+      newErrors.billingPincode = validateField("pincode", billing.pincode);
+      newErrors.billingPhone = validateField("phone", billing.phone);
+
+      if (!billing.state) {
+        newErrors.billingState = "Please select a state";
+      }
+    }
+
+    setErrors(newErrors);
+    setTouched(Object.keys(newErrors).reduce((acc, key) => ({ ...acc, [key]: true }), {}));
+
+    return !Object.values(newErrors).some((error) => error !== "");
+  }, [email, shipping, billing, sameAsShipping, validateField]);
+
+  useEffect(() => {
+    if (!(window as any).Razorpay) {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  const calculateShipping = async (pincode: string) => {
+    try {
+      setEstimating(true);
+      setShippingCalculated(false);
+
+      const res = await fetch("/api/seller/shiprocket/estimate-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination_pincode: pincode,
+          cart_items: items,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setShippingOptions(data.couriers);
+        const first = data.couriers[0];
+        setSelectedCourier(first);
+        setShippingCharge(first.rate);
+        setShippingCalculated(true);
+      } else {
+        alert(data.error || "Could not estimate shipping cost");
+      }
+    } finally {
+      setEstimating(false);
+    }
+  };
+
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = subtotal + (shippingCharge || 0);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -115,48 +230,39 @@ const calculateShipping = async (pincode: string) => {
   const pincodeRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-useEffect(() => {
-  // Check if pincode is valid (exactly 6 digits for India)
-  // and we haven't already calculated shipping for this specific pincode
-  if (shipping.pincode.length === 6 && !shippingCalculated) {
-    calculateShipping(shipping.pincode);
-  } else if (shipping.pincode.length !== 6 && shippingCalculated) {
-    // Reset if they change it to something invalid
-    setShippingCalculated(false);
-    setShippingCharge(null);
-  }
-}, [shipping.pincode]);
+  useEffect(() => {
+    if (shipping.pincode.length === 6 && !shippingCalculated) {
+      calculateShipping(shipping.pincode);
+    } else if (shipping.pincode.length !== 6 && shippingCalculated) {
+      setShippingCalculated(false);
+      setShippingCharge(null);
+    }
+  }, [shipping.pincode]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (placingOrder) return; // Prevent multiple submissions
+    if (placingOrder) return;
+
+    // Validate all fields before submitting
+    if (!validateAllFields()) {
+      return;
+    }
+
     setPlacingOrder(true);
 
     const finalBilling = sameAsShipping ? shipping : billing;
-    const payload = {
-      email,
-      shipping,
-      billing: finalBilling,
-      items,
-      total,
-    };
 
-    console.log("Checkout payload:", payload);
-    // TODO: Add Supabase insert + payment redirect
-
-    const result = fetch('/api/checkout', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    const result = fetch("/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         guest_email: email,
         guest_phone: shipping.phone,
         cart_items: items,
         total_amount: total,
         shipping_address: {
-          first_name : shipping.firstName,
-          last_name : shipping.lastName,
+          first_name: shipping.firstName,
+          last_name: shipping.lastName,
           address_line1: shipping.address,
           address_line2: shipping.apartment,
           city: shipping.city,
@@ -178,470 +284,746 @@ useEffect(() => {
       }),
     });
 
-    result.then(async (res) => {
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Checkout response:", data);
-        const options = {
-  key: data.key, // from backend
-  amount: data.amount * 100,
-  currency: data.currency,
-  order_id: data.razorpay_order_id,
-  name: "Trishikha Organics",
-  description: "Order Payment",
- handler: async function (response: any) {
-  console.log("Razorpay payment success:", response);
+    result
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          const options = {
+            key: data.key,
+            amount: data.amount * 100,
+            currency: data.currency,
+            order_id: data.razorpay_order_id,
+            name: "Trishikha Organics",
+            description: "Order Payment",
+            handler: async function (response: any) {
+              setVerifying(true);
+              try {
+                const verifyRes = await fetch("/api/payment/verify", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    order_id: data.order_id,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  }),
+                });
 
-  setVerifying(true);
+                const verifyData = await verifyRes.json();
 
-  try {
-    const verifyRes = await fetch("/api/payment/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        order_id: data.order_id, // YOUR DB ORDER ID
-        razorpay_order_id: response.razorpay_order_id,
-        razorpay_payment_id: response.razorpay_payment_id,
-        razorpay_signature: response.razorpay_signature,
-      }),
-    });
+                if (verifyRes.ok) {
+                  clearCart();
+                  router.push(`/payment/success?orderId=${data.order_id}?email=${email}`);
+                  setVerifying(false);
+                } else {
+                  console.error("Verification failed:", verifyData);
+                  router.push(`/payment/failed?reason=verification_failed`);
+                }
+              } catch (err) {
+                console.error("Verification error:", err);
+                router.push(`/payment/failed?reason=server_error`);
+              }
+            },
+            prefill: {
+              email: data.email,
+              contact: data.phone,
+            },
+            modal: {
+              ondismiss: function () {
+                router.push(`/payment/failed?reason=cancelled`);
+              },
+            },
+            theme: { color: "#3d3c30" },
+          };
 
-    const verifyData = await verifyRes.json();
-
-    if (verifyRes.ok) {
-      clearCart();
-      router.push(`/payment/success?orderId=${data.order_id}?email=${email}`);
-      setVerifying(false);
-    } else {
-      
-      console.error("Verification failed:", verifyData);
-      router.push(`/payment/failed?reason=verification_failed`);
-    }
-  } catch (err) {
-    console.error("Verification error:", err);
-    router.push(`/payment/failed?reason=server_error`);
-  }
-},
-  prefill: {
-    email: data.email,
-    contact: data.phone
-  },
-  modal: {
-    ondismiss: function () {
-      router.push(`/payment/failed?reason=cancelled`);
-    },
-  },
-  theme: { color: "#2f2e25" }
-};
-
-    console.log("Razorpay options:", options);
-    const razorpay = new (window as any).Razorpay(options);
-    razorpay.on("payment.failed", function () {
-    router.push(`/payment/failed?reason=failed`);
-  });
-    razorpay.open();
-    console.log("Razorpay checkout opened");
-
-
-        // Redirect to payment gateway or confirmation page
-        //window.location.href = data.payment_url;
-      } else {
+          const razorpay = new (window as any).Razorpay(options);
+          razorpay.on("payment.failed", function () {
+            router.push(`/payment/failed?reason=failed`);
+          });
+          razorpay.open();
+        } else {
+          setPlacingOrder(false);
+          const errorData = await res.json();
+          console.error("Checkout error:", errorData);
+          alert("An error occurred during checkout. Please try again.");
+        }
+      })
+      .catch((error) => {
         setPlacingOrder(false);
-        const errorData = await res.json();
-        console.error("Checkout error:", errorData);
+        console.error("Fetch error:", error);
         alert("An error occurred during checkout. Please try again.");
-      }
-    }).catch((error) => {
-      setPlacingOrder(false);
-      console.error("Fetch error:", error);
-      alert("An error occurred during checkout. Please try again.");
-    });
-
+      });
   };
 
-  return (
-    <div className="bg-[#3d3c30] text-[#e0dbb5] min-h-screen py-12 px-6 md:px-20">
-      <h1 className="text-4xl font-bold mb-10 text-center">Checkout</h1>
+  const getInputClasses = (fieldName: string) =>
+    `w-full bg-white border text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none transition-all ${
+      touched[fieldName] && errors[fieldName]
+        ? "border-red-500 focus:ring-red-500"
+        : "border-gray-300"
+    }`;
+  const labelClasses = "block text-sm font-medium text-gray-700 mb-1.5";
 
-        {verifying && (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-    role="dialog"
-    aria-modal="true"
-    aria-live="polite"
-  >
-    <div className="bg-[#3d3c30] border border-[#6a684d] rounded-2xl shadow-2xl p-8 w-[90%] max-w-sm text-center">
-      
-      {/* Spinner */}
-      <div className="flex justify-center mb-5">
-        <div className="h-12 w-12 rounded-full border-4 border-[#6a684d] border-t-[#d1cd9f] animate-spin" />
-      </div>
-
-      {/* Title */}
-      <h2 className="text-xl font-semibold text-[#e0dbb5]">
-        Verifying Payment
-      </h2>
-
-      {/* Description */}
-      <p className="text-sm text-[#d1cd9f] mt-3 leading-relaxed">
-        Please wait while we securely confirm your payment.
-        <br />
-        <span className="text-[#bfb98f]">
-          Do not refresh or close this page.
-        </span>
+  const ErrorMessage = ({ field }: { field: string }) =>
+    touched[field] && errors[field] ? (
+      <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
+        {errors[field]}
       </p>
+    ) : null;
 
-      {/* Trust hint */}
-      <div className="mt-5 text-xs text-[#9f9b7a]">
-        This may take a few seconds ⏳
+  return (
+    <div className="min-h-screen bg-[#f5f5f0]">
+      {/* Header */}
+      <div className="bg-[#3d3c30] text-[#e0dbb5] py-6 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm hover:text-white transition-colors mb-4">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to store
+          </Link>
+          <h1 className="text-2xl sm:text-3xl font-bold">Checkout</h1>
+        </div>
       </div>
-    </div>
-  </div>
-)}
 
+      {/* Verifying Modal */}
+      {verifying && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[90%] max-w-sm text-center">
+            <div className="flex justify-center mb-5">
+              <div className="h-12 w-12 rounded-full border-4 border-gray-200 border-t-[#3d3c30] animate-spin" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800">Verifying Payment</h2>
+            <p className="text-sm text-gray-600 mt-3">
+              Please wait while we securely confirm your payment.
+              <br />
+              <span className="text-gray-500">Do not refresh or close this page.</span>
+            </p>
+          </div>
+        </div>
+      )}
 
       {items.length === 0 ? (
-        <div className="text-center text-lg">
-          <p>Your cart is empty.</p>
-          <Link href="/products" className="underline text-[#d1cd9f]">
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Your cart is empty</h2>
+          <p className="text-gray-600 mb-6">Add some products to get started</p>
+          <Link
+            href="/products"
+            className="inline-flex items-center gap-2 bg-[#3d3c30] text-white px-6 py-3 rounded-full hover:bg-[#4a493a] transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
             Continue Shopping
           </Link>
         </div>
       ) : (
-        <form
-          ref = {formRef}
-          onSubmit={handleSubmit}
-          className="bg-[#464433] rounded-2xl p-8 max-w-4xl mx-auto shadow-lg"
-        >
-          {/* Email */}
-          <div className="mb-6">
-            <label className="block mb-2 text-lg font-semibold">Email</label>
-            <input
-              type="email"
-              name="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-[#3d3c30] border border-[#6a684d] text-[#e0dbb5] rounded-lg px-4 py-2 focus:ring-2 focus:ring-[#d1cd9f] outline-none"
-            />
-          </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Form Section */}
+            <div className="lg:col-span-2">
+              <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+                {/* Contact Section */}
+                <div className="bg-white rounded-xl p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-[#3d3c30] text-white rounded-full flex items-center justify-center text-sm">1</span>
+                    Contact Information
+                  </h2>
+                  <div>
+                    <label className={labelClasses}>Email Address</label>
+                    <input
+                      type="email"
+                      name="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onBlur={() => handleBlur("email", email)}
+                      placeholder="your@email.com"
+                      maxLength={255}
+                      className={getInputClasses("email")}
+                    />
+                    <ErrorMessage field="email" />
+                    {!errors.email && <p className="text-xs text-gray-500 mt-1">We&apos;ll send your order confirmation here</p>}
+                  </div>
+                </div>
 
-          {/* Shipping Section */}
-          <h2 className="text-2xl font-semibold mb-4">Shipping Address</h2>
+                {/* Shipping Section */}
+                <div className="bg-white rounded-xl p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-[#3d3c30] text-white rounded-full flex items-center justify-center text-sm">2</span>
+                    Shipping Address
+                  </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm mb-1">First Name</label>
-              <input
-                name="firstName"
-                value={shipping.firstName}
-                onChange={(e) => handleChange(e, "shipping")}
-                className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-              />
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Last Name</label>
-              <input
-                name="lastName"
-                value={shipping.lastName}
-                onChange={(e) => handleChange(e, "shipping")}
-                className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-              />
-            </div>
-          </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className={labelClasses}>First Name</label>
+                      <input
+                        name="firstName"
+                        required
+                        value={shipping.firstName}
+                        onChange={(e) => handleChange(e, "shipping")}
+                        onBlur={() => handleBlur("firstName", shipping.firstName)}
+                        maxLength={50}
+                        className={getInputClasses("firstName")}
+                      />
+                      <ErrorMessage field="firstName" />
+                    </div>
+                    <div>
+                      <label className={labelClasses}>Last Name <span className="text-gray-400">(optional)</span></label>
+                      <input
+                        name="lastName"
+                        value={shipping.lastName}
+                        onChange={(e) => handleChange(e, "shipping")}
+                        onBlur={() => handleBlur("lastName", shipping.lastName, false)}
+                        maxLength={50}
+                        className={getInputClasses("lastName")}
+                      />
+                      <ErrorMessage field="lastName" />
+                    </div>
+                  </div>
 
-          <div className="mb-4">
-            <label className="block text-sm mb-1">Address</label>
-            <input
-              name="address"
-              required
-              value={shipping.address}
-              onChange={(e) => handleChange(e, "shipping")}
-              className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-            />
-          </div>
+                  <div className="mb-4">
+                    <label className={labelClasses}>Street Address</label>
+                    <input
+                      name="address"
+                      required
+                      value={shipping.address}
+                      onChange={(e) => handleChange(e, "shipping")}
+                      onBlur={() => handleBlur("address", shipping.address)}
+                      placeholder="House number and street name"
+                      maxLength={200}
+                      className={getInputClasses("address")}
+                    />
+                    <ErrorMessage field="address" />
+                  </div>
 
-          <div className="mb-4">
-            <label className="block text-sm mb-1">Apartment, suite, etc. (optional)</label>
-            <input
-              name="apartment"
-              value={shipping.apartment}
-              onChange={(e) => handleChange(e, "shipping")}
-              className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-            />
-          </div>
+                  <div className="mb-4">
+                    <label className={labelClasses}>
+                      Apartment, suite, etc. <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      name="apartment"
+                      value={shipping.apartment}
+                      onChange={(e) => handleChange(e, "shipping")}
+                      onBlur={() => handleBlur("apartment", shipping.apartment, false)}
+                      maxLength={200}
+                      className={getInputClasses("apartment")}
+                    />
+                    <ErrorMessage field="apartment" />
+                  </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm mb-1">City</label>
-              <input
-                name="city"
-                required
-                value={shipping.city}
-                onChange={(e) => handleChange(e, "shipping")}
-                className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-              />
-            </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label className={labelClasses}>City</label>
+                      <input
+                        name="city"
+                        required
+                        value={shipping.city}
+                        onChange={(e) => handleChange(e, "shipping")}
+                        onBlur={() => handleBlur("city", shipping.city)}
+                        maxLength={100}
+                        className={getInputClasses("city")}
+                      />
+                      <ErrorMessage field="city" />
+                    </div>
+                    <div>
+                      <label className={labelClasses}>State</label>
+                      <select
+                        name="state"
+                        required
+                        value={shipping.state}
+                        onChange={(e) => handleChange(e, "shipping")}
+                        onBlur={() => {
+                          setTouched((prev) => ({ ...prev, state: true }));
+                          setErrors((prev) => ({ ...prev, state: shipping.state ? "" : "Please select a state" }));
+                        }}
+                        className={getInputClasses("state")}
+                      >
+                        <option value="">Select State</option>
+                        {states.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                      </select>
+                      <ErrorMessage field="state" />
+                    </div>
+                    <div>
+                      <label className={labelClasses}>PIN Code</label>
+                      <input
+                        name="pincode"
+                        autoComplete="postal-code"
+                        required
+                        ref={pincodeRef}
+                        value={shipping.pincode}
+                        maxLength={6}
+                        onBlur={() => {
+                          handleBlur("pincode", shipping.pincode);
+                          if (shipping.pincode.length === 6 && !errors.pincode) {
+                            calculateShipping(shipping.pincode);
+                          }
+                        }}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, "");
+                          setShipping({ ...shipping, pincode: value });
+                        }}
+                        placeholder="6-digit PIN"
+                        className={getInputClasses("pincode")}
+                      />
+                      <ErrorMessage field="pincode" />
+                    </div>
+                  </div>
 
-            <div>
-              <label className="block text-sm mb-1">State</label>
-              <select
-                name="state"
-                required
-                value={shipping.state}
-                onChange={(e) => handleChange(e, "shipping")}
-                className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-              >
-                <option value="">Select</option>
-                {states.map((state) => (
-                  <option key={state} value={state}>
-                    {state}
-                  </option>
-                ))}
-              </select>
-            </div>
+                  <div>
+                    <label className={labelClasses}>Phone Number</label>
+                    <input
+                      name="phone"
+                      required
+                      type="tel"
+                      value={shipping.phone}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "");
+                        setShipping({ ...shipping, phone: value });
+                      }}
+                      onBlur={() => handleBlur("phone", shipping.phone)}
+                      placeholder="10-digit phone number"
+                      maxLength={15}
+                      className={getInputClasses("phone")}
+                    />
+                    <ErrorMessage field="phone" />
+                  </div>
 
-            <div>
-              <label className="block text-sm mb-1">PIN code</label>
-              <input
-                name="pincode"
-                autoComplete="postal-code"
-                required
-                ref = {pincodeRef}
-                value={shipping.pincode}
-                onBlur={() => {
-                  if (shipping.pincode.length === 6) {
-                    calculateShipping(shipping.pincode);
-                  }
-                }}
-                onChange={(e) => {handleChange(e, "shipping")
-                  }
+                  {estimating && (
+                    <div className="mt-4 flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-4 py-2 rounded-lg">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Calculating shipping options...
+                    </div>
+                  )}
+                </div>
 
-                }
-                className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-              />
-            </div>
-          </div>
+                {/* Shipping Options */}
+                {shippingOptions.length > 0 && (
+                  <div className="bg-white rounded-xl p-6 shadow-sm">
+                    <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                      <span className="w-6 h-6 bg-[#3d3c30] text-white rounded-full flex items-center justify-center text-sm">3</span>
+                      Shipping Method
+                    </h2>
+                    <div className="space-y-3">
+                      {shippingOptions.map((c) => (
+                        <label
+                          key={c.id}
+                          className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                            selectedCourier?.id === c.id
+                              ? "border-[#3d3c30] bg-[#f5f5f0]"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="courier"
+                              value={c.id}
+                              checked={selectedCourier?.id === c.id}
+                              onChange={() => {
+                                setSelectedCourier(c);
+                                setShippingCharge(c.rate);
+                              }}
+                              className="w-4 h-4 text-[#3d3c30] focus:ring-[#3d3c30]"
+                            />
+                            <div>
+                              <p className="font-medium text-gray-800">{c.name}</p>
+                              <p className="text-sm text-gray-500">
+                                {c.etd || "Estimated delivery time varies"}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="font-semibold text-gray-800">₹{c.rate}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-          <div className="mb-8">
-            <label className="block text-sm mb-1">Phone</label>
-            <input
-              name="phone"
-              required
-              value={shipping.phone}
-              onChange={(e) => handleChange(e, "shipping")}
-              className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-            />
-          </div>
+                {/* Billing Section */}
+                <div className="bg-white rounded-xl p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-[#3d3c30] text-white rounded-full flex items-center justify-center text-sm">
+                      {shippingOptions.length > 0 ? "4" : "3"}
+                    </span>
+                    Billing Address
+                  </h2>
 
-          {estimating && (
-  <p className="text-sm text-yellow-500">Calculating shipping…</p>
-)}
+                  <label className="flex items-center gap-3 cursor-pointer mb-4">
+                    <input
+                      type="checkbox"
+                      checked={sameAsShipping}
+                      onChange={() => setSameAsShipping(!sameAsShipping)}
+                      className="w-5 h-5 rounded border-gray-300 text-[#3d3c30] focus:ring-[#3d3c30]"
+                    />
+                    <span className="text-gray-700">Same as shipping address</span>
+                  </label>
 
+                  {!sameAsShipping && (
+                    <div className="pt-4 border-t border-gray-200">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className={labelClasses}>First Name</label>
+                          <input
+                            name="firstName"
+                            required
+                            value={billing.firstName}
+                            onChange={(e) => handleChange(e, "billing")}
+                            onBlur={() => handleBlur("billingFirstName", billing.firstName)}
+                            maxLength={50}
+                            className={getInputClasses("billingFirstName")}
+                          />
+                          <ErrorMessage field="billingFirstName" />
+                        </div>
+                        <div>
+                          <label className={labelClasses}>Last Name <span className="text-gray-400">(optional)</span></label>
+                          <input
+                            name="lastName"
+                            value={billing.lastName}
+                            onChange={(e) => handleChange(e, "billing")}
+                            onBlur={() => handleBlur("billingLastName", billing.lastName, false)}
+                            maxLength={50}
+                            className={getInputClasses("billingLastName")}
+                          />
+                          <ErrorMessage field="billingLastName" />
+                        </div>
+                      </div>
 
+                      <div className="mb-4">
+                        <label className={labelClasses}>Street Address</label>
+                        <input
+                          name="address"
+                          required
+                          value={billing.address}
+                          onChange={(e) => handleChange(e, "billing")}
+                          onBlur={() => handleBlur("billingAddress", billing.address)}
+                          maxLength={200}
+                          className={getInputClasses("billingAddress")}
+                        />
+                        <ErrorMessage field="billingAddress" />
+                      </div>
 
-          {/* Billing Section */}
-          <div className="flex items-center mb-4">
-            <input
-              id="sameAsShipping"
-              type="checkbox"
-              checked={sameAsShipping}
-              onChange={() => setSameAsShipping(!sameAsShipping)}
-              className="mr-2 accent-[#d1cd9f]"
-            />
-            <label htmlFor="sameAsShipping" className="text-lg font-semibold">
-              Billing address same as shipping
-            </label>
-          </div>
+                      <div className="mb-4">
+                        <label className={labelClasses}>
+                          Apartment, suite, etc. <span className="text-gray-400">(optional)</span>
+                        </label>
+                        <input
+                          name="apartment"
+                          value={billing.apartment}
+                          onChange={(e) => handleChange(e, "billing")}
+                          onBlur={() => handleBlur("billingApartment", billing.apartment, false)}
+                          maxLength={200}
+                          className={getInputClasses("billingApartment")}
+                        />
+                        <ErrorMessage field="billingApartment" />
+                      </div>
 
-          {!sameAsShipping && (
-            <div className="mt-4">
-              <h2 className="text-2xl font-semibold mb-4">Billing Address</h2>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <label className={labelClasses}>City</label>
+                          <input
+                            name="city"
+                            required
+                            value={billing.city}
+                            onChange={(e) => handleChange(e, "billing")}
+                            onBlur={() => handleBlur("billingCity", billing.city)}
+                            maxLength={100}
+                            className={getInputClasses("billingCity")}
+                          />
+                          <ErrorMessage field="billingCity" />
+                        </div>
+                        <div>
+                          <label className={labelClasses}>State</label>
+                          <select
+                            name="state"
+                            required
+                            value={billing.state}
+                            onChange={(e) => handleChange(e, "billing")}
+                            onBlur={() => {
+                              setTouched((prev) => ({ ...prev, billingState: true }));
+                              setErrors((prev) => ({ ...prev, billingState: billing.state ? "" : "Please select a state" }));
+                            }}
+                            className={getInputClasses("billingState")}
+                          >
+                            <option value="">Select State</option>
+                            {states.map((state) => (
+                              <option key={state} value={state}>
+                                {state}
+                              </option>
+                            ))}
+                          </select>
+                          <ErrorMessage field="billingState" />
+                        </div>
+                        <div>
+                          <label className={labelClasses}>PIN Code</label>
+                          <input
+                            name="pincode"
+                            required
+                            value={billing.pincode}
+                            maxLength={6}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/\D/g, "");
+                              setBilling({ ...billing, pincode: value });
+                            }}
+                            onBlur={() => handleBlur("billingPincode", billing.pincode)}
+                            className={getInputClasses("billingPincode")}
+                          />
+                          <ErrorMessage field="billingPincode" />
+                        </div>
+                      </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm mb-1">First Name</label>
-                  <input
-                    name="firstName"
-                    value={billing.firstName}
-                    onChange={(e) => handleChange(e, "billing")}
-                    className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
+                      <div>
+                        <label className={labelClasses}>Phone Number</label>
+                        <input
+                          name="phone"
+                          required
+                          type="tel"
+                          value={billing.phone}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "");
+                            setBilling({ ...billing, phone: value });
+                          }}
+                          onBlur={() => handleBlur("billingPhone", billing.phone)}
+                          placeholder="10-digit phone number"
+                          maxLength={15}
+                          className={getInputClasses("billingPhone")}
+                        />
+                        <ErrorMessage field="billingPhone" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile Order Summary */}
+                <div className="lg:hidden">
+                  <OrderSummary
+                    items={items}
+                    subtotal={subtotal}
+                    shippingCharge={shippingCharge}
+                    total={total}
+                    selectedCourier={selectedCourier}
+                    shippingCalculated={shippingCalculated}
+                    estimating={estimating}
+                    placingOrder={placingOrder}
+                    clearCart={clearCart}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm mb-1">Last Name</label>
-                  <input
-                    name="lastName"
-                    value={billing.lastName}
-                    onChange={(e) => handleChange(e, "billing")}
-                    className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-                  />
-                </div>
-              </div>
+              </form>
+            </div>
 
-              <div className="mb-4">
-                <label className="block text-sm mb-1">Address</label>
-                <input
-                  name="address"
-                  required
-                  value={billing.address}
-                  onChange={(e) => handleChange(e, "billing")}
-                  className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
+            {/* Desktop Order Summary Sidebar */}
+            <div className="hidden lg:block">
+              <div className="sticky top-8">
+                <OrderSummary
+                  items={items}
+                  subtotal={subtotal}
+                  shippingCharge={shippingCharge}
+                  total={total}
+                  selectedCourier={selectedCourier}
+                  shippingCalculated={shippingCalculated}
+                  estimating={estimating}
+                  placingOrder={placingOrder}
+                  clearCart={clearCart}
+                  isDesktop
+                  formRef={formRef}
                 />
               </div>
-
-              <div className="mb-4">
-                <label className="block text-sm mb-1">Apartment, suite, etc. (optional)</label>
-                <input
-                  name="apartment"
-                  value={billing.apartment}
-                  onChange={(e) => handleChange(e, "billing")}
-                  className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm mb-1">City</label>
-                  <input
-                    name="city"
-                    required
-                    value={billing.city}
-                    onChange={(e) => handleChange(e, "billing")}
-                    className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1">State</label>
-                  <select
-                    name="state"
-                    required
-                    value={billing.state}
-                    onChange={(e) => handleChange(e, "billing")}
-                    className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-                  >
-                    <option value="">Select</option>
-                    {states.map((state) => (
-                      <option key={state} value={state}>
-                        {state}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm mb-1">PIN code</label>
-                  <input
-                    name="pincode"
-                    required
-                    value={billing.pincode}
-                    onChange={(e) => handleChange(e, "billing")}
-                    className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-                  />
-                </div>
-              </div>
-
-              <div className="mb-8">
-                <label className="block text-sm mb-1">Phone</label>
-                <input
-                  name="phone"
-                  required
-                  value={billing.phone}
-                  onChange={(e) => handleChange(e, "billing")}
-                  className="w-full bg-[#3d3c30] border border-[#6a684d] rounded-lg px-4 py-2 text-[#e0dbb5]"
-                />
-              </div>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface OrderSummaryProps {
+  items: any[];
+  subtotal: number;
+  shippingCharge: number | null;
+  total: number;
+  selectedCourier: any;
+  shippingCalculated: boolean;
+  estimating: boolean;
+  placingOrder: boolean;
+  clearCart: () => void;
+  isDesktop?: boolean;
+  formRef?: React.RefObject<HTMLFormElement | null>;
+}
+
+function OrderSummary({
+  items,
+  subtotal,
+  shippingCharge,
+  total,
+  selectedCourier,
+  shippingCalculated,
+  estimating,
+  placingOrder,
+  clearCart,
+  isDesktop,
+  formRef,
+}: OrderSummaryProps) {
+  return (
+    <div className="bg-white rounded-xl p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Order Summary</h2>
+
+      {/* Items */}
+      <div className="space-y-4 mb-4">
+        {items.map((item) => (
+          <div key={item.id} className="flex gap-4">
+            <div className="relative w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+              {item.image ? (
+                <Image src={item.image} alt={item.name} fill className="object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              )}
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#3d3c30] text-white text-xs rounded-full flex items-center justify-center">
+                {item.quantity}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-gray-800 truncate">{item.name}</p>
+              <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+            </div>
+            <p className="font-medium text-gray-800">₹{item.price * item.quantity}</p>
+          </div>
+        ))}
+      </div>
+
+      <hr className="border-gray-200 my-4" />
+
+      {/* Totals */}
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between text-gray-600">
+          <span>Subtotal</span>
+          <span>₹{subtotal}</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Shipping</span>
+          {shippingCharge !== null ? (
+            <span>₹{shippingCharge}</span>
+          ) : (
+            <span className="text-gray-400">Enter PIN code</span>
           )}
+        </div>
+      </div>
 
-          {shippingOptions.length > 0 && (
-  <div className="mb-6 bg-[#3d3c30] p-3 border border-[#6a684d] rounded-lg">
-    <label className="block mb-2 text-sm font-medium">
-      Select Shipping Courier
-    </label>
-    <select
-      className="bg-black border border-[#6a684d] rounded-lg w-full p-2"
-      value={selectedCourier?.id}
-      onChange={(e) => {
-        const selected = shippingOptions.find(
-          (c) => c.id == e.target.value
-        );
-        setSelectedCourier(selected);
-        setShippingCharge(selected.rate);
-      }}
-    >
-      {shippingOptions.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.name} – ₹{c.rate} ({c.etd || "ETA N/A"})
-        </option>
-      ))}
-    </select>
-  </div>
-)}
+      <hr className="border-gray-200 my-4" />
 
+      <div className="flex justify-between text-lg font-semibold text-gray-800">
+        <span>Total</span>
+        <span>₹{total}</span>
+      </div>
 
-          {/* Order Summary */}
-          <div className="bg-[#3d3c30] border border-[#6a684d] rounded-xl p-4 mb-8">
-            <h2 className="text-xl font-semibold mb-4">Order Summary</h2>
-            {items.map((item) => (
-              <div key={item.id} className="flex justify-between text-[#e0dbb5] mb-2">
-                <span>
-                  {item.name} × {item.quantity}
-                </span>
-                <span>₹{item.price * item.quantity}</span>
-              </div>
-            ))}
-            <hr className="border-[#6a684d] my-3" />
-            
+      {selectedCourier?.etd && (
+        <p className="text-xs text-gray-500 mt-2">
+          Estimated delivery: {selectedCourier.etd}
+        </p>
+      )}
 
-            {shippingCharge !== null && (
-              <div className="flex justify-between text-[#e0dbb5] mb-2">
-                <span>Shipping</span>
-                <span>₹{shippingCharge}</span>
-              </div>
-          )}
-
-          <div className="flex justify-between font-semibold text-lg">
-              <span>Total</span>
-              <span>₹{total}</span>
-            </div>
-
-            {selectedCourier?.etd && (
-               <div className="text-xs text-[#d0cca8] mb-2">
-                Estimated delivery: {selectedCourier.etd}
-              </div>
+      {/* Actions */}
+      <div className="mt-6 space-y-3">
+        {isDesktop ? (
+          <button
+            type="button"
+            disabled={!shippingCalculated || estimating || placingOrder}
+            onClick={() => formRef?.current?.requestSubmit()}
+            className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
+              shippingCalculated && !placingOrder
+                ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
+                : "bg-gray-200 text-gray-500 cursor-not-allowed"
+            }`}
+          >
+            {placingOrder ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Processing...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Place Order
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!shippingCalculated || estimating || placingOrder}
+            className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
+              shippingCalculated && !placingOrder
+                ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
+                : "bg-gray-200 text-gray-500 cursor-not-allowed"
+            }`}
+          >
+            {placingOrder ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Processing...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Place Order
+              </>
+            )}
+          </button>
         )}
 
-          </div>
-
-          {/* Buttons */}
-          <div className="flex justify-between items-center">
-            <button
-              type="button"
-              onClick={clearCart}
-              className="text-[#e0dbb5] underline hover:text-[#d1cd9f]"
-            >
-              Clear Cart
-            </button>
-
-            {placingOrder ? (
-            <ProgressBar/>
-          ) : (
         <button
-              type="submit"
-              disabled={!shippingCalculated || estimating}
-              className={`${
-                shippingCalculated ? "bg-[#4f4d3e]" : "bg-gray-600 cursor-not-allowed"
-                } text-[#e0dbb5] px-6 py-3 rounded-full`}
-              >
-                Place Order
-              </button>
-      )}
+          type="button"
+          onClick={clearCart}
+          className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          Clear Cart
+        </button>
+      </div>
+
+      {/* Trust Badges */}
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+          <div className="flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Secure Payment
           </div>
-        </form>
-      
-      )}
+          <div className="flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            Safe Checkout
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

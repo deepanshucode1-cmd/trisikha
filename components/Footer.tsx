@@ -75,6 +75,16 @@ const Footer = () => {
                 Terms of Service
               </Link>
             </li>
+            <li>
+              <Link href="/track" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Track Order
+              </Link>
+            </li>
+            <li>
+              <Link href="/cancel-order" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Cancel Order
+              </Link>
+            </li>
           </ul>
         </div>
 

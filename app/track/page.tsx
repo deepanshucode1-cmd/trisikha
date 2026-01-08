@@ -6,27 +6,82 @@ import Header from "@/components/Header";
 import { Search, Package, CheckCircle, Clock, MapPin, Truck, UserCheck, ArrowUpRight, FileText } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
+// Validation rules based on backend schema
+const validation = {
+  orderId: {
+    pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    message: "Please enter a valid Order ID (UUID format)",
+  },
+  email: {
+    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    message: "Please enter a valid email address",
+  },
+};
+
 function TrackOrderContent() {
   const [input, setInput] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [trackingData, setTrackingData] = useState<any>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<any>(null);
 
+  // Validation state
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order_id");
+  const emailParam = searchParams.get("email");
 
   if(orderId && !input){
     setInput(orderId);
   }
+  if(emailParam && !email){
+    setEmail(emailParam);
+  }
+
+  // Validate a single field
+  const validateField = (field: string, value: string): string => {
+    if (field === "orderId") {
+      if (!value) return "Order ID is required";
+      if (!validation.orderId.pattern.test(value)) return validation.orderId.message;
+    }
+    if (field === "email") {
+      if (!value) return "Email is required";
+      if (!validation.email.pattern.test(value)) return validation.email.message;
+    }
+    return "";
+  };
+
+  // Handle field blur
+  const handleBlur = (field: string, value: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const fieldError = validateField(field, value);
+    setFieldErrors((prev) => ({ ...prev, [field]: fieldError }));
+  };
+
+  // Check if form is valid
+  const isFormValid = () => {
+    const orderIdError = validateField("orderId", input);
+    const emailError = validateField("email", email);
+    return !orderIdError && !emailError;
+  };
 
   const handleTrack = async () => {
-    if (!input.trim()) return;
+    // Validate before tracking
+    const orderIdError = validateField("orderId", input);
+    const emailError = validateField("email", email);
+
+    setFieldErrors({ orderId: orderIdError, email: emailError });
+    setTouched({ orderId: true, email: true });
+
+    if (orderIdError || emailError) return;
     setError("");
     setLoading(true);
 
     try {
-      const response = await fetch(`/api/track?order_id=${encodeURIComponent(input.trim())}`);
+      const response = await fetch(`/api/track?order_id=${encodeURIComponent(input.trim())}&email=${encodeURIComponent(email.trim())}`);
       const data = await response.json();
 
       console.log(data);
@@ -181,7 +236,7 @@ function TrackOrderContent() {
           Track Your Order
         </h1>
         <p className="text-xl opacity-90 max-w-md mx-auto">
-          Enter your order ID to get real-time updates on your sustainable organics delivery.
+          Enter your order ID and email to get real-time updates on your delivery.
         </p>
       </section>
 
@@ -190,26 +245,75 @@ function TrackOrderContent() {
         <div className="bg-[#464433]/80 backdrop-blur-sm border border-[#6a684d]/50 p-8 rounded-3xl shadow-2xl">
           <div className="relative mb-6">
             <label className="block mb-3 text-xl font-semibold text-[#d1cd9f]">
-              Enter Your Order ID
+              Order ID
             </label>
             <div className="relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#6a684d] w-5 h-5" />
               <input
                 type="text"
-                placeholder="Example: ORD123"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border border-[#6a684d]/30 rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:ring-[#d1cd9f]/50 focus:border-transparent outline-none transition-all duration-300"
+                onChange={(e) => setInput(e.target.value.trim())}
+                onBlur={() => handleBlur("orderId", input)}
+                className={`w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:border-transparent outline-none transition-all duration-300 ${
+                  touched.orderId && fieldErrors.orderId
+                    ? "border-red-500 focus:ring-red-500/50"
+                    : "border-[#6a684d]/30 focus:ring-[#d1cd9f]/50"
+                }`}
                 onKeyDown={(e) => e.key === "Enter" && handleTrack()}
               />
             </div>
+            {touched.orderId && fieldErrors.orderId && (
+              <p className="mt-2 text-sm text-red-400 flex items-center gap-1">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {fieldErrors.orderId}
+              </p>
+            )}
+          </div>
+
+          <div className="relative mb-6">
+            <label className="block mb-3 text-xl font-semibold text-[#d1cd9f]">
+              Email Address
+            </label>
+            <div className="relative">
+              <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#6a684d] w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <input
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value.trim())}
+                onBlur={() => handleBlur("email", email)}
+                className={`w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:border-transparent outline-none transition-all duration-300 ${
+                  touched.email && fieldErrors.email
+                    ? "border-red-500 focus:ring-red-500/50"
+                    : "border-[#6a684d]/30 focus:ring-[#d1cd9f]/50"
+                }`}
+                onKeyDown={(e) => e.key === "Enter" && handleTrack()}
+              />
+            </div>
+            {touched.email && fieldErrors.email ? (
+              <p className="mt-2 text-sm text-red-400 flex items-center gap-1">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {fieldErrors.email}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-[#6a684d]">
+                Enter the email address used when placing your order
+              </p>
+            )}
           </div>
 
           <button
             onClick={handleTrack}
-            disabled={loading || !input.trim()}
+            disabled={loading || !isFormValid()}
             className={`w-full py-4 rounded-2xl font-semibold text-lg transition-all duration-300 transform ${
-              loading || !input.trim()
+              loading || !isFormValid()
                 ? "bg-[#6a684d]/50 cursor-not-allowed"
                 : "bg-gradient-to-r from-[#d1cd9f] to-[#e0dbb5] text-[#2c2b20] hover:from-[#e0dbb5] hover:to-[#d1cd9f] hover:shadow-lg hover:scale-[1.02]"
             }`}
