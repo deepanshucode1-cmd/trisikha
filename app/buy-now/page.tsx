@@ -10,6 +10,9 @@ import Image from "next/image";
 import React from "react";
 import { createClient } from "@/utils/supabase/client";
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Validation rules based on backend schema
 interface ValidationRule {
   pattern?: RegExp;
@@ -69,30 +72,57 @@ const states = [
 ];
 
 export default function BuyNowPage({searchParams}: {searchParams: Promise<{productId: string}>}  ) {
-  
-    const [items,setItems] = useState<any[]>([]);
-  const {productId} = React.use(searchParams);
-  console.log("BuyNowPage productId:", productId);  
-  useEffect(() => {
-      const fetchProducts = async () => {
-            const supabase = await createClient();
-            const { data, error: err } = await supabase.from('products').select('*').eq('id', productId);
-            if (err) {
-              console.log(err);
-              //toast.error("An error occurred");
-              return;
-            }
-            console.log("Fetched product for BuyNowPage:", data);
-            console.log("product fetch error:", err);
-            setItems(data || []);
-          };
-      
-          fetchProducts();
-       
-    console.log("BuyNowPage mounted with productId:", productId);
-  }, [productId]);
-  const { clearCart } = useCartStore();
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { productId } = React.use(searchParams);
   const router = useRouter();
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      // Validate productId format
+      if (!productId || !UUID_REGEX.test(productId)) {
+        setError("Invalid product ID");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+        const supabase = createClient();
+        const { data, error: fetchError } = await supabase
+          .from("products")
+          .select("id, name, price, image_url, weight, length, breadth, height, stock")
+          .eq("id", productId)
+          .single();
+
+        if (fetchError || !data) {
+          setError("Product not found");
+          setLoading(false);
+          return;
+        }
+
+        // Check stock availability
+        if (data.stock !== undefined && data.stock <= 0) {
+          setError("Product is out of stock");
+          setLoading(false);
+          return;
+        }
+
+        // Set item with quantity = 1 for buy-now
+        setItems([{ ...data, quantity: 1 }]);
+      } catch {
+        setError("Failed to load product");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProduct();
+  }, [productId]);
+
+  const { clearCart } = useCartStore();
   const [sameAsShipping, setSameAsShipping] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
 
@@ -333,18 +363,16 @@ export default function BuyNowPage({searchParams}: {searchParams: Promise<{produ
                   }),
                 });
 
-                const verifyData = await verifyRes.json();
+                await verifyRes.json();
 
                 if (verifyRes.ok) {
                   clearCart();
-                  router.push(`/payment/success?orderId=${data.order_id}?email=${email}`);
+                  router.push(`/payment/success?orderId=${encodeURIComponent(data.order_id)}&email=${encodeURIComponent(email)}`);
                   setVerifying(false);
                 } else {
-                  console.error("Verification failed:", verifyData);
                   router.push(`/payment/failed?reason=verification_failed`);
                 }
-              } catch (err) {
-                console.error("Verification error:", err);
+              } catch {
                 router.push(`/payment/failed?reason=server_error`);
               }
             },
@@ -368,13 +396,11 @@ export default function BuyNowPage({searchParams}: {searchParams: Promise<{produ
         } else {
           setPlacingOrder(false);
           const errorData = await res.json();
-          console.error("Checkout error:", errorData);
-          alert("An error occurred during checkout. Please try again.");
+          alert(errorData.error || "An error occurred during checkout. Please try again.");
         }
       })
-      .catch((error) => {
+      .catch(() => {
         setPlacingOrder(false);
-        console.error("Fetch error:", error);
         alert("An error occurred during checkout. Please try again.");
       });
   };
@@ -429,15 +455,22 @@ export default function BuyNowPage({searchParams}: {searchParams: Promise<{produ
         </div>
       )}
 
-      {items.length === 0 ? (
+      {/* Loading State */}
+      {loading ? (
         <div className="flex flex-col items-center justify-center py-20 px-4">
-          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+          <div className="h-12 w-12 rounded-full border-4 border-gray-200 border-t-[#3d3c30] animate-spin mb-6" />
+          <p className="text-gray-600">Loading product...</p>
+        </div>
+      ) : error ? (
+        /* Error State */
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-12 h-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Your cart is empty</h2>
-          <p className="text-gray-600 mb-6">Add some products to get started</p>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">{error}</h2>
+          <p className="text-gray-600 mb-6">Please try again or browse other products</p>
           <Link
             href="/products"
             className="inline-flex items-center gap-2 bg-[#3d3c30] text-white px-6 py-3 rounded-full hover:bg-[#4a493a] transition-colors"
@@ -445,7 +478,27 @@ export default function BuyNowPage({searchParams}: {searchParams: Promise<{produ
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
             </svg>
-            Continue Shopping
+            Browse Products
+          </Link>
+        </div>
+      ) : items.length === 0 ? (
+        /* Empty State */
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Product not available</h2>
+          <p className="text-gray-600 mb-6">This product could not be loaded</p>
+          <Link
+            href="/products"
+            className="inline-flex items-center gap-2 bg-[#3d3c30] text-white px-6 py-3 rounded-full hover:bg-[#4a493a] transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            Browse Products
           </Link>
         </div>
       ) : (
@@ -843,7 +896,6 @@ export default function BuyNowPage({searchParams}: {searchParams: Promise<{produ
                     shippingCalculated={shippingCalculated}
                     estimating={estimating}
                     placingOrder={placingOrder}
-                    clearCart={clearCart}
                   />
                 </div>
               </form>
@@ -861,7 +913,6 @@ export default function BuyNowPage({searchParams}: {searchParams: Promise<{produ
                   shippingCalculated={shippingCalculated}
                   estimating={estimating}
                   placingOrder={placingOrder}
-                  clearCart={clearCart}
                   isDesktop
                   formRef={formRef}
                 />
@@ -883,7 +934,6 @@ interface OrderSummaryProps {
   shippingCalculated: boolean;
   estimating: boolean;
   placingOrder: boolean;
-  clearCart: () => void;
   isDesktop?: boolean;
   formRef?: React.RefObject<HTMLFormElement | null>;
 }
@@ -897,7 +947,6 @@ function OrderSummary({
   shippingCalculated,
   estimating,
   placingOrder,
-  clearCart,
   isDesktop,
   formRef,
 }: OrderSummaryProps) {
@@ -1022,13 +1071,12 @@ function OrderSummary({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={clearCart}
-          className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        <Link
+          href="/products"
+          className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors text-center block"
         >
-          Clear Cart
-        </button>
+          Continue Shopping
+        </Link>
       </div>
 
       {/* Trust Badges */}

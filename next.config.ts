@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Externalize pdfkit and its dependencies to prevent bundling issues
+  serverExternalPackages: ["pdfkit", "fontkit", "linebreak", "png-js"],
+
   images: {
     remotePatterns: [new URL("https://rapucromhfolvhcbgcuf.supabase.co/**")]
   },

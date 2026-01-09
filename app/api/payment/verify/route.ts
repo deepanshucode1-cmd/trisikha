@@ -8,6 +8,7 @@ import { paymentVerifySchema } from "@/lib/validation";
 import { paymentRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logPayment, logOrder, logSecurityEvent, logError } from "@/lib/logger";
+import { generateReceiptPDF } from "@/lib/receipt";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -186,7 +187,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 6. Send confirmation email
+    // 6. Generate receipt PDF and send confirmation email
     try {
       const transporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
@@ -197,6 +198,58 @@ export async function POST(req: Request) {
           pass: process.env.EMAIL_PASS,
         },
       });
+
+      // Generate PDF receipt (fetch full order for address details)
+      let receiptPdf: Buffer | null = null;
+      try {
+        const { data: fullOrder } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", order_id)
+          .single();
+
+        if (fullOrder && order_items) {
+          receiptPdf = await generateReceiptPDF(
+            {
+              id: order_id,
+              guest_email: fullOrder.guest_email,
+              guest_phone: fullOrder.guest_phone,
+              total_amount: fullOrder.total_amount,
+              currency: fullOrder.currency || "INR",
+              payment_id: razorpay_payment_id,
+              created_at: fullOrder.created_at,
+              billing_name: fullOrder.billing_name,
+              billing_address_line1: fullOrder.billing_address_line1,
+              billing_address_line2: fullOrder.billing_address_line2,
+              billing_city: fullOrder.billing_city,
+              billing_state: fullOrder.billing_state,
+              billing_pincode: fullOrder.billing_pincode,
+              billing_country: fullOrder.billing_country,
+              shipping_name: fullOrder.shipping_name,
+              shipping_address_line1: fullOrder.shipping_address_line1,
+              shipping_address_line2: fullOrder.shipping_address_line2,
+              shipping_city: fullOrder.shipping_city,
+              shipping_state: fullOrder.shipping_state,
+              shipping_pincode: fullOrder.shipping_pincode,
+              shipping_country: fullOrder.shipping_country,
+            },
+            order_items.map((item: any) => ({
+              product_name: item.product_name,
+              sku: item.sku,
+              hsn: item.hsn,
+              unit_price: item.unit_price,
+              quantity: item.quantity,
+              total_price: item.unit_price * item.quantity,
+            }))
+          );
+          logOrder("receipt_pdf_generated", { orderId: order_id });
+        }
+      } catch (pdfError) {
+        logError(pdfError as Error, {
+          orderId: order_id,
+          step: "generate_receipt_pdf",
+        });
+      }
 
       const itemsHtml = order_items?.map((item: any) =>
         `<tr>
@@ -249,7 +302,16 @@ export async function POST(req: Request) {
             </p>
           </div>
         `,
-        text: `Hi,\n\nYour order with Order ID: ${order_id} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Quantity: ${item.quantity}) - ₹${item.unit_price * item.quantity}`).join('\n')}\n\nTotal Amount Paid: ₹${data[0].total_amount}\nPayment ID: ${razorpay_payment_id}\n\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
+        text: `Hi,\n\nYour order with Order ID: ${order_id} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Quantity: ${item.quantity}) - ₹${item.unit_price * item.quantity}`).join('\n')}\n\nTotal Amount Paid: ₹${data[0].total_amount}\nPayment ID: ${razorpay_payment_id}\n\nPlease find your tax invoice/receipt attached.\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
+        attachments: receiptPdf
+          ? [
+              {
+                filename: `TrishikhaOrganics_Receipt_${order_id.slice(0, 8).toUpperCase()}.pdf`,
+                content: receiptPdf,
+                contentType: "application/pdf",
+              },
+            ]
+          : [],
       });
 
       logOrder("confirmation_email_sent", {

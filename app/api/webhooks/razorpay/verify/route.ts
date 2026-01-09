@@ -1,87 +1,301 @@
-import { retryPaymentUpdateStatus } from '@/utils/retry';
-import { retryAssignAWB } from '@/utils/shiprocket';
-import { createClient } from '@/utils/supabase/server';
-import crypto from 'crypto';
-import { NextResponse } from 'next/server';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import crypto from "crypto";
+import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { createServiceClient } from "@/utils/supabase/service";
+import { logPayment, logOrder, logSecurityEvent, logError } from "@/lib/logger";
+import { generateReceiptPDF } from "@/lib/receipt";
 
-export async function POST(request: Request ) {
+export async function POST(request: Request) {
+  const body = await request.text();
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
 
-    const body = await request.text();
+  // Verify webhook signature using timing-safe comparison
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(body)
+    .digest("hex");
 
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+  const receivedSignature = request.headers.get("x-razorpay-signature") || "";
 
-    const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(body)
-        .digest('hex');
+  try {
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(receivedSignature)
+    );
 
-    const receivedSignature = request.headers.get('x-razorpay-signature');
+    if (!isValid) {
+      logSecurityEvent("webhook_signature_invalid", {
+        endpoint: "/api/webhooks/razorpay/verify",
+      });
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    }
+  } catch {
+    logSecurityEvent("webhook_signature_invalid", {
+      endpoint: "/api/webhooks/razorpay/verify",
+    });
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
 
-    if (expectedSignature !== receivedSignature) {
-        return new Response('Invalid signature', { status: 400 });
+  const payload = JSON.parse(body);
+  const eventType = payload.event;
+
+  logPayment("webhook_received", {
+    eventType,
+    paymentId: payload.payload?.payment?.entity?.id,
+  });
+
+  // Use service client for webhooks (no user session)
+  const supabase = createServiceClient();
+
+  switch (eventType) {
+    case "payment.captured": {
+      const paymentEntity = payload.payload.payment.entity;
+      const razorpay_payment_id = paymentEntity.id;
+      const orderId = paymentEntity.notes?.order_id;
+
+      if (!orderId) {
+        logError(new Error("Missing order_id in webhook payload"), {
+          razorpay_payment_id,
+        });
+        return NextResponse.json({ error: "Missing order_id" }, { status: 400 });
+      }
+
+      logPayment("webhook_payment_captured", {
+        orderId,
+        razorpay_payment_id,
+        amount: paymentEntity.amount,
+      });
+
+      // Update order status (only if not already processed)
+      const { data: updateData, error: updateError } = await supabase
+        .from("orders")
+        .update({
+          payment_status: "paid",
+          order_status: "CONFIRMED",
+          shiprocket_status: "NOT_SHIPPED",
+          payment_id: razorpay_payment_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", orderId)
+        .eq("payment_status", "initiated")
+        .select();
+
+      if (updateError) {
+        logError(new Error("Webhook: Failed to update order status"), {
+          orderId,
+          razorpay_payment_id,
+          error: updateError.message,
+        });
+        break;
+      }
+
+      // If no rows updated, payment was already processed (by /api/payment/verify)
+      // Skip email to avoid duplicates
+      if (!updateData || updateData.length === 0) {
+        logPayment("webhook_payment_already_processed", {
+          orderId,
+          razorpay_payment_id,
+        });
+        break;
+      }
+
+      // Fetch order details for email
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+      if (orderError || !orderData) {
+        logError(new Error("Webhook: Failed to fetch order"), {
+          orderId,
+          error: orderError?.message,
+        });
+        break;
+      }
+
+      // Fetch order items
+      const { data: order_items, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", orderId);
+
+      if (itemsError) {
+        logError(new Error("Webhook: Failed to fetch order items"), {
+          orderId,
+          error: itemsError.message,
+        });
+      }
+
+      // Send confirmation email with receipt
+      try {
+        const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com",
+          port: 587,
+          secure: false,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+        });
+
+        // Generate PDF receipt
+        let receiptPdf: Buffer | null = null;
+        try {
+          if (order_items && order_items.length > 0) {
+            receiptPdf = await generateReceiptPDF(
+              {
+                id: orderId,
+                guest_email: orderData.guest_email,
+                guest_phone: orderData.guest_phone,
+                total_amount: orderData.total_amount,
+                currency: orderData.currency || "INR",
+                payment_id: razorpay_payment_id,
+                created_at: orderData.created_at,
+                billing_name: orderData.billing_name,
+                billing_address_line1: orderData.billing_address_line1,
+                billing_address_line2: orderData.billing_address_line2,
+                billing_city: orderData.billing_city,
+                billing_state: orderData.billing_state,
+                billing_pincode: orderData.billing_pincode,
+                billing_country: orderData.billing_country,
+                shipping_name: orderData.shipping_name,
+                shipping_address_line1: orderData.shipping_address_line1,
+                shipping_address_line2: orderData.shipping_address_line2,
+                shipping_city: orderData.shipping_city,
+                shipping_state: orderData.shipping_state,
+                shipping_pincode: orderData.shipping_pincode,
+                shipping_country: orderData.shipping_country,
+              },
+              order_items.map((item: any) => ({
+                product_name: item.product_name,
+                sku: item.sku,
+                hsn: item.hsn,
+                unit_price: item.unit_price,
+                quantity: item.quantity,
+                total_price: item.unit_price * item.quantity,
+              }))
+            );
+            logOrder("webhook_receipt_pdf_generated", { orderId });
+          }
+        } catch (pdfError) {
+          logError(pdfError as Error, {
+            orderId,
+            step: "webhook_generate_receipt_pdf",
+          });
+        }
+
+        const itemsHtml =
+          order_items
+            ?.map(
+              (item: any) =>
+                `<tr>
+              <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.product_name}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${item.unit_price}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${item.unit_price * item.quantity}</td>
+            </tr>`
+            )
+            .join("") || "";
+
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: orderData.guest_email,
+          subject: "TrishikhaOrganics: Order Confirmed - Payment Successful",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #2d5016;">Order Confirmed!</h2>
+              <p>Hi,</p>
+              <p>Your order with Order ID <strong>${orderId}</strong> has been successfully placed and confirmed.</p>
+
+              <h3>Order Details:</h3>
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <thead>
+                  <tr style="background-color: #f4f4f4;">
+                    <th style="padding: 10px; text-align: left;">Product</th>
+                    <th style="padding: 10px; text-align: center;">Quantity</th>
+                    <th style="padding: 10px; text-align: right;">Price</th>
+                    <th style="padding: 10px; text-align: right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+                <tfoot>
+                  <tr style="background-color: #f9f9f9; font-weight: bold;">
+                    <td colspan="3" style="padding: 15px; text-align: right;">Total Amount Paid:</td>
+                    <td style="padding: 15px; text-align: right;">₹${orderData.total_amount}</td>
+                  </tr>
+                </tfoot>
+              </table>
+
+              <p><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+              <p>Please find your tax invoice/receipt attached to this email.</p>
+              <p>We will notify you once your order is shipped.</p>
+
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+              <p style="color: #888; font-size: 12px;">
+                Thank you for shopping with TrishikhaOrganics!<br>
+                Best regards,<br>
+                TrishikhaOrganics Team
+              </p>
+            </div>
+          `,
+          text: `Hi,\n\nYour order with Order ID: ${orderId} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Quantity: ${item.quantity}) - ₹${item.unit_price * item.quantity}`).join("\n")}\n\nTotal Amount Paid: ₹${orderData.total_amount}\nPayment ID: ${razorpay_payment_id}\n\nPlease find your tax invoice/receipt attached.\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
+          attachments: receiptPdf
+            ? [
+                {
+                  filename: `TrishikhaOrganics_Receipt_${orderId.slice(0, 8).toUpperCase()}.pdf`,
+                  content: receiptPdf,
+                  contentType: "application/pdf",
+                },
+              ]
+            : [],
+        });
+
+        logOrder("webhook_confirmation_email_sent", {
+          orderId,
+          email: orderData.guest_email,
+          receiptAttached: !!receiptPdf,
+        });
+      } catch (emailError) {
+        logError(emailError as Error, {
+          orderId,
+          step: "webhook_send_confirmation_email",
+        });
+      }
+
+      break;
     }
 
+    case "payment.failed": {
+      const paymentEntity = payload.payload.payment.entity;
+      const orderId = paymentEntity.notes?.order_id;
 
-    // Process the webhook payload
+      if (orderId) {
+        logPayment("webhook_payment_failed", {
+          orderId,
+          razorpay_payment_id: paymentEntity.id,
+          errorCode: paymentEntity.error_code,
+          errorDescription: paymentEntity.error_description,
+        });
 
-    const payload = JSON.parse(body);
-    console.log('Webhook payload:', payload);
-
-    // Handle different event types
-    const eventType = payload.event;
-    const supabase = await createClient();
-
-    switch (eventType) {
-        case 'payment.captured':
-            // Handle payment captured event
-            console.log('Payment captured:', payload.payload.payment.entity);
-
-            const razorpay_payment_id = payload.payload.payment.entity.id;
-            const orderId = payload.payload.payment.entity.notes.order_id;
-            retryPaymentUpdateStatus('paid', orderId, razorpay_payment_id, 3, 2000);
-
-
-            const {data, error} = await supabase.from("orders").select("*").eq("id", orderId);
-
-            if(error || data.length === 0){
-                console.error("Failed to fetch order for sending confirmation email", {orderId, error});
-                break;
-            }
-            const {data : order_items, error :order_items_error} = await supabase.from("order_items").select("*").eq("order_id", orderId);
-            
-                  const transporter = nodemailer.createTransport({
-                      host: "smtp.gmail.com",
-                      port: 587,
-                      secure: false,
-                      auth: {
-                        user: process.env.EMAIL_USER,
-                        pass: process.env.EMAIL_PASS,
-                      },
-                    });
-                
-                    await transporter.sendMail({
-                      from: process.env.EMAIL_USER,
-                      to: data[0].guest_email,
-                      subject: "TrishikhaOrganics: Your Order is Confirmed",
-                      text: `Hi,\n\n Your order with Order ID: ${orderId} has been successfully placed and confirmed.
-                      Here are the details of your order:\n\n${order_items && order_items.map((item: any) => `- ${item.product_name} (Quantity: ${item.quantity})`).join('\n')}\n\nTotal Amount Paid: ₹${data[0].total_amount}\n\nWe will notify you once your order is shipped.
-                      \n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
-                    });
-            
-            break;
-        case 'payment.failed':
-            // Handle payment failed event
-            retryPaymentUpdateStatus('failed', payload.payload.payment.entity.notes.order_id,"", 3, 2000);
-            console.log('Payment failed:', payload.payload.payment.entity);
-            break;
-        // Add more cases as needed
-        default:
-            console.log('Unhandled event type:', eventType);
+        await supabase
+          .from("orders")
+          .update({
+            payment_status: "failed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", orderId)
+          .eq("payment_status", "initiated");
+      }
+      break;
     }
 
-    
-    // You can add your logic here to handle different event types
-    return new Response('ok', { status: 200 });
+    default:
+      logPayment("webhook_unhandled_event", { eventType });
+  }
 
+  return NextResponse.json({ received: true }, { status: 200 });
 }
