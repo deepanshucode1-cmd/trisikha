@@ -8,6 +8,12 @@ import { checkoutRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logPayment, logSecurityEvent, logError } from "@/lib/logger";
 import shiprocket from "@/utils/shiprocket";
+import {
+  calculateTaxBreakdown,
+  extractGstFromInclusive,
+  getStateCode,
+  TAX_CONFIG,
+} from "@/lib/tax-config";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -161,6 +167,20 @@ export async function POST(req: Request) {
     // Add shipping to total
     const totalWithShipping = calculatedTotal + verifiedShippingCost;
 
+    // Calculate GST tax breakdown for the subtotal (prices are tax-inclusive)
+    const customerStateCode = getStateCode(shipping_address.state);
+    const taxBreakdown = calculateTaxBreakdown(calculatedTotal, customerStateCode);
+
+    logOrder("tax_calculated", {
+      email: guest_email,
+      subtotal: calculatedTotal,
+      taxableAmount: taxBreakdown.taxableAmount,
+      totalGst: taxBreakdown.totalGstAmount,
+      supplyType: taxBreakdown.supplyType,
+      customerState: shipping_address.state,
+      customerStateCode,
+    });
+
     // Create order first
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
@@ -177,6 +197,15 @@ export async function POST(req: Request) {
         order_status: 'CHECKED_OUT',
         payment_status: 'initiated',
         shiprocket_status: 'NOT_SHIPPED',
+        // Tax fields
+        taxable_amount: taxBreakdown.taxableAmount,
+        cgst_amount: taxBreakdown.cgstAmount,
+        sgst_amount: taxBreakdown.sgstAmount,
+        igst_amount: taxBreakdown.igstAmount,
+        total_gst_amount: taxBreakdown.totalGstAmount,
+        gst_rate: TAX_CONFIG.DEFAULT_GST_RATE,
+        supply_type: taxBreakdown.supplyType,
+        // Shipping address
         shipping_first_name: shipping_address.first_name,
         shipping_last_name: shipping_address.last_name,
         shipping_address_line1: shipping_address.address_line1,
@@ -247,6 +276,10 @@ export async function POST(req: Request) {
         }
       }
 
+      // Calculate tax for this item (price is tax-inclusive)
+      const itemTotal = product.price * item.quantity;
+      const itemTax = extractGstFromInclusive(itemTotal);
+
       // Create order item
       const { error: orderItemError } = await supabase.from("order_items").insert({
         order_id: orderData.id,
@@ -260,6 +293,10 @@ export async function POST(req: Request) {
         breadth: product.breadth,
         height: product.height,
         quantity: item.quantity,
+        // Tax fields
+        gst_rate: TAX_CONFIG.DEFAULT_GST_RATE,
+        taxable_amount: itemTax.taxableAmount,
+        gst_amount: itemTax.gstAmount,
       });
 
       if (orderItemError) {

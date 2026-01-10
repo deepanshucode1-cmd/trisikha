@@ -5,6 +5,9 @@ interface OrderItem {
   unit_price: number;
   quantity: number;
   total_price: number;
+  gst_rate?: number;
+  taxable_amount?: number;
+  gst_amount?: number;
 }
 
 interface OrderData {
@@ -29,6 +32,15 @@ interface OrderData {
   shipping_state: string;
   shipping_pincode: string;
   shipping_country: string;
+  // Tax fields
+  taxable_amount?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  total_gst_amount?: number;
+  gst_rate?: number;
+  supply_type?: "intrastate" | "interstate";
+  shipping_cost?: number;
 }
 
 // Company details - update these as needed
@@ -38,7 +50,8 @@ const COMPANY = {
   city: "Gandhi Nagar Gujarat - 382721",
   email: "trishikhaorganic@gmail.com",
   phone: "+91 7984130253",
-  gstin: "", // Add GSTIN if registered
+  gstin: process.env.COMPANY_GSTIN || "",
+  stateCode: process.env.COMPANY_STATE_CODE || "24",
 };
 
 export async function generateReceiptPDF(
@@ -106,73 +119,78 @@ export async function generateReceiptPDF(
       doc.moveDown(2);
 
       // Billing & Shipping addresses
+// Billing & Shipping addresses
       y = doc.y;
       doc.font("Helvetica-Bold").text("Bill To:", leftCol, y);
       doc.font("Helvetica-Bold").text("Ship To:", rightCol, y);
       y += 15;
 
       doc.font("Helvetica");
-      doc.text(order.billing_name, leftCol, y, { width: 200 });
-      doc.text(order.shipping_name, rightCol, y, { width: 200 });
-      y += 12;
 
-      doc.text(order.billing_address_line1, leftCol, y, { width: 200 });
-      doc.text(order.shipping_address_line1, rightCol, y, { width: 200 });
-      y += 12;
+      // Helper function to print aligned rows dynamically
+      // This prevents overlapping if text wraps to a second line
+      const printRow = (leftText: string, rightText: string, currentY: number) => {
+        const leftH = doc.heightOfString(leftText, { width: 200 });
+        const rightH = doc.heightOfString(rightText, { width: 200 });
+        const maxH = Math.max(leftH, rightH);
 
+        doc.text(leftText, leftCol, currentY, { width: 200 });
+        doc.text(rightText, rightCol, currentY, { width: 200 });
+        
+        // Return new Y position: current + max height + 2px padding
+        return currentY + maxH + 2; 
+      };
+
+      // 1. Name
+      y = printRow(order.billing_name, order.shipping_name, y);
+
+      // 2. Address Line 1
+      y = printRow(order.billing_address_line1, order.shipping_address_line1, y);
+
+      // 3. Address Line 2 (Only if exists)
       if (order.billing_address_line2 || order.shipping_address_line2) {
-        doc.text(order.billing_address_line2 || "", leftCol, y, { width: 200 });
-        doc.text(order.shipping_address_line2 || "", rightCol, y, {
-          width: 200,
-        });
-        y += 12;
+        y = printRow(
+          order.billing_address_line2 || "", 
+          order.shipping_address_line2 || "", 
+          y
+        );
       }
 
-      doc.text(
+      // 4. City, State
+      y = printRow(
         `${order.billing_city}, ${order.billing_state}`,
-        leftCol,
-        y,
-        { width: 200 }
-      );
-      doc.text(
         `${order.shipping_city}, ${order.shipping_state}`,
-        rightCol,
-        y,
-        { width: 200 }
+        y
       );
-      y += 12;
 
-      doc.text(
+      // 5. Pincode, Country
+      y = printRow(
         `${order.billing_pincode}, ${order.billing_country}`,
-        leftCol,
-        y,
-        { width: 200 }
-      );
-      doc.text(
         `${order.shipping_pincode}, ${order.shipping_country}`,
-        rightCol,
-        y,
-        { width: 200 }
+        y
       );
-      y += 12;
 
-      doc.text(`Email: ${order.guest_email}`, leftCol, y);
+      // 6. Contact Info
+      // We handle this manually since the right column (phone) is optional
+      const emailHeight = doc.heightOfString(`Email: ${order.guest_email}`, { width: 200 });
+      doc.text(`Email: ${order.guest_email}`, leftCol, y, { width: 200 });
+      
       if (order.guest_phone) {
-        doc.text(`Phone: ${order.guest_phone}`, rightCol, y);
+        doc.text(`Phone: ${order.guest_phone}`, rightCol, y, { width: 200 });
       }
+      // Move down based on email height (usually the longer one)
+      y += emailHeight + 2;
 
-      doc.moveDown(2);
-
-      // Items table
+      doc.moveDown(2);      // Items table
       const tableTop = doc.y;
-      const tableHeaders = ["#", "Product", "HSN", "Qty", "Rate", "Amount"];
-      const colWidths = [30, 180, 70, 50, 70, 80];
-      const colX = [50, 80, 260, 330, 380, 450];
+      const tableHeaders = ["#", "Product", "HSN", "Qty", "Rate", "Taxable", "GST", "Amount"];
+      const colWidths = [20, 130, 50, 30, 55, 55, 45, 60];
+      const colX = [50, 70, 200, 250, 280, 335, 390, 435];
 
       // Table header
       doc.font("Helvetica-Bold");
       doc
-        .rect(50, tableTop, 500, 20)
+        .rect(50, tableTop, 495, 20)
         .fill("#f0f0f0")
         .stroke();
       doc.fillColor("#000");
@@ -180,7 +198,7 @@ export async function generateReceiptPDF(
       tableHeaders.forEach((header, i) => {
         doc.text(header, colX[i], tableTop + 5, {
           width: colWidths[i],
-          align: i > 2 ? "right" : "left",
+          align: i >= 3 ? "right" : "left",
         });
       });
 
@@ -190,6 +208,9 @@ export async function generateReceiptPDF(
 
       items.forEach((item, index) => {
         const rowHeight = 20;
+        // Calculate taxable and GST if not provided
+        const taxableAmount = item.taxable_amount ?? Math.round((item.total_price / 1.05) * 100) / 100;
+        const gstAmount = item.gst_amount ?? Math.round((item.total_price - taxableAmount) * 100) / 100;
 
         doc.text(String(index + 1), colX[0], rowY, { width: colWidths[0] });
         doc.text(item.product_name, colX[1], rowY, { width: colWidths[1] });
@@ -198,12 +219,20 @@ export async function generateReceiptPDF(
           width: colWidths[3],
           align: "right",
         });
-        doc.text(`₹${item.unit_price.toFixed(2)}`, colX[4], rowY, {
+        doc.text(`${item.unit_price.toFixed(2)}`, colX[4], rowY, {
           width: colWidths[4],
           align: "right",
         });
-        doc.text(`₹${item.total_price.toFixed(2)}`, colX[5], rowY, {
+        doc.text(`${taxableAmount.toFixed(2)}`, colX[5], rowY, {
           width: colWidths[5],
+          align: "right",
+        });
+        doc.text(`${gstAmount.toFixed(2)}`, colX[6], rowY, {
+          width: colWidths[6],
+          align: "right",
+        });
+        doc.text(`${item.total_price.toFixed(2)}`, colX[7], rowY, {
+          width: colWidths[7],
           align: "right",
         });
 
@@ -212,21 +241,60 @@ export async function generateReceiptPDF(
         // Draw row separator
         doc
           .moveTo(50, rowY - 5)
-          .lineTo(550, rowY - 5)
+          .lineTo(545, rowY - 5)
           .strokeColor("#ddd")
           .stroke();
       });
 
-      // Total section
+      // Tax Summary section
       rowY += 10;
+      doc.font("Helvetica").fontSize(10).fillColor("#000");
+
+      // Taxable Value
+      doc.text("Taxable Value:", 350, rowY);
+      const taxableTotal = order.taxable_amount ?? Math.round((order.total_amount - (order.shipping_cost || 0)) / 1.05 * 100) / 100;
+      doc.text(`Rs ${taxableTotal.toFixed(2)}`, 450, rowY, { width: 95, align: "right" });
+      rowY += 15;
+
+      // GST breakdown based on supply type
+      const gstRate = order.gst_rate ?? 5;
+      if (order.supply_type === "interstate") {
+        // IGST for interstate
+        doc.text(`IGST @${gstRate}%:`, 350, rowY);
+        const igstAmount = order.igst_amount ?? order.total_gst_amount ?? Math.round((order.total_amount - (order.shipping_cost || 0) - taxableTotal) * 100) / 100;
+        doc.text(`Rs ${igstAmount.toFixed(2)}`, 450, rowY, { width: 95, align: "right" });
+        rowY += 15;
+      } else {
+        // CGST + SGST for intrastate
+        const halfRate = gstRate / 2;
+        doc.text(`CGST @${halfRate}%:`, 350, rowY);
+        const cgstAmount = order.cgst_amount ?? Math.round((order.total_gst_amount ?? 0) / 2 * 100) / 100;
+        doc.text(`Rs ${cgstAmount.toFixed(2)}`, 450, rowY, { width: 95, align: "right" });
+        rowY += 15;
+
+        doc.text(`SGST @${halfRate}%:`, 350, rowY);
+        const sgstAmount = order.sgst_amount ?? Math.round((order.total_gst_amount ?? 0) / 2 * 100) / 100;
+        doc.text(`Rs ${sgstAmount.toFixed(2)}`, 450, rowY, { width: 95, align: "right" });
+        rowY += 15;
+      }
+
+      // Shipping (if applicable)
+      if (order.shipping_cost && order.shipping_cost > 0) {
+        doc.text("Shipping:", 350, rowY);
+        doc.text(`Rs ${order.shipping_cost.toFixed(2)}`, 450, rowY, { width: 95, align: "right" });
+        rowY += 15;
+      }
+
+      // Grand Total with highlight
+      rowY += 5;
       doc
-        .rect(350, rowY, 200, 25)
+        .rect(340, rowY, 205, 25)
         .fill("#f0f0f0")
         .stroke();
       doc.fillColor("#000").font("Helvetica-Bold");
-      doc.text("Total Amount:", 360, rowY + 7);
-      doc.text(`₹${order.total_amount.toFixed(2)}`, 450, rowY + 7, {
-        width: 90,
+      doc.text("Grand Total:", 350, rowY + 7);
+      doc.text(`Rs ${order.total_amount.toFixed(2)}`, 450, rowY + 7, {
+        width: 95,
         align: "right",
       });
 

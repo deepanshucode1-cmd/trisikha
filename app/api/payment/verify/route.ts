@@ -218,20 +218,29 @@ export async function POST(req: Request) {
               currency: fullOrder.currency || "INR",
               payment_id: razorpay_payment_id,
               created_at: fullOrder.created_at,
-              billing_name: fullOrder.billing_name,
+              billing_name: `${fullOrder.billing_first_name || ''} ${fullOrder.billing_last_name || ''}`.trim() || fullOrder.billing_name,
               billing_address_line1: fullOrder.billing_address_line1,
               billing_address_line2: fullOrder.billing_address_line2,
               billing_city: fullOrder.billing_city,
               billing_state: fullOrder.billing_state,
               billing_pincode: fullOrder.billing_pincode,
               billing_country: fullOrder.billing_country,
-              shipping_name: fullOrder.shipping_name,
+              shipping_name: `${fullOrder.shipping_first_name || ''} ${fullOrder.shipping_last_name || ''}`.trim() || fullOrder.shipping_name,
               shipping_address_line1: fullOrder.shipping_address_line1,
               shipping_address_line2: fullOrder.shipping_address_line2,
               shipping_city: fullOrder.shipping_city,
               shipping_state: fullOrder.shipping_state,
               shipping_pincode: fullOrder.shipping_pincode,
               shipping_country: fullOrder.shipping_country,
+              // Tax fields
+              taxable_amount: fullOrder.taxable_amount,
+              cgst_amount: fullOrder.cgst_amount,
+              sgst_amount: fullOrder.sgst_amount,
+              igst_amount: fullOrder.igst_amount,
+              total_gst_amount: fullOrder.total_gst_amount,
+              gst_rate: fullOrder.gst_rate,
+              supply_type: fullOrder.supply_type,
+              shipping_cost: fullOrder.shipping_cost,
             },
             order_items.map((item: any) => ({
               product_name: item.product_name,
@@ -240,6 +249,9 @@ export async function POST(req: Request) {
               unit_price: item.unit_price,
               quantity: item.quantity,
               total_price: item.unit_price * item.quantity,
+              gst_rate: item.gst_rate,
+              taxable_amount: item.taxable_amount,
+              gst_amount: item.gst_amount,
             }))
           );
           logOrder("receipt_pdf_generated", { orderId: order_id });
@@ -251,21 +263,60 @@ export async function POST(req: Request) {
         });
       }
 
-      const itemsHtml = order_items?.map((item: any) =>
-        `<tr>
+      // Fetch full order for tax details in email
+      const { data: fullOrderForEmail } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", order_id)
+        .single();
+
+      const gstRate = fullOrderForEmail?.gst_rate ?? 5;
+      const taxableAmount = fullOrderForEmail?.taxable_amount ?? Math.round((data[0].total_amount - (fullOrderForEmail?.shipping_cost || 0)) / 1.05 * 100) / 100;
+      const totalGst = fullOrderForEmail?.total_gst_amount ?? Math.round((data[0].total_amount - (fullOrderForEmail?.shipping_cost || 0) - taxableAmount) * 100) / 100;
+      const shippingCost = fullOrderForEmail?.shipping_cost ?? 0;
+
+      const itemsHtml = order_items?.map((item: any) => {
+        const itemTaxable = item.taxable_amount ?? Math.round((item.unit_price * item.quantity) / 1.05 * 100) / 100;
+        const itemGst = item.gst_amount ?? Math.round((item.unit_price * item.quantity - itemTaxable) * 100) / 100;
+        return `<tr>
           <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.product_name}</td>
           <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${item.unit_price}</td>
-          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${item.unit_price * item.quantity}</td>
-        </tr>`
-      ).join('') || '';
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">Rs ${item.unit_price.toFixed(2)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">Rs ${itemTaxable.toFixed(2)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">Rs ${itemGst.toFixed(2)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">Rs ${(item.unit_price * item.quantity).toFixed(2)}</td>
+        </tr>`;
+      }).join('') || '';
+
+      // Build tax summary for email
+      let taxSummaryHtml = '';
+      if (fullOrderForEmail?.supply_type === 'interstate') {
+        taxSummaryHtml = `
+          <tr>
+            <td colspan="5" style="padding: 10px; text-align: right;">IGST @${gstRate}%:</td>
+            <td style="padding: 10px; text-align: right;">Rs ${(fullOrderForEmail?.igst_amount ?? totalGst).toFixed(2)}</td>
+          </tr>`;
+      } else {
+        const halfRate = gstRate / 2;
+        const cgst = fullOrderForEmail?.cgst_amount ?? Math.round(totalGst / 2 * 100) / 100;
+        const sgst = fullOrderForEmail?.sgst_amount ?? Math.round(totalGst / 2 * 100) / 100;
+        taxSummaryHtml = `
+          <tr>
+            <td colspan="5" style="padding: 10px; text-align: right;">CGST @${halfRate}%:</td>
+            <td style="padding: 10px; text-align: right;">Rs ${cgst.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="5" style="padding: 10px; text-align: right;">SGST @${halfRate}%:</td>
+            <td style="padding: 10px; text-align: right;">Rs ${sgst.toFixed(2)}</td>
+          </tr>`;
+      }
 
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: data[0].guest_email,
         subject: "TrishikhaOrganics: Order Confirmed - Payment Successful",
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
             <h2 style="color: #2d5016;">Order Confirmed!</h2>
             <p>Hi,</p>
             <p>Your order with Order ID <strong>${order_id}</strong> has been successfully placed and confirmed.</p>
@@ -275,23 +326,36 @@ export async function POST(req: Request) {
               <thead>
                 <tr style="background-color: #f4f4f4;">
                   <th style="padding: 10px; text-align: left;">Product</th>
-                  <th style="padding: 10px; text-align: center;">Quantity</th>
-                  <th style="padding: 10px; text-align: right;">Price</th>
-                  <th style="padding: 10px; text-align: right;">Total</th>
+                  <th style="padding: 10px; text-align: center;">Qty</th>
+                  <th style="padding: 10px; text-align: right;">Rate</th>
+                  <th style="padding: 10px; text-align: right;">Taxable</th>
+                  <th style="padding: 10px; text-align: right;">GST</th>
+                  <th style="padding: 10px; text-align: right;">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 ${itemsHtml}
               </tbody>
               <tfoot>
+                <tr>
+                  <td colspan="5" style="padding: 10px; text-align: right;">Taxable Value:</td>
+                  <td style="padding: 10px; text-align: right;">Rs ${taxableAmount.toFixed(2)}</td>
+                </tr>
+                ${taxSummaryHtml}
+                ${shippingCost > 0 ? `
+                <tr>
+                  <td colspan="5" style="padding: 10px; text-align: right;">Shipping:</td>
+                  <td style="padding: 10px; text-align: right;">Rs ${shippingCost.toFixed(2)}</td>
+                </tr>` : ''}
                 <tr style="background-color: #f9f9f9; font-weight: bold;">
-                  <td colspan="3" style="padding: 15px; text-align: right;">Total Amount Paid:</td>
-                  <td style="padding: 15px; text-align: right;">₹${data[0].total_amount}</td>
+                  <td colspan="5" style="padding: 15px; text-align: right;">Total Amount Paid:</td>
+                  <td style="padding: 15px; text-align: right;">Rs ${data[0].total_amount.toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
 
             <p><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+            <p>Please find your tax invoice/receipt attached to this email.</p>
             <p>We will notify you once your order is shipped.</p>
 
             <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
@@ -302,7 +366,7 @@ export async function POST(req: Request) {
             </p>
           </div>
         `,
-        text: `Hi,\n\nYour order with Order ID: ${order_id} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Quantity: ${item.quantity}) - ₹${item.unit_price * item.quantity}`).join('\n')}\n\nTotal Amount Paid: ₹${data[0].total_amount}\nPayment ID: ${razorpay_payment_id}\n\nPlease find your tax invoice/receipt attached.\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
+        text: `Hi,\n\nYour order with Order ID: ${order_id} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Qty: ${item.quantity}) - Rs ${(item.unit_price * item.quantity).toFixed(2)}`).join('\n')}\n\nTaxable Value: Rs ${taxableAmount.toFixed(2)}\nGST @${gstRate}%: Rs ${totalGst.toFixed(2)}${shippingCost > 0 ? `\nShipping: Rs ${shippingCost.toFixed(2)}` : ''}\nTotal Amount Paid: Rs ${data[0].total_amount.toFixed(2)}\nPayment ID: ${razorpay_payment_id}\n\nPlease find your tax invoice/receipt attached.\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
         attachments: receiptPdf
           ? [
               {
