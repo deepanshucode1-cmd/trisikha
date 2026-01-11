@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { createClient } from "@/utils/supabase/server";
+import { createServiceClient } from "@/utils/supabase/service";
 import { logSecurityEvent, logError } from "@/lib/logger";
+import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
+import { sendCreditNote } from "@/lib/email";
 
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
 
@@ -35,7 +37,7 @@ function extractRefundEntity(payload: any) {
 
   // Fallback: if event is refund.* and payload contains nested objects, try to find keys named 'refund' or with 'status' + 'payment_id'
   // Walk limited depth for safety
-  
+
   return null;
 }
 
@@ -70,12 +72,14 @@ export async function POST(req: Request) {
 
     // Extract commonly used fields safely
     const refundId: string | undefined = refund.id;
-    const paymentId: string | undefined = refund.payment_id ;
+    const paymentId: string | undefined = refund.payment_id;
     const status: string | undefined = (refund.status || "").toString(); // created | processed | failed
-    const errorReason: string | undefined = payment.error_reason ;
-    const errorDescription: string | undefined = payment.error_description ;
+    const errorReason: string | undefined = payment.error_reason;
+    const errorDescription: string | undefined = payment.error_description;
+    // Amount is in smallest currency unit (paise)
+    const refundAmount = refund.amount ? refund.amount / 100 : undefined;
 
-    const supabase = await createClient();
+    const supabase = createServiceClient();
 
     // Try to find order by razorpay_refund_id first (idempotency), then by payment_id
     let orderQuery = supabase.from("orders").select("*").limit(1);
@@ -120,6 +124,53 @@ export async function POST(req: Request) {
       updates.payment_status = "refunded";
       updates.cancellation_status = "CANCELLED";
       updates.order_status = "CANCELLED";
+      if (refundAmount) updates.refund_amount = refundAmount;
+
+      // Generate and send credit note if not already sent
+      if (!order.credit_note_sent_at) {
+        try {
+          const { data: orderItems } = await supabase
+            .from('order_items')
+            .select('*')
+            .eq('order_id', order.id);
+
+          if (orderItems && orderItems.length > 0) {
+            // Step 1: Generate credit note number first
+            const creditNoteNo = await generateCreditNoteNumber();
+            updates.credit_note_number = creditNoteNo;
+            // NOTE: credit_note_sent_at is set ONLY after successful email send
+
+            // Step 2: Prepare order object for PDF (merge existing + updates)
+            const orderForPdf = {
+              ...order,
+              ...updates,
+              refund_amount: refundAmount || order.total_amount,
+              guest_email: order.guest_email
+            };
+
+            // Step 3: Generate PDF
+            const pdfBuffer = await generateCreditNotePDF(orderForPdf, orderItems);
+
+            // Step 4: Send email
+            const emailSent = await sendCreditNote(
+              order.guest_email,
+              order.id,
+              creditNoteNo,
+              orderForPdf.refund_amount,
+              pdfBuffer
+            );
+
+            // Step 5: Only mark as sent if email was successful
+            if (emailSent) {
+              updates.credit_note_sent_at = new Date().toISOString();
+            }
+          }
+        } catch (cnError) {
+          logError(cnError as Error, { context: "webhook_credit_note_generation_failed", orderId: order.id });
+          // Don't set credit_note_sent_at - allows retry on next webhook
+        }
+      }
+
     } else if (status === "failed") {
       updates.refund_status = "REFUND_FAILED";
       updates.refund_error_reason = errorReason || null;

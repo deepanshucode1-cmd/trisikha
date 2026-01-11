@@ -119,3 +119,47 @@ export async function sendRefundInitiated(email: string, orderId: string, amount
     `,
   });
 }
+
+export async function sendCreditNote(
+  email: string,
+  orderId: string,
+  creditNoteNumber: string,
+  refundAmount: number,
+  pdfBuffer: Buffer
+): Promise<boolean> {
+  try {
+    const transport = getTransporter();
+    await transport.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: `TrishikhaOrganics: Credit Note - ${creditNoteNumber}`,
+      html: `
+        <h2>Credit Note Generated for Order #${orderId}</h2>
+        <p>Dear Customer,</p>
+        <p>Your refund of <strong>₹${refundAmount}</strong> for order <strong>#${orderId}</strong> has been processed.</p>
+        <p>Please find the attached Credit Note (<strong>${creditNoteNumber}</strong>) for your reference.</p>
+        <br/>
+        <p>The amount should reflect in your account within 5-7 business days.</p>
+        <br/>
+        <p>Thank you,</p>
+        <p>Trishikha Organics Team</p>
+      `,
+      attachments: [
+        {
+          filename: `Credit_Note_${creditNoteNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+    logOrder("credit_note_email_sent", { to: email, creditNoteNumber });
+    return true;
+  } catch (error) {
+    logError(error as Error, {
+      context: "credit_note_email_failed",
+      to: email,
+      creditNoteNumber,
+    });
+    return false;
+  }
+}

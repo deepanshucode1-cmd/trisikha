@@ -1,6 +1,7 @@
 import ProductDetail from '@/components/ProductDetail'
-import React from 'react'
-import  PageProps, { NextPage }  from 'next/types'
+import { createClient } from '@/utils/supabase/server'
+import { notFound } from 'next/navigation'
+import { NextPage } from 'next/types'
 
 interface PageProps {
   params: Promise<{
@@ -8,30 +9,43 @@ interface PageProps {
   }>;
 }
 
-const  page : NextPage<PageProps> = async ({ params }) => {
+const page: NextPage<PageProps> = async ({ params }) => {
+  const resolvedParams = await params;
+  const { product_id } = resolvedParams;
 
-    const resolvedParams = await params;
-    const { product_id } = resolvedParams;
-    if(!product_id){
-        return React.createElement('div', null, 'Product ID not found')
-    }
+  if (!product_id) {
+    notFound();
+  }
 
-    if(product_id === "trishikha-gold-1kg" ){
-        return (
-            <ProductDetail name="Trishikha Gold - 1kg" price="₹ 135" image="/product_detail.jpg"/>
-        )
-    }
+  // Fetch product from database
+  const supabase = await createClient();
+  const { data: product, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('id', product_id)
+    .single();
 
-    if(product_id === "trishikha-gold-5kg" ){
-        return (
-            <ProductDetail name="Trishikha Gold - 5kg" price="₹ 375" image="/product_detail.jpg"/>
-        )
-    }
-
+  if (error || !product) {
+    notFound();
+  }
 
   return (
-    <div>Invalid Product ID</div>
-  )
+    <ProductDetail
+      id={product.id}
+      name={product.name}
+      price={product.price}
+      image={product.image_url}
+      description={product.description}
+      weight={product.weight}
+      stock={product.stock}
+      sku={product.sku}
+      hsn={product.hsn}
+      countryOfOrigin={product.country_of_origin}
+      manufacturerName={product.manufacturer_name}
+      manufacturerAddress={product.manufacturer_address}
+      netQuantity={product.net_quantity}
+    />
+  );
 }
 
 export default page

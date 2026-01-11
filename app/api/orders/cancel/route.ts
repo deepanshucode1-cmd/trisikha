@@ -8,7 +8,9 @@ import nodemailer from "nodemailer";
 import { cancelOrderSchema } from "@/lib/validation";
 import { cancelOrderRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
-import { logOrder, logSecurityEvent, logPayment } from "@/lib/logger";
+import { logOrder, logSecurityEvent, logPayment, logError } from "@/lib/logger";
+import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
+import { sendCreditNote } from "@/lib/email";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -292,25 +294,36 @@ export async function POST(req: Request) {
           amount: lockResult[0].total_amount * 100, // amount in paise
         });
 
-        if(razorpay_refund_result && razorpay_refund_result.amount){
-        logPayment("refund_processed", {
-          orderId,
-          paymentId: lockResult[0].payment_id,
-          refundId: razorpay_refund_result.id,
-          amount: razorpay_refund_result.amount / 100,
-          status: razorpay_refund_result.status,
-        });
-      }
+        if (razorpay_refund_result && razorpay_refund_result.amount) {
+          logPayment("refund_processed", {
+            orderId,
+            paymentId: lockResult[0].payment_id,
+            refundId: razorpay_refund_result.id,
+            amount: razorpay_refund_result.amount / 100,
+            status: razorpay_refund_result.status,
+          });
+        }
 
         if (razorpay_refund_result.status === "processed" && razorpay_refund_result.amount) {
           const refund_amount = razorpay_refund_result.amount / 100;
+
+          // Step 1: Generate Credit Note Number
+          let creditNoteNo: string | null = null;
+
+          try {
+            creditNoteNo = await generateCreditNoteNumber();
+          } catch (e) {
+            logError(e as Error, { context: "credit_note_number_gen_failed", orderId });
+          }
+
+          // Step 2: Update order with refund details (credit_note_sent_at set later after email)
           const { data: refund_update_data, error: refund_update_error } = await supabase.from("orders").update({
             refund_status: "REFUND_COMPLETED",
             payment_status: "refunded",
             order_status: "CANCELLED",
             cancellation_status: "CANCELLED",
             refund_id: razorpay_refund_result.id,
-            refund_amount: razorpay_refund_result.amount / 100,
+            refund_amount: refund_amount,
             refund_initiated_at: new Date().toISOString(),
             refund_completed_at: new Date().toISOString(),
             reason_for_cancellation: reason,
@@ -318,47 +331,62 @@ export async function POST(req: Request) {
             otp_expires_at: null,
             otp_attempts: 0,
             otp_locked_until: null,
+            credit_note_number: creditNoteNo
+            // NOTE: credit_note_sent_at is set ONLY after successful email
           }).eq("id", orderId).select();
+
+          if (refund_update_error) {
+            logError(refund_update_error, { context: "refund_update_failed", orderId });
+          }
 
           logOrder("refund_completed", {
             orderId,
             refundAmount: refund_amount,
             refundId: razorpay_refund_result.id,
+            creditNoteNumber: creditNoteNo
           });
 
-          // Send refund confirmation email
-          const transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 587,
-            secure: false,
-            auth: {
-              user: process.env.EMAIL_USER,
-              pass: process.env.EMAIL_PASS,
-            },
-          });
+          // Step 3: Generate and send Credit Note Email
+          if (creditNoteNo && refund_update_data && refund_update_data[0]) {
+            try {
+              const { data: orderItems, error: itemsError } = await supabase
+                .from('order_items')
+                .select('*')
+                .eq('order_id', orderId);
 
-          await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: order.guest_email,
-            subject: "TrishikhaOrganics: Order Cancelled - Refund Processed",
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2>Order Cancelled & Refund Processed</h2>
-                <p>Hi,</p>
-                <p>Your order with Order ID <strong>${orderId}</strong> has been successfully cancelled and refunded.</p>
-                <div style="background-color: #f4f4f4; padding: 15px; margin: 20px 0;">
-                  <p style="margin: 5px 0;"><strong>Refund Amount:</strong> ₹${refund_amount}</p>
-                  <p style="margin: 5px 0;"><strong>Refund ID:</strong> ${razorpay_refund_result.id}</p>
-                </div>
-                <p>The amount should reflect in your account within <strong>5-7 business days</strong> depending on your bank's processing time.</p>
-                ${reason ? `<p><strong>Cancellation Reason:</strong> ${reason}</p>` : ''}
-                <p>We apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.</p>
-                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-                <p style="color: #888; font-size: 12px;">Thank you,<br>TrishikhaOrganics Team</p>
-              </div>
-            `,
-            text: `Hi,\n\nYour order with Order ID: ${orderId} has been successfully cancelled and refunded.\n\nRefund Amount: ₹${refund_amount}\nRefund ID: ${razorpay_refund_result.id}\n\nThe amount should reflect in your account within 5-7 business days depending on your bank's processing time.\n\n${reason ? `Cancellation Reason: ${reason}\n\n` : ''}We apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.\n\nThank you,\nTrishikhaOrganics Team`,
-          });
+              if (itemsError) {
+                logError(itemsError, { context: "credit_note_fetch_items_error", orderId });
+              }
+
+              if (orderItems && orderItems.length > 0) {
+                const orderForPdf = refund_update_data[0];
+
+                const pdfBuffer = await generateCreditNotePDF(orderForPdf, orderItems);
+
+                // Use correct email from the fresh data
+                const emailSent = await sendCreditNote(
+                  refund_update_data[0].guest_email,
+                  orderId,
+                  creditNoteNo,
+                  refund_amount,
+                  pdfBuffer
+                );
+
+                // Step 4: Only mark as sent if email succeeded
+                if (emailSent) {
+                  await supabase
+                    .from("orders")
+                    .update({ credit_note_sent_at: new Date().toISOString() })
+                    .eq("id", orderId);
+                }
+              } else {
+                logError(new Error("No order items found for credit note"), { context: "credit_note_no_items", orderId });
+              }
+            } catch (cnError) {
+              logError(cnError as Error, { context: "credit_note_generation_failed", orderId });
+              // Don't set credit_note_sent_at - allows retry
+            }
+          }
         }
 
         return NextResponse.json({ success: true, refundId: razorpay_refund_result.id });
@@ -394,4 +422,4 @@ export async function POST(req: Request) {
       endpoint: "/api/orders/cancel",
     });
   }
-}
+}; 
