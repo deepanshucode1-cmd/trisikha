@@ -3,14 +3,16 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { createServiceClient } from "@/utils/supabase/service";
-import shiprocket from "@/utils/shiprocket";
+import shiprocket, { createReturnOrder, getReturnShippingRate } from "@/utils/shiprocket";
 import nodemailer from "nodemailer";
 import { cancelOrderSchema } from "@/lib/validation";
 import { cancelOrderRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logSecurityEvent, logPayment, logError } from "@/lib/logger";
 import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
-import { sendCreditNote } from "@/lib/email";
+import { sendCreditNote, sendReturnRequestConfirmation } from "@/lib/email";
+
+const RETURN_WINDOW_HOURS = 48;
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -80,8 +82,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Order already cancelled" });
     }
 
-    if (order.order_status === "DELIVERED") {
-      return NextResponse.json({ error: "Delivered orders cannot be cancelled" });
+    // Check if this is a return request (post-pickup or delivered)
+    const isReturnEligible = order.order_status === "PICKED_UP" || order.order_status === "DELIVERED";
+
+    if (isReturnEligible) {
+      // 48-hour return window only applies to DELIVERED orders
+      if (order.order_status === "DELIVERED") {
+        const windowStart = new Date(order.delivered_at || order.updated_at);
+        const hoursSinceDelivery = (Date.now() - windowStart.getTime()) / (1000 * 60 * 60);
+
+        if (hoursSinceDelivery > RETURN_WINDOW_HOURS) {
+          logOrder("return_window_expired", { orderId, hoursSinceDelivery });
+          return NextResponse.json({
+            error: "Return window expired. Returns must be requested within 48 hours of delivery."
+          }, { status: 400 });
+        }
+      }
+      // PICKED_UP orders: no time limit for returns
+
+      // Check if return already requested
+      if (order.return_status && order.return_status !== "NOT_REQUESTED") {
+        return NextResponse.json({
+          message: "Return already requested",
+          returnStatus: order.return_status
+        });
+      }
     }
 
     if (order.order_status === "SHIPPED") {
@@ -94,10 +119,6 @@ export async function POST(req: Request) {
 
     if (order.refund_status === "REFUND_COMPLETED") {
       return NextResponse.json({ message: "Order already refunded" });
-    }
-
-    if (order.order_status === "PICKED_UP") {
-      return NextResponse.json({ error: "Picked up orders cannot be cancelled" }, { status: 400 });
     }
 
     // ✅ 2. OTP Verification with attempt tracking
@@ -173,16 +194,32 @@ export async function POST(req: Request) {
       }
 
       // OTP verified successfully - reset attempts
-      await supabase.from("orders").update({
-        order_status: "CANCELLATION_REQUESTED",
-        cancellation_status: "CANCELLATION_REQUESTED",
-        otp_code: null,
-        otp_expires_at: null,
-        otp_attempts: 0,
-        otp_locked_until: null,
-      }).eq("id", orderId);
+      // Check if this is a return or cancellation
+      if (isReturnEligible) {
+        await supabase.from("orders").update({
+          order_status: "RETURN_REQUESTED",
+          return_status: "RETURN_REQUESTED",
+          return_requested_at: new Date().toISOString(),
+          return_reason: reason,
+          otp_code: null,
+          otp_expires_at: null,
+          otp_attempts: 0,
+          otp_locked_until: null,
+        }).eq("id", orderId);
 
-      logOrder("otp_verified", { orderId, ip });
+        logOrder("return_otp_verified", { orderId, ip });
+      } else {
+        await supabase.from("orders").update({
+          order_status: "CANCELLATION_REQUESTED",
+          cancellation_status: "CANCELLATION_REQUESTED",
+          otp_code: null,
+          otp_expires_at: null,
+          otp_attempts: 0,
+          otp_locked_until: null,
+        }).eq("id", orderId);
+
+        logOrder("otp_verified", { orderId, ip });
+      }
     }
 
     // ✅ 3. Re-fetch after OTP update (important for retries)
@@ -194,6 +231,155 @@ export async function POST(req: Request) {
 
     if (freshError || !freshOrder) {
       return NextResponse.json({ error: "Invalid order" }, { status: 500 });
+    }
+
+    // ✅ 3b. RETURN PROCESSING (for post-pickup orders)
+    if (freshOrder.order_status === "RETURN_REQUESTED" && freshOrder.return_status === "RETURN_REQUESTED") {
+      logOrder("return_processing_start", { orderId });
+
+      // Fetch order items for return shipment
+      const { data: orderItems, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*")
+        .eq("order_id", orderId);
+
+      if (itemsError || !orderItems || orderItems.length === 0) {
+        logError(new Error("Failed to fetch order items for return"), { orderId });
+        return NextResponse.json({ error: "Unable to process return" }, { status: 500 });
+      }
+
+      // Calculate refund amount (deduct forward shipping + return shipping from Shiprocket)
+      const forwardShippingCost = freshOrder.shipping_cost || 0;
+
+      // Get return shipping cost from Shiprocket API
+      const warehousePincode = process.env.WAREHOUSE_PINCODE || "382721";
+      const returnShippingCost = await getReturnShippingRate({
+        pickupPincode: freshOrder.shipping_pincode || "",
+        deliveryPincode: warehousePincode,
+        weight: 0.5, // Default weight, could be calculated from order items
+      });
+
+      const totalDeduction = forwardShippingCost + returnShippingCost;
+      const refundAmount = Math.max(0, freshOrder.total_amount - totalDeduction);
+
+      logOrder("return_refund_calculated", {
+        orderId,
+        totalAmount: freshOrder.total_amount,
+        forwardShippingCost,
+        returnShippingCost,
+        totalDeduction,
+        refundAmount,
+      });
+
+      // Get seller/warehouse address from env
+      const warehouseAddress = {
+        name: process.env.WAREHOUSE_NAME || "Trishikha Organics",
+        address: process.env.WAREHOUSE_ADDRESS || "Plot No 27, Swagat Industrial Area Park",
+        address_2: process.env.WAREHOUSE_ADDRESS_2 || "",
+        city: process.env.WAREHOUSE_CITY || "Kalol",
+        state: process.env.WAREHOUSE_STATE || "Gujarat",
+        country: process.env.WAREHOUSE_COUNTRY || "India",
+        pincode: process.env.WAREHOUSE_PINCODE || "382721",
+        email: process.env.WAREHOUSE_EMAIL || "trishikhaorganic@gmail.com",
+        phone: process.env.WAREHOUSE_PHONE || "7984130253",
+      };
+
+      try {
+        // Create Shiprocket return order
+        const returnResult = await createReturnOrder({
+          orderId: orderId,
+          shiprocket_order_id: freshOrder.shiprocket_order_id,
+          shiprocket_shipment_id: freshOrder.shiprocket_shipment_id,
+          order_date: new Date(freshOrder.created_at).toISOString().split("T")[0],
+          // Pickup from customer (reverse of delivery)
+          pickup_customer_name: freshOrder.shipping_first_name || "",
+          pickup_last_name: freshOrder.shipping_last_name || "",
+          pickup_address: freshOrder.shipping_address_line1 || "",
+          pickup_address_2: freshOrder.shipping_address_line2 || "",
+          pickup_city: freshOrder.shipping_city || "",
+          pickup_state: freshOrder.shipping_state || "",
+          pickup_country: freshOrder.shipping_country || "India",
+          pickup_pincode: freshOrder.shipping_pincode || "",
+          pickup_email: freshOrder.guest_email || "",
+          pickup_phone: freshOrder.guest_phone || "",
+          // Ship to warehouse
+          shipping_customer_name: warehouseAddress.name,
+          shipping_address: warehouseAddress.address,
+          shipping_address_2: warehouseAddress.address_2,
+          shipping_city: warehouseAddress.city,
+          shipping_state: warehouseAddress.state,
+          shipping_country: warehouseAddress.country,
+          shipping_pincode: warehouseAddress.pincode,
+          shipping_email: warehouseAddress.email,
+          shipping_phone: warehouseAddress.phone,
+          order_items: orderItems.map((item) => ({
+            name: item.product_name,
+            sku: item.sku || `SKU-${item.product_id}`,
+            units: item.quantity,
+            selling_price: item.unit_price,
+            qc_enable: true,
+          })),
+          payment_method: "Prepaid",
+          sub_total: freshOrder.total_amount,
+          length: 20,
+          breadth: 15,
+          height: 10,
+          weight: 0.5,
+        });
+
+        logOrder("return_order_created", {
+          orderId,
+          returnOrderId: returnResult.order_id,
+          returnShipmentId: returnResult.shipment_id,
+          returnAwb: returnResult.awb_code,
+        });
+
+        // Update order with return details
+        await supabase.from("orders").update({
+          return_status: "RETURN_PICKUP_SCHEDULED",
+          return_order_id: returnResult.order_id?.toString() || null,
+          return_shipment_id: returnResult.shipment_id?.toString() || null,
+          return_pickup_awb: returnResult.awb_code || null,
+          return_refund_amount: refundAmount,
+          return_pickup_scheduled_at: new Date().toISOString(),
+        }).eq("id", orderId);
+
+        // Send confirmation email
+        try {
+          await sendReturnRequestConfirmation(
+            freshOrder.guest_email,
+            orderId,
+            refundAmount
+          );
+        } catch (emailErr) {
+          logError(emailErr as Error, { context: "return_email_failed", orderId });
+        }
+
+        return NextResponse.json({
+          success: true,
+          isReturn: true,
+          message: "Return pickup scheduled",
+          refundAmount,
+          originalAmount: freshOrder.total_amount,
+          forwardShippingCost,
+          returnShippingCost,
+          shippingDeduction: totalDeduction,
+        });
+
+      } catch (returnErr) {
+        logError(returnErr as Error, { context: "return_order_creation_failed", orderId });
+
+        // Mark return as failed so admin can retry
+        await supabase.from("orders").update({
+          return_status: "RETURN_FAILED",
+          return_refund_amount: refundAmount,
+        }).eq("id", orderId);
+
+        return NextResponse.json({
+          error: "Unable to schedule return pickup. Our team will contact you.",
+          isReturn: true,
+        }, { status: 500 });
+      }
     }
 
     // ✅ 4. SHIPROCKET CANCELLATION (ONLY when allowed)

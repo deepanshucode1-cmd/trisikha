@@ -277,6 +277,213 @@ export async function cancelShipment(orderId: string): Promise<CancelResponse> {
   ) as Promise<CancelResponse>;
 }
 
+// -----------------------------------------------------
+// 💰 GET RETURN SHIPPING RATE
+// -----------------------------------------------------
+interface ReturnShippingRateParams {
+  pickupPincode: string;      // Customer's pincode (where return pickup happens)
+  deliveryPincode: string;    // Warehouse pincode (where return is delivered)
+  weight: number;             // Weight in kg
+  length?: number;            // Length in cm
+  breadth?: number;           // Breadth in cm
+  height?: number;            // Height in cm
+  codAmount?: number;         // COD amount (0 for prepaid returns)
+}
+
+interface CourierRate {
+  courier_company_id: number;
+  courier_name: string;
+  freight_charge: number;
+  rate: number;
+  cod_charges?: number;
+  estimated_delivery_days?: string;
+}
+
+interface ServiceabilityResponse {
+  status?: number;
+  data?: {
+    available_courier_companies?: CourierRate[];
+  };
+  message?: string;
+}
+
+export async function getReturnShippingRate(params: ReturnShippingRateParams): Promise<number> {
+  const {
+    pickupPincode,
+    deliveryPincode,
+    weight,
+    length = 20,
+    breadth = 15,
+    height = 10,
+    codAmount = 0,
+  } = params;
+
+  try {
+    const queryParams = new URLSearchParams({
+      pickup_postcode: pickupPincode,
+      delivery_postcode: deliveryPincode,
+      weight: weight.toString(),
+      length: length.toString(),
+      breadth: breadth.toString(),
+      height: height.toString(),
+      cod: codAmount > 0 ? "1" : "0",
+      declared_value: codAmount.toString(),
+    });
+
+    const response = await authedFetch(
+      `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?${queryParams.toString()}`,
+      { method: "GET" }
+    ) as ServiceabilityResponse;
+
+    if (response.data?.available_courier_companies && response.data.available_courier_companies.length > 0) {
+      // Get the cheapest courier rate
+      const rates = response.data.available_courier_companies;
+      const cheapestRate = rates.reduce((min, courier) =>
+        courier.rate < min.rate ? courier : min
+        , rates[0]);
+
+      logOrder("return_shipping_rate_fetched", {
+        pickupPincode,
+        deliveryPincode,
+        weight,
+        cheapestCourier: cheapestRate.courier_name,
+        rate: cheapestRate.rate,
+      });
+
+      return cheapestRate.rate;
+    }
+
+    // Fallback: If no couriers available, estimate based on weight
+    logError(new Error("No couriers available for return shipping"), {
+      pickupPincode,
+      deliveryPincode,
+      response,
+    });
+
+    // Fallback rate: ₹50 base + ₹30 per 0.5kg
+    return 50 + Math.ceil(weight / 0.5) * 30;
+
+  } catch (error) {
+    logError(error as Error, {
+      context: "get_return_shipping_rate_failed",
+      pickupPincode,
+      deliveryPincode,
+    });
+
+    // Fallback rate on error
+    return 50 + Math.ceil(weight / 0.5) * 30;
+  }
+}
+
+//----------------------------------------------------
+// 🔄 CREATE RETURN ORDER
+// -----------------------------------------------------
+interface ReturnOrderParams {
+  orderId: string;
+  shiprocket_order_id: string;
+  shiprocket_shipment_id: string;
+  order_date: string;
+  channel_id?: number;
+  pickup_customer_name: string;
+  pickup_last_name?: string;
+  pickup_address: string;
+  pickup_address_2?: string;
+  pickup_city: string;
+  pickup_state: string;
+  pickup_country: string;
+  pickup_pincode: string;
+  pickup_email: string;
+  pickup_phone: string;
+  shipping_customer_name: string;
+  shipping_last_name?: string;
+  shipping_address: string;
+  shipping_address_2?: string;
+  shipping_city: string;
+  shipping_state: string;
+  shipping_country: string;
+  shipping_pincode: string;
+  shipping_email?: string;
+  shipping_phone: string;
+  order_items: Array<{
+    name: string;
+    sku: string;
+    units: number;
+    selling_price: number;
+    qc_enable?: boolean;
+  }>;
+  payment_method: "COD" | "Prepaid";
+  total_discount?: number;
+  sub_total: number;
+  length: number;
+  breadth: number;
+  height: number;
+  weight: number;
+}
+
+interface ReturnOrderResponse {
+  order_id?: number;
+  shipment_id?: number;
+  awb_code?: string;
+  courier_company_id?: number;
+  courier_name?: string;
+  status?: string;
+  message?: string;
+}
+
+export async function createReturnOrder(params: ReturnOrderParams): Promise<ReturnOrderResponse> {
+  const channelId = params.channel_id || parseInt(process.env.SHIPROCKET_CHANNEL_ID || "0");
+
+  const payload = {
+    order_id: params.shiprocket_order_id,
+    order_date: params.order_date,
+    channel_id: channelId,
+    pickup_customer_name: params.pickup_customer_name,
+    pickup_last_name: params.pickup_last_name || "",
+    pickup_address: params.pickup_address,
+    pickup_address_2: params.pickup_address_2 || "",
+    pickup_city: params.pickup_city,
+    pickup_state: params.pickup_state,
+    pickup_country: params.pickup_country,
+    pickup_pincode: params.pickup_pincode,
+    pickup_email: params.pickup_email,
+    pickup_phone: params.pickup_phone,
+    shipping_customer_name: params.shipping_customer_name,
+    shipping_last_name: params.shipping_last_name || "",
+    shipping_address: params.shipping_address,
+    shipping_address_2: params.shipping_address_2 || "",
+    shipping_city: params.shipping_city,
+    shipping_state: params.shipping_state,
+    shipping_country: params.shipping_country,
+    shipping_pincode: params.shipping_pincode,
+    shipping_email: params.shipping_email || "",
+    shipping_phone: params.shipping_phone,
+    order_items: params.order_items.map(item => ({
+      name: item.name,
+      sku: item.sku,
+      units: item.units,
+      selling_price: item.selling_price,
+      qc_enable: item.qc_enable ?? true,
+    })),
+    payment_method: params.payment_method,
+    total_discount: params.total_discount || 0,
+    sub_total: params.sub_total,
+    length: params.length,
+    breadth: params.breadth,
+    height: params.height,
+    weight: params.weight,
+  };
+
+  logOrder("creating_return_order", { orderId: params.orderId, shiprocketOrderId: params.shiprocket_order_id });
+
+  return authedFetch(
+    "https://apiv2.shiprocket.in/v1/external/orders/create/return",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  ) as Promise<ReturnOrderResponse>;
+}
+
 export default {
   login,
   retryAssignAWB,
@@ -286,4 +493,7 @@ export default {
   generateManifestBatch,
   schedulePickup,
   printManifest,
+  cancelShipment,
+  createReturnOrder,
+  getReturnShippingRate,
 };

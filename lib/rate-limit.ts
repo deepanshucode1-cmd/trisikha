@@ -56,62 +56,62 @@ const inMemoryLimiter = new InMemoryRateLimiter();
 // IP-based rate limiting for OTP requests (3 requests per 10 minutes)
 export const otpRateLimit = hasRedisCredentials
   ? new Ratelimit({
-      redis: Redis.fromEnv(),
-      limiter: Ratelimit.slidingWindow(3, "10 m"),
-      prefix: "ratelimit:otp",
-    })
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(3, "10 m"),
+    prefix: "ratelimit:otp",
+  })
   : {
-      limit: async (identifier: string) =>
-        inMemoryLimiter.limit(identifier, 3, 10 * 60 * 1000),
-    };
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 3, 10 * 60 * 1000),
+  };
 
 // Rate limiting for checkout (10 requests per hour)
 export const checkoutRateLimit = hasRedisCredentials
   ? new Ratelimit({
-      redis: Redis.fromEnv(),
-      limiter: Ratelimit.slidingWindow(10, "1 h"),
-      prefix: "ratelimit:checkout",
-    })
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(10, "1 h"),
+    prefix: "ratelimit:checkout",
+  })
   : {
-      limit: async (identifier: string) =>
-        inMemoryLimiter.limit(identifier, 10, 60 * 60 * 1000),
-    };
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 10, 60 * 60 * 1000),
+  };
 
 // Rate limiting for payment verification (30 requests per hour)
 export const paymentRateLimit = hasRedisCredentials
   ? new Ratelimit({
-      redis: Redis.fromEnv(),
-      limiter: Ratelimit.slidingWindow(30, "1 h"),
-      prefix: "ratelimit:payment",
-    })
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(30, "1 h"),
+    prefix: "ratelimit:payment",
+  })
   : {
-      limit: async (identifier: string) =>
-        inMemoryLimiter.limit(identifier, 30, 60 * 60 * 1000),
-    };
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 30, 60 * 60 * 1000),
+  };
 
 // Rate limiting for order cancellation (5 requests per hour)
 export const cancelOrderRateLimit = hasRedisCredentials
   ? new Ratelimit({
-      redis: Redis.fromEnv(),
-      limiter: Ratelimit.slidingWindow(5, "1 h"),
-      prefix: "ratelimit:cancel",
-    })
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "ratelimit:cancel",
+  })
   : {
-      limit: async (identifier: string) =>
-        inMemoryLimiter.limit(identifier, 5, 60 * 60 * 1000),
-    };
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 5, 60 * 60 * 1000),
+  };
 
 // General API rate limiting (60 requests per minute)
 export const apiRateLimit = hasRedisCredentials
   ? new Ratelimit({
-      redis: Redis.fromEnv(),
-      limiter: Ratelimit.slidingWindow(60, "1 m"),
-      prefix: "ratelimit:api",
-    })
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(60, "1 m"),
+    prefix: "ratelimit:api",
+  })
   : {
-      limit: async (identifier: string) =>
-        inMemoryLimiter.limit(identifier, 60, 60 * 1000),
-    };
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 60, 60 * 1000),
+  };
 
 // Helper function to get client IP from request
 export function getClientIp(request: Request): string {

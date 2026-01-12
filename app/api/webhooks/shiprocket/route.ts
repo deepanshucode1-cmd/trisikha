@@ -37,12 +37,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 200 });
     }
 
+    // First, check if this AWB belongs to a return shipment
+    const { data: returnOrder } = await supabase
+      .from("orders")
+      .select("id, guest_email, return_status")
+      .eq("return_pickup_awb", awb)
+      .single();
+
+    if (returnOrder) {
+      // Handle return shipment status updates
+      let returnStatus = returnOrder.return_status;
+
+      if (statusLabel === "PICKED UP") {
+        returnStatus = "RETURN_IN_TRANSIT";
+      } else if (statusLabel === "Delivered") {
+        returnStatus = "RETURN_DELIVERED";
+      }
+
+      await supabase
+        .from("orders")
+        .update({ return_status: returnStatus })
+        .eq("id", returnOrder.id);
+
+      logOrder("return_shipment_status_updated", {
+        orderId: returnOrder.id,
+        awb,
+        status: statusLabel,
+        returnStatus,
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    // Handle regular order shipment status updates
     if (statusLabel === "Delivered") {
       await supabase
         .from("orders")
         .update({
           shiprocket_status: statusLabel,
           order_status: "DELIVERED",
+          delivered_at: new Date().toISOString(),
         })
         .eq("shiprocket_awb_code", awb);
 
@@ -66,6 +100,7 @@ export async function POST(req: Request) {
         .update({
           shiprocket_status: statusLabel,
           order_status: "PICKED_UP",
+          picked_up_at: new Date().toISOString(),
         })
         .eq("shiprocket_awb_code", awb);
 

@@ -120,6 +120,93 @@ export async function sendRefundInitiated(email: string, orderId: string, amount
   });
 }
 
+// Return-specific email templates
+export async function sendReturnRequestConfirmation(
+  email: string,
+  orderId: string,
+  refundAmount: number
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Return Request Confirmed",
+    html: `
+      <h2>Return Request Confirmed</h2>
+      <p>Your return request for order <strong>#${orderId}</strong> has been confirmed.</p>
+      <p>Our courier partner will contact you shortly to schedule a pickup.</p>
+      <br/>
+      <h3>Refund Details</h3>
+      <p>Once we receive the returned items, your refund of <strong>₹${refundAmount.toFixed(2)}</strong> will be processed.</p>
+      <p><em>Note: Both-ways shipping cost has been deducted from the refund amount.</em></p>
+      <br/>
+      <h3>What to Expect</h3>
+      <ul>
+        <li>Return pickup: 2-3 business days</li>
+        <li>Refund processing: 5-7 business days after we receive the items</li>
+      </ul>
+      <br/>
+      <p>Please ensure the product is unused, unopened, and in its original packaging.</p>
+      <br/>
+      <p>Thank you,</p>
+      <p>Trishikha Organics Team</p>
+    `,
+  });
+}
+
+export async function sendReturnPickupScheduled(
+  email: string,
+  orderId: string,
+  pickupDate?: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Return Pickup Scheduled",
+    html: `
+      <h2>Return Pickup Scheduled</h2>
+      <p>Your return pickup for order <strong>#${orderId}</strong> has been scheduled.</p>
+      ${pickupDate ? `<p>Expected pickup date: <strong>${pickupDate}</strong></p>` : ''}
+      <br/>
+      <h3>Preparation Checklist</h3>
+      <ul>
+        <li>Keep the product ready in its original packaging</li>
+        <li>Ensure the product is unused and unopened</li>
+        <li>Have a copy of your order confirmation ready</li>
+      </ul>
+      <br/>
+      <p>Our courier partner will contact you on the day of pickup.</p>
+      <br/>
+      <p>Thank you,</p>
+      <p>Trishikha Organics Team</p>
+    `,
+  });
+}
+
+export async function sendReturnRefundProcessed(
+  email: string,
+  orderId: string,
+  refundAmount: number,
+  refundId?: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Return Refund Processed",
+    html: `
+      <h2>Refund Processed</h2>
+      <p>Good news! Your return for order <strong>#${orderId}</strong> has been received and your refund has been processed.</p>
+      <br/>
+      <h3>Refund Details</h3>
+      <p>Amount Refunded: <strong>₹${refundAmount.toFixed(2)}</strong></p>
+      ${refundId ? `<p>Refund ID: ${refundId}</p>` : ''}
+      <br/>
+      <p>The amount will be credited to your original payment method within 5-7 business days, depending on your bank's processing time.</p>
+      <br/>
+      <p>We apologize for any inconvenience caused. We hope to serve you better in the future!</p>
+      <br/>
+      <p>Thank you,</p>
+      <p>Trishikha Organics Team</p>
+    `,
+  });
+}
+
 export async function sendCreditNote(
   email: string,
   orderId: string,

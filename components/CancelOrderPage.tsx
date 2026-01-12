@@ -5,6 +5,24 @@ import Link from "next/link";
 
 type Step = "FORM" | "OTP" | "DONE";
 
+interface ReturnResult {
+  isReturn: boolean;
+  refundAmount?: number;
+  originalAmount?: number;
+  shippingDeduction?: number;
+  forwardShippingCost?: number;
+  returnShippingCost?: number;
+}
+
+// Return info from OTP response (before confirmation)
+interface ReturnInfo {
+  isReturn: boolean;
+  originalAmount: number;
+  forwardShippingCost: number;
+  returnShippingCost: number;
+  estimatedRefund: number;
+}
+
 // Validation rules based on backend schema
 const validation = {
   orderId: {
@@ -34,6 +52,8 @@ export default function CancelOrderPage() {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [returnResult, setReturnResult] = useState<ReturnResult | null>(null);
+  const [returnInfo, setReturnInfo] = useState<ReturnInfo | null>(null); // Return info before confirmation
 
   // Validation state
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -69,10 +89,9 @@ export default function CancelOrderPage() {
 
   // Get input classes based on error state
   const getInputClasses = (field: string, extraClasses = "") =>
-    `w-full bg-white border text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none transition-all ${
-      touched[field] && fieldErrors[field]
-        ? "border-red-500 focus:ring-red-500"
-        : "border-gray-300"
+    `w-full bg-white border text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none transition-all ${touched[field] && fieldErrors[field]
+      ? "border-red-500 focus:ring-red-500"
+      : "border-gray-300"
     } ${extraClasses}`;
 
   // Error message component
@@ -127,6 +146,19 @@ export default function CancelOrderPage() {
 
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
 
+      // Store return info if this is a return request
+      if (data.isReturn) {
+        setReturnInfo({
+          isReturn: true,
+          originalAmount: data.originalAmount,
+          forwardShippingCost: data.forwardShippingCost,
+          returnShippingCost: data.returnShippingCost,
+          estimatedRefund: data.estimatedRefund,
+        });
+      } else {
+        setReturnInfo(null);
+      }
+
       setStep("OTP");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "An error occurred");
@@ -163,6 +195,16 @@ export default function CancelOrderPage() {
 
       if (!res.ok) throw new Error(data.error || "Cancellation failed");
 
+      // Check if this is a return response
+      if (data.isReturn) {
+        setReturnResult({
+          isReturn: true,
+          refundAmount: data.refundAmount,
+          originalAmount: data.originalAmount,
+          shippingDeduction: data.shippingDeduction,
+        });
+      }
+
       setStep("DONE");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "An error occurred");
@@ -185,7 +227,9 @@ export default function CancelOrderPage() {
             </svg>
             Back to store
           </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold">Cancel Order</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">
+            {returnInfo?.isReturn ? "Return Order" : "Cancel Order"}
+          </h1>
         </div>
       </div>
 
@@ -265,11 +309,10 @@ export default function CancelOrderPage() {
                 <button
                   disabled={loading || !isFormValid()}
                   onClick={sendOtp}
-                  className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
-                    !loading && isFormValid()
-                      ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
-                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                  }`}
+                  className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${!loading && isFormValid()
+                    ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
+                    : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                    }`}
                 >
                   {loading ? (
                     <>
@@ -301,11 +344,52 @@ export default function CancelOrderPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Verify Your Identity</h2>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">
+                  {returnInfo?.isReturn ? "Confirm Return Request" : "Verify Your Identity"}
+                </h2>
                 <p className="text-gray-500 text-sm">
                   Enter the 6-digit code sent to <span className="font-medium text-gray-700">{contact}</span>
                 </p>
               </div>
+
+              {/* Return Info Banner */}
+              {returnInfo?.isReturn && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-start gap-2 mb-3">
+                    <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <p className="text-sm font-medium text-amber-800">
+                      You are requesting a <strong>return</strong>, not a cancellation.
+                    </p>
+                  </div>
+
+                  <div className="bg-white rounded p-3 text-sm">
+                    <h4 className="font-semibold text-gray-800 mb-2">Refund Breakdown</h4>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Order Total</span>
+                        <span className="text-gray-800">₹{returnInfo.originalAmount?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>Forward Shipping</span>
+                        <span>-₹{returnInfo.forwardShippingCost?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>Return Shipping</span>
+                        <span>-₹{returnInfo.returnShippingCost?.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
+                        <span className="text-gray-800">Estimated Refund</span>
+                        <span className="text-green-600">₹{returnInfo.estimatedRefund?.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Refund will be processed after we receive the returned items.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div>
@@ -360,11 +444,10 @@ export default function CancelOrderPage() {
                   <button
                     disabled={loading || !isOtpFormValid()}
                     onClick={confirmCancellation}
-                    className={`flex-1 py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
-                      !loading && isOtpFormValid()
-                        ? "bg-red-600 text-white hover:bg-red-700"
-                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                    }`}
+                    className={`flex-1 py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${!loading && isOtpFormValid()
+                      ? "bg-red-600 text-white hover:bg-red-700"
+                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      }`}
                   >
                     {loading ? (
                       <>
@@ -372,14 +455,14 @@ export default function CancelOrderPage() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
-                        Cancelling...
+                        {returnInfo?.isReturn ? "Processing Return..." : "Cancelling..."}
                       </>
                     ) : (
                       <>
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                        Confirm Cancellation
+                        {returnInfo?.isReturn ? "Confirm Return" : "Confirm Cancellation"}
                       </>
                     )}
                   </button>
@@ -406,19 +489,61 @@ export default function CancelOrderPage() {
                 </svg>
               </div>
 
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Cancelled</h2>
-              <p className="text-gray-600 mb-6 max-w-sm mx-auto">
-                Your order has been successfully cancelled. If your payment was already processed, the refund will be initiated automatically.
-              </p>
+              {returnResult?.isReturn ? (
+                <>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Return Scheduled</h2>
+                  <p className="text-gray-600 mb-6 max-w-sm mx-auto">
+                    Your return pickup has been scheduled. Our courier partner will contact you shortly.
+                  </p>
 
-              <div className="bg-[#f5f5f0] rounded-lg p-4 mb-6">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                  <svg className="w-5 h-5 text-[#3d3c30]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Refund typically takes 5-7 business days
-                </div>
-              </div>
+                  {/* Refund Breakdown */}
+                  <div className="bg-[#f5f5f0] rounded-lg p-4 mb-6 text-left">
+                    <h3 className="font-semibold text-gray-800 mb-3">Refund Breakdown</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Original Amount</span>
+                        <span className="text-gray-800">₹{returnResult.originalAmount?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>Shipping Deduction (2x)</span>
+                        <span>-₹{returnResult.shippingDeduction?.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t pt-2 flex justify-between font-semibold">
+                        <span className="text-gray-800">Refund Amount</span>
+                        <span className="text-green-600">₹{returnResult.refundAmount?.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
+                    <div className="flex items-start gap-2 text-sm text-amber-800">
+                      <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div>
+                        <p className="font-medium">Refund after pickup</p>
+                        <p className="mt-1">Your refund will be processed after we receive the returned items. This typically takes 5-7 business days after delivery to our warehouse.</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Cancelled</h2>
+                  <p className="text-gray-600 mb-6 max-w-sm mx-auto">
+                    Your order has been successfully cancelled. If your payment was already processed, the refund will be initiated automatically.
+                  </p>
+
+                  <div className="bg-[#f5f5f0] rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                      <svg className="w-5 h-5 text-[#3d3c30]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Refund typically takes 5-7 business days
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link
@@ -460,13 +585,12 @@ function StepIndicator({
   return (
     <div className="flex flex-col items-center">
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-          completed
-            ? "bg-green-600 text-white"
-            : active
+        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${completed
+          ? "bg-green-600 text-white"
+          : active
             ? "bg-[#3d3c30] text-white"
             : "bg-gray-200 text-gray-500"
-        }`}
+          }`}
       >
         {completed ? (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -477,9 +601,8 @@ function StepIndicator({
         )}
       </div>
       <span
-        className={`text-xs mt-1 ${
-          active ? "text-[#3d3c30] font-medium" : "text-gray-500"
-        }`}
+        className={`text-xs mt-1 ${active ? "text-[#3d3c30] font-medium" : "text-gray-500"
+          }`}
       >
         {label}
       </span>
@@ -490,9 +613,8 @@ function StepIndicator({
 function StepConnector({ completed }: { completed: boolean }) {
   return (
     <div
-      className={`w-12 sm:w-16 h-0.5 mx-2 transition-all ${
-        completed ? "bg-green-600" : "bg-gray-200"
-      }`}
+      className={`w-12 sm:w-16 h-0.5 mx-2 transition-all ${completed ? "bg-green-600" : "bg-gray-200"
+        }`}
     />
   );
 }
