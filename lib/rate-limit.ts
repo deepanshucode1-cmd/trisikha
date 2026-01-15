@@ -113,6 +113,30 @@ export const apiRateLimit = hasRedisCredentials
       inMemoryLimiter.limit(identifier, 60, 60 * 1000),
   };
 
+// Rate limiting for shipping estimates (20 requests per minute - public endpoint)
+export const shippingEstimateRateLimit = hasRedisCredentials
+  ? new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
+    prefix: "ratelimit:shipping-estimate",
+  })
+  : {
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 20, 60 * 1000),
+  };
+
+// Rate limiting for admin shipping operations (30 requests per minute)
+export const adminShippingRateLimit = hasRedisCredentials
+  ? new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(30, "1 m"),
+    prefix: "ratelimit:admin-shipping",
+  })
+  : {
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 30, 60 * 1000),
+  };
+
 // Helper function to get client IP from request
 export function getClientIp(request: Request): string {
   return (

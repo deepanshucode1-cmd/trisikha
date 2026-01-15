@@ -251,12 +251,44 @@ export async function POST(req: Request) {
       // Calculate refund amount (deduct forward shipping + return shipping from Shiprocket)
       const forwardShippingCost = freshOrder.shipping_cost || 0;
 
+      // Determine package dimensions based on order data
+      let packageWeight: number, packageLength: number, packageBreadth: number, packageHeight: number;
+      const isSingleItem = orderItems.length === 1;
+
+      // Default dimensions from env (fallback values)
+      const defaultWeight = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT || "1");
+      const defaultLength = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH || "20");
+      const defaultBreadth = parseFloat(process.env.DEFAULT_PACKAGE_BREADTH || "15");
+      const defaultHeight = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT || "10");
+
+      if (freshOrder.package_weight && freshOrder.package_length) {
+        // Use stored dimensions from fulfillment
+        packageWeight = freshOrder.package_weight;
+        packageLength = freshOrder.package_length;
+        packageBreadth = freshOrder.package_breadth || defaultBreadth;
+        packageHeight = freshOrder.package_height || defaultHeight;
+      } else if (isSingleItem) {
+        // Single item order: use item dimensions
+        const item = orderItems[0];
+        const itemWeight = (item.weight || 0) * item.quantity;
+        packageWeight = itemWeight > 0 ? itemWeight : defaultWeight;
+        packageLength = item.length || defaultLength;
+        packageBreadth = item.breadth || defaultBreadth;
+        packageHeight = item.height || defaultHeight;
+      } else {
+        // Multi-item without stored dimensions: use defaults
+        packageWeight = defaultWeight;
+        packageLength = defaultLength;
+        packageBreadth = defaultBreadth;
+        packageHeight = defaultHeight;
+      }
+
       // Get return shipping cost from Shiprocket API
       const warehousePincode = process.env.WAREHOUSE_PINCODE || "382721";
       const returnShippingCost = await getReturnShippingRate({
         pickupPincode: freshOrder.shipping_pincode || "",
         deliveryPincode: warehousePincode,
-        weight: 0.5, // Default weight, could be calculated from order items
+        weight: packageWeight,
       });
 
       const totalDeduction = forwardShippingCost + returnShippingCost;
@@ -321,10 +353,10 @@ export async function POST(req: Request) {
           })),
           payment_method: "Prepaid",
           sub_total: freshOrder.total_amount,
-          length: 20,
-          breadth: 15,
-          height: 10,
-          weight: 0.5,
+          length: packageLength,
+          breadth: packageBreadth,
+          height: packageHeight,
+          weight: packageWeight,
         });
 
         logOrder("return_order_created", {

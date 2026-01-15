@@ -17,6 +17,7 @@ This document tracks the security hardening work for the Trisikha e-commerce pla
 | `lib/logger.ts` | Winston logging with daily rotation | Done |
 | `lib/errors.ts` | Centralized error handling with sanitization | Done |
 | `lib/auth.ts` | Auth helpers, role checks, order access verification | Done |
+| `lib/csrf.ts` | CSRF token generation and validation | Done |
 | `utils/supabase/service.ts` | Service role client for bypassing RLS | Done |
 
 ### 1.2 Security Headers (next.config.ts) [COMPLETED]
@@ -57,29 +58,41 @@ This document tracks the security hardening work for the Trisikha e-commerce pla
 | `/api/orders/get-order/[order_id]` | - | UUID | Email/user/admin | Yes | Done |
 | `/api/orders/get-order-detail/[id]` | - | UUID | Email/user/admin | Yes | Done |
 | `/api/products` | - | - | Public read | Yes | Done |
+| `/api/seller/shiprocket/estimate-shipping` | 20/min | Zod schema | None (guest) | Yes | Done |
 
 ### Admin Routes (Require Authentication)
 
-| Route | Auth | Logging | Status |
-|-------|------|---------|--------|
-| `/api/orders/get-new-orders` | Admin role | Yes | Done |
-| `/api/orders/get-cancellation-failed` | Admin role | Yes | Done |
-| `/api/orders/cancel/retry` | Admin role | Yes | Done |
-| `/api/seller/products` (GET) | Admin role | Yes | Done |
-| `/api/seller/products` (POST) | Admin role + validation | Yes | Done |
+| Route | Auth | Rate Limit | Logging | Status |
+|-------|------|------------|---------|--------|
+| `/api/orders/get-new-orders` | Admin role | - | Yes | Done |
+| `/api/orders/get-cancellation-failed` | Admin role | - | Yes | Done |
+| `/api/orders/cancel/retry` | Admin role | - | Yes | Done |
+| `/api/seller/products` (GET) | Admin role | - | Yes | Done |
+| `/api/seller/products` (POST) | Admin role + validation | - | Yes | Done |
+| `/api/seller/shiprocket/assign-awb` | Admin role | 30/min | Yes | Done |
+| `/api/seller/shiprocket/generate-label` | Admin role | 30/min | Yes | Done |
+| `/api/seller/shiprocket/schedule-pickup` | Admin role | 30/min | Yes | Done |
+| `/api/seller/shiprocket/generate-manifest-batch` | Admin role | 30/min | Yes | Done |
+
+### User Routes (Require Authentication)
+
+| Route | Auth | Rate Limit | Description | Status |
+|-------|------|------------|-------------|--------|
+| `/api/user/export-data` | User auth | 5/hour | GDPR data export | Done |
+| `/api/user/delete-account` | User auth | 3/hour | GDPR account deletion | Done |
 
 ---
 
-## Phase 3: Remaining Work [PENDING]
+## Phase 3: Remaining Work [PARTIALLY COMPLETED]
 
-### 3.1 High Priority
+### 3.1 High Priority [COMPLETED]
 
 | Task | Description | Status |
 |------|-------------|--------|
-| Shiprocket routes security | Add auth, validation, logging to `/api/seller/shiprocket/*` | Pending |
-| Webhook security | Verify signatures on `/api/webhooks/razorpay/*` and `/api/webhooks/shiprocket` | Pending |
-| CSRF protection | Add CSRF tokens for state-changing operations | Pending |
-| Fix TypeScript errors | Clean up `any` types in shiprocket/webhook routes | Pending |
+| Shiprocket routes security | Add auth, validation, logging to `/api/seller/shiprocket/*` | Done |
+| Webhook security | Verify signatures on `/api/webhooks/razorpay/*` and `/api/webhooks/shiprocket` | Done (already implemented) |
+| CSRF protection | Add CSRF tokens for state-changing operations | Done |
+| Fix TypeScript errors | Clean up `any` types in shiprocket/webhook routes | Done |
 
 ### 3.2 Medium Priority
 
@@ -94,9 +107,6 @@ This document tracks the security hardening work for the Trisikha e-commerce pla
 
 | Task | Description | Status |
 |------|-------------|--------|
-| Privacy policy page | GDPR compliance | Pending |
-| Data export API | User data portability | Pending |
-| Cookie consent | GDPR compliance | Pending |
 | Penetration testing | External security audit | Pending |
 
 ---
@@ -125,15 +135,19 @@ The app supports guest checkout (no login required). RLS policies primarily prot
 ├─────────────────────────────────────────┤
 │  Layer 3: Input Validation (Zod)        │
 ├─────────────────────────────────────────┤
-│  Layer 4: Authentication/Authorization  │
+│  Layer 4: CSRF Protection               │
+│  - Token generation & validation        │
+│  - Double-submit cookie pattern         │
+├─────────────────────────────────────────┤
+│  Layer 5: Authentication/Authorization  │
 │  - Admin routes: requireRole("admin")   │
 │  - Guest routes: email/OTP verification │
 ├─────────────────────────────────────────┤
-│  Layer 5: RLS (Database level)          │
+│  Layer 6: RLS (Database level)          │
 │  - Protects direct DB access            │
 │  - Bypassed by service role for APIs    │
 ├─────────────────────────────────────────┤
-│  Layer 6: Logging & Monitoring          │
+│  Layer 7: Logging & Monitoring          │
 └─────────────────────────────────────────┘
 ```
 
@@ -164,6 +178,9 @@ EMAIL_PASS=xxx  # App password, not regular password
 SHIPROCKET_EMAIL=xxx
 SHIPROCKET_PASSWORD=xxx
 STORE_PINCODE=382721
+
+# CSRF (optional - falls back to using part of SUPABASE_SERVICE_ROLE_KEY)
+CSRF_SECRET=your-32-char-secret
 ```
 
 ---
@@ -180,6 +197,9 @@ STORE_PINCODE=382721
 - [ ] Payment signature verification rejects invalid signatures
 - [ ] Input validation rejects malformed data
 - [ ] Error messages don't leak sensitive info in production
+- [ ] CSRF protection blocks requests without valid token
+- [ ] Data export returns user's data correctly
+- [ ] Account deletion anonymizes order data
 
 ### Manual Security Checks
 
@@ -210,12 +230,12 @@ STORE_PINCODE=382721
 
 | Requirement | Description | Status |
 |-------------|-------------|--------|
-| [ ] Privacy Policy | Clear privacy policy page | Pending |
-| [ ] Cookie Consent | Cookie banner with opt-in/opt-out | Pending |
-| [ ] Data Minimization | Only collect necessary data | Partial |
-| [ ] Right to Access | User data export API (`/api/user/export`) | Pending |
-| [ ] Right to Erasure | User data deletion API (`/api/user/delete`) | Pending |
-| [ ] Data Portability | Export data in machine-readable format | Pending |
+| Privacy Policy | Clear privacy policy page | Done (`/privacy-policy`) |
+| Cookie Consent | Cookie banner with opt-in/opt-out | Done (`CookieConsent` component) |
+| Data Minimization | Only collect necessary data | Partial |
+| Right to Access | User data export API | Done (`/api/user/export-data`) |
+| Right to Erasure | User data deletion API | Done (`/api/user/delete-account`) |
+| Data Portability | Export data in machine-readable format | Done (JSON export) |
 | [ ] Breach Notification | Process for notifying users within 72 hours | Pending |
 | [ ] DPA with Supabase | Data Processing Agreement | Pending |
 | [ ] DPA with Razorpay | Data Processing Agreement | Pending |
@@ -226,7 +246,7 @@ STORE_PINCODE=382721
 | Requirement | Description | Status |
 |-------------|-------------|--------|
 | [ ] Data Localization | Verify data storage location (Supabase region) | Pending |
-| [ ] Consent Management | Clear consent for data collection | Pending |
+| Consent Management | Clear consent for data collection | Done (Cookie Consent) |
 | [ ] Grievance Officer | Appoint and publish contact details | Pending |
 | [ ] Data Retention Policy | Define how long data is kept | Pending |
 | [ ] Children's Data | Age verification if applicable | N/A |
@@ -236,11 +256,11 @@ STORE_PINCODE=382721
 | Requirement | Description | Status |
 |-------------|-------------|--------|
 | [ ] Legal Entity Display | Company name, address on website | Pending |
-| [ ] GSTIN Display | GST number visible on invoices | Pending |
-| [ ] Return Policy | Clear return/refund policy page | Pending |
-| [ ] Terms of Service | Terms and conditions page | Pending |
-| [ ] Contact Information | Customer support contact details | Pending |
-| [ ] Invoice Generation | GST-compliant invoices | Pending |
+| GSTIN Display | GST number visible on invoices | Done (in receipt generation) |
+| Return Policy | Clear return/refund policy page | Done (`/return-policy`) |
+| Terms of Service | Terms and conditions page | Done (`/terms`) |
+| Contact Information | Customer support contact details | Done (`/contact`) |
+| Invoice Generation | GST-compliant invoices | Done (`lib/receipt.ts`) |
 | [ ] Price Display | MRP and selling price clearly shown | Pending |
 
 ### Security Certifications (Future)
@@ -253,21 +273,42 @@ STORE_PINCODE=382721
 
 ---
 
+## Files Created/Modified (2026-01-14)
+
+### New Files
+- `lib/csrf.ts` - CSRF token generation and validation
+- `app/api/csrf/route.ts` - CSRF token endpoint
+- `hooks/useCsrf.ts` - Client-side CSRF hook
+- `components/CookieConsent.tsx` - Cookie consent banner component
+- `app/api/user/export-data/route.ts` - GDPR data export API
+- `app/api/user/delete-account/route.ts` - GDPR account deletion API
+
+### Modified Files
+- `lib/rate-limit.ts` - Added shipping rate limiters
+- `app/api/seller/shiprocket/assign-awb/route.ts` - Added auth, rate limiting, logging
+- `app/api/seller/shiprocket/estimate-shipping/route.ts` - Added rate limiting, validation, logging
+- `app/api/seller/shiprocket/generate-label/route.ts` - Added auth, rate limiting, logging
+- `app/api/seller/shiprocket/schedule-pickup/route.ts` - Added auth, rate limiting, logging
+- `app/api/seller/shiprocket/generate-manifest-batch/route.ts` - Added auth, rate limiting, logging
+- `app/layout.tsx` - Added CookieConsent component
+
+---
+
 ## Compliance Action Items
 
-### Immediate (Before Launch)
+### Immediate (Before Launch) [MOSTLY COMPLETE]
 
-1. **Privacy Policy Page** - Create `/privacy` with data collection practices
-2. **Terms of Service Page** - Create `/terms` with usage terms
-3. **Cookie Consent Banner** - Implement opt-in cookie consent
-4. **Contact Page** - Add support email, phone, address
-5. **Return Policy Page** - Create `/returns` with refund policy
+1. **Privacy Policy Page** - Done (`/privacy-policy`)
+2. **Terms of Service Page** - Done (`/terms`)
+3. **Cookie Consent Banner** - Done (`CookieConsent` component)
+4. **Contact Page** - Done (`/contact`)
+5. **Return Policy Page** - Done (`/return-policy`)
 
-### Short-term (Within 30 Days)
+### Short-term (Within 30 Days) [MOSTLY COMPLETE]
 
-1. **Data Export API** - Implement `/api/user/export-data`
-2. **Data Deletion API** - Implement `/api/user/delete-account`
-3. **Invoice Generation** - GST-compliant invoice PDFs
+1. **Data Export API** - Done (`/api/user/export-data`)
+2. **Data Deletion API** - Done (`/api/user/delete-account`)
+3. **Invoice Generation** - Done (`lib/receipt.ts`, `lib/creditNote.ts`)
 4. **VAPT Assessment** - Schedule penetration testing
 
 ### Long-term (Within 90 Days)
@@ -287,7 +328,13 @@ STORE_PINCODE=382721
 | 2026-01-07 | Added OTP brute force protection | Claude |
 | 2026-01-07 | Enabled RLS on all tables | Claude |
 | 2026-01-07 | Fixed guest checkout RLS issue | Claude |
+| 2026-01-14 | Secured all Shiprocket routes with auth, rate limiting, logging | Claude |
+| 2026-01-14 | Implemented CSRF protection infrastructure | Claude |
+| 2026-01-14 | Added cookie consent banner component | Claude |
+| 2026-01-14 | Implemented GDPR data export API | Claude |
+| 2026-01-14 | Implemented GDPR account deletion API | Claude |
+| 2026-01-14 | Fixed TypeScript issues in Shiprocket routes | Claude |
 
 ---
 
-*Last Updated: 2026-01-07*
+*Last Updated: 2026-01-14*

@@ -5,11 +5,11 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { CheckCircle, Package, Truck, MapPin, ArrowRight, ExternalLink, ShoppingBag, Sparkles } from "lucide-react";
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
-  console.log("Order ID:", orderId);
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +21,6 @@ export default function PaymentSuccessPage() {
       try {
         const res = await fetch(`/api/orders/get-order/${orderId}`);
         const data = await res.json();
-        console.log("Fetched order data:", data);
         setOrder(data);
       } catch (err) {
         console.error(err);
@@ -35,87 +34,159 @@ export default function PaymentSuccessPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#3d3c30] text-[#e0dbb5]">
-        Loading order details...
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#3d3c30] via-[#464433] to-[#3d3c30] text-[#e0dbb5]">
+        <div className="relative">
+          <div className="h-16 w-16 border-4 border-[#e0dbb5]/20 rounded-full" />
+          <div className="absolute inset-0 h-16 w-16 border-4 border-[#e0dbb5] border-t-transparent rounded-full animate-spin" />
+        </div>
+        <p className="mt-4 text-[#c5c0a0]">Loading order details...</p>
       </div>
     );
   }
 
   if (!order) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#3d3c30] text-red-400">
-        Order not found.
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#3d3c30] via-[#464433] to-[#3d3c30] text-[#e0dbb5] px-6">
+        <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-6">
+          <Package className="w-10 h-10 text-red-400" />
+        </div>
+        <h1 className="text-2xl font-bold mb-2">Order Not Found</h1>
+        <p className="text-[#c5c0a0] mb-6">We couldn&apos;t find your order details.</p>
+        <Link
+          href="/products"
+          className="inline-flex items-center gap-2 bg-[#e0dbb5] text-[#3d3c30] px-6 py-3 rounded-full font-semibold hover:bg-white transition"
+        >
+          Browse Products
+          <ArrowRight className="w-4 h-4" />
+        </Link>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-[#3d3c30] text-[#e0dbb5] px-6 py-12">
-      <div className="max-w-3xl mx-auto bg-[#464433] rounded-2xl p-8 shadow-lg">
+  const status = humanizeStatus(order.order_status, order.shiprocket_status);
 
-        {/* SUCCESS ICON */}
-        <div className="text-center mb-6">
-          <div className="text-5xl mb-2">✅</div>
-          <h1 className="text-3xl font-bold">Payment Successful</h1>
-          <p className="text-sm text-[#cfcaa0] mt-2">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#3d3c30] via-[#464433] to-[#3d3c30] text-[#e0dbb5] px-6 py-12 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute top-10 left-10 opacity-5">
+        <Sparkles className="w-32 h-32" />
+      </div>
+      <div className="absolute bottom-10 right-10 opacity-5">
+        <Sparkles className="w-24 h-24" />
+      </div>
+
+      <div className="max-w-2xl mx-auto relative z-10">
+        {/* Success Header */}
+        <div className="text-center mb-8">
+          <div className="relative inline-block">
+            <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center animate-scale-in">
+              <CheckCircle className="w-14 h-14 text-green-400" />
+            </div>
+            {/* Decorative rings */}
+            <div className="absolute inset-0 w-24 h-24 border-4 border-green-400/20 rounded-full animate-ping" style={{ animationDuration: '2s' }} />
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold mt-6 animate-fade-in-up">Payment Successful!</h1>
+          <p className="text-[#c5c0a0] mt-2 animate-fade-in-up animation-delay-100">
             Thank you for shopping with Trishikha Organics
           </p>
         </div>
 
-        {/* ORDER DETAILS */}
-        <div className="border border-[#6a684d] rounded-xl p-4 mb-6">
-          <p className="text-sm mb-1">
-            <span className="text-[#cfcaa0]">Order ID:</span>{" "}
-            <span className="font-semibold">{order.id}</span>
-          </p>
+        {/* Main Card */}
+        <div className="bg-[#464433]/80 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden border border-[#6a684d]/30 animate-fade-in-up animation-delay-200">
+          {/* Order Details Header */}
+          <div className="bg-gradient-to-r from-green-600/20 to-green-500/10 px-6 py-4 border-b border-[#6a684d]/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Package className="w-5 h-5 text-green-400" />
+                <span className="font-semibold">Order Details</span>
+              </div>
+              <span className="text-xs bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-medium">
+                {status}
+              </span>
+            </div>
+          </div>
 
-          <p className="text-sm mb-1">
-            <span className="text-[#cfcaa0]">Amount Paid:</span> ₹{order.total_amount}
-          </p>
+          {/* Order Info */}
+          <div className="p-6 space-y-4">
+            <div className="flex justify-between items-center py-3 border-b border-[#6a684d]/30">
+              <span className="text-[#c5c0a0]">Order ID</span>
+              <span className="font-mono text-sm bg-[#3d3c30] px-3 py-1 rounded-lg">{order.id}</span>
+            </div>
+            <div className="flex justify-between items-center py-3 border-b border-[#6a684d]/30">
+              <span className="text-[#c5c0a0]">Amount Paid</span>
+              <span className="text-2xl font-bold text-[#e0dbb5]">₹{order.total_amount}</span>
+            </div>
+            <div className="flex justify-between items-center py-3">
+              <span className="text-[#c5c0a0]">Status</span>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                <span className="font-medium">{status}</span>
+              </div>
+            </div>
+          </div>
 
-          <p className="text-sm">
-            <span className="text-[#cfcaa0]">Current Status:</span>{" "}
-            {humanizeStatus(order.order_status, order.shiprocket_status)}
-          </p>
-        </div>
+          {/* Timeline */}
+          <div className="bg-[#3d3c30]/50 px-6 py-5 border-t border-[#6a684d]/30">
+            <p className="font-semibold mb-4 flex items-center gap-2">
+              <Truck className="w-4 h-4 text-[#bdb88c]" />
+              What happens next?
+            </p>
+            <div className="space-y-4">
+              {[
+                { icon: CheckCircle, text: "Your order has been confirmed", done: true },
+                { icon: Package, text: "Courier will be assigned shortly", done: false },
+                { icon: MapPin, text: "You'll receive tracking details once dispatched", done: false }
+              ].map((step, index) => (
+                <div key={index} className="flex items-start gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${step.done ? 'bg-green-500/20' : 'bg-[#6a684d]/30'}`}>
+                    <step.icon className={`w-4 h-4 ${step.done ? 'text-green-400' : 'text-[#bdb88c]'}`} />
+                  </div>
+                  <span className={`text-sm pt-1.5 ${step.done ? 'text-[#e0dbb5]' : 'text-[#c5c0a0]'}`}>
+                    {step.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-        {/* WHAT HAPPENS NEXT */}
-        <div className="bg-[#3d3c30] border border-[#6a684d] rounded-xl p-4 mb-6 text-sm">
-          <p className="mb-2 font-semibold">What happens next?</p>
-          <ul className="list-disc list-inside text-[#cfcaa0] space-y-1">
-            <li>Your order has been confirmed</li>
-            <li>Courier will be assigned shortly</li>
-            <li>You’ll receive tracking details once dispatched</li>
-          </ul>
-        </div>
+          {/* Action Buttons */}
+          <div className="p-6 border-t border-[#6a684d]/30">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Link
+                href={`/track?order_id=${order.id}`}
+                className="flex items-center justify-center gap-2 bg-[#e0dbb5] text-[#3d3c30] px-6 py-3.5 rounded-xl font-semibold hover:bg-white transition-all duration-300 shadow-lg hover:shadow-xl"
+              >
+                <MapPin className="w-4 h-4" />
+                Track Order
+              </Link>
+              {order.awb_code && order.tracking_url && (
+                <a
+                  href={order.tracking_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 border-2 border-[#6a684d] hover:bg-[#3d3c30] px-6 py-3.5 rounded-xl font-semibold transition-all duration-300"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Courier Website
+                </a>
+              )}
+            </div>
 
-        {/* ACTION BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-between">
-          <Link
-            href={`/track?order_id=${order.id}`}
-            className="text-center bg-[#4f4d3e] hover:bg-[#6a684d] text-[#e0dbb5] px-6 py-3 rounded-full transition"
-          >
-            Track Order
-          </Link>
-
-          {order.awb_code && order.tracking_url && (
-            <a
-              href={order.tracking_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-center border border-[#6a684d] hover:bg-[#4f4d3e] px-6 py-3 rounded-full transition"
+            <Link
+              href="/products"
+              className="flex items-center justify-center gap-2 text-[#bdb88c] hover:text-[#e0dbb5] mt-6 transition-colors group"
             >
-              Track on Courier Website
-            </a>
-          )}
-
-          <Link
-            href="/products"
-            className="text-center underline text-[#d1cd9f]"
-          >
-            Continue Shopping
-          </Link>
+              <ShoppingBag className="w-4 h-4" />
+              Continue Shopping
+              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </div>
         </div>
+
+        {/* Help Text */}
+        <p className="text-center text-sm text-[#8a8778] mt-8">
+          Questions about your order? <a href="/contact" className="text-[#bdb88c] hover:text-[#e0dbb5] underline">Contact support</a>
+        </p>
       </div>
     </div>
   );

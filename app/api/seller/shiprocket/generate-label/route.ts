@@ -1,11 +1,25 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
 import shiprocket from "@/utils/shiprocket";
-import { logError } from "@/lib/logger";
+import { logError, logOrder } from "@/lib/logger";
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
-    const params  = await req.json();
+    // Rate limiting
+    const ip = getClientIp(req);
+    const { success } = await adminShippingRateLimit.limit(ip);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+
+    // Authentication - require admin role
+    const { supabase } = await requireRole("admin");
+
+    const params = await req.json();
     const orderId = params.orderId;
 
     if (!orderId) {
@@ -14,8 +28,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    const supabase = await createClient();
 
     // 1️⃣ Fetch order details
     const { data: order, error } = await supabase
@@ -61,14 +73,22 @@ export async function POST(req: Request) {
       })
       .eq("id", orderId);
 
+    logOrder("label_generated", { orderId, label_url: labelRes.label_url });
+
     return NextResponse.json({
       success: true,
       label_url: labelRes.label_url,
     });
   } catch (err) {
+    // Handle auth errors specifically
+    const authResponse = handleAuthError(err);
+    if (authResponse.status !== 500) {
+      return authResponse;
+    }
+
     logError(err as Error, { endpoint: "/api/seller/shiprocket/generate-label" });
     return NextResponse.json(
-      { error: (err as Error).message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

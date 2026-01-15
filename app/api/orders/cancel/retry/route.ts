@@ -69,12 +69,41 @@ export async function POST(req: Request) {
         const forwardShippingCost = order.shipping_cost || 0;
         const warehousePincode = process.env.WAREHOUSE_PINCODE || "382721";
 
+        // Determine package dimensions
+        const isSingleItem = orderItems.length === 1;
+        let packageWeight: number, packageLength: number, packageBreadth: number, packageHeight: number;
+
+        // Default dimensions from env (fallback values)
+        const defaultWeight = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT || "1");
+        const defaultLength = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH || "20");
+        const defaultBreadth = parseFloat(process.env.DEFAULT_PACKAGE_BREADTH || "15");
+        const defaultHeight = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT || "10");
+
+        if (order.package_weight && order.package_length) {
+          packageWeight = order.package_weight;
+          packageLength = order.package_length;
+          packageBreadth = order.package_breadth || defaultBreadth;
+          packageHeight = order.package_height || defaultHeight;
+        } else if (isSingleItem) {
+          const item = orderItems[0];
+          const itemWeight = (item.weight || 0) * item.quantity;
+          packageWeight = itemWeight > 0 ? itemWeight : defaultWeight;
+          packageLength = item.length || defaultLength;
+          packageBreadth = item.breadth || defaultBreadth;
+          packageHeight = item.height || defaultHeight;
+        } else {
+          packageWeight = defaultWeight;
+          packageLength = defaultLength;
+          packageBreadth = defaultBreadth;
+          packageHeight = defaultHeight;
+        }
+
         let returnShippingCost = 80; // fallback
         try {
           returnShippingCost = await getReturnShippingRate({
             pickupPincode: order.shipping_pincode || "",
             deliveryPincode: warehousePincode,
-            weight: 0.5,
+            weight: packageWeight,
           });
         } catch (e) {
           logError(e as Error, { context: "retry_return_shipping_rate_failed" });
@@ -128,10 +157,10 @@ export async function POST(req: Request) {
             })),
             payment_method: "Prepaid",
             sub_total: order.total_amount,
-            length: 20,
-            breadth: 15,
-            height: 10,
-            weight: 0.5,
+            length: packageLength,
+            breadth: packageBreadth,
+            height: packageHeight,
+            weight: packageWeight,
           });
 
           await supabase.from("orders").update({
@@ -160,12 +189,13 @@ export async function POST(req: Request) {
         let refundAmount = order.return_refund_amount;
         if (!refundAmount) {
           const forwardShippingCost = order.shipping_cost || 0;
+          const weightForRate = order.package_weight || 1;
           let returnShippingCost = 80;
           try {
             returnShippingCost = await getReturnShippingRate({
               pickupPincode: order.shipping_pincode || "",
               deliveryPincode: process.env.WAREHOUSE_PINCODE || "382721",
-              weight: 0.5,
+              weight: weightForRate,
             });
           } catch (e) {
             logError(e as Error, { context: "return_delivered_shipping_rate_failed" });
@@ -262,12 +292,13 @@ export async function POST(req: Request) {
         let refundAmount = order.return_refund_amount;
         if (!refundAmount) {
           const forwardShippingCost = order.shipping_cost || 0;
+          const weightForRate = order.package_weight || 1;
           let returnShippingCost = 80;
           try {
             returnShippingCost = await getReturnShippingRate({
               pickupPincode: order.shipping_pincode || "",
               deliveryPincode: process.env.WAREHOUSE_PINCODE || "382721",
-              weight: 0.5,
+              weight: weightForRate,
             });
           } catch (e) {
             logError(e as Error, { context: "return_refund_retry_shipping_rate_failed" });

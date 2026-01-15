@@ -1,24 +1,66 @@
 import shiprocket from "@/utils/shiprocket";
 import { NextResponse } from "next/server";
+import { logError } from "@/lib/logger";
+import { shippingEstimateRateLimit, getClientIp } from "@/lib/rate-limit";
+import { z } from "zod";
+
+// Validation schema for shipping estimate request
+const shippingEstimateSchema = z.object({
+  destination_pincode: z.string().regex(/^\d{6}$/, "Invalid pincode format"),
+  cart_items: z.array(z.object({
+    weight: z.number().optional(),
+    quantity: z.number().int().positive(),
+  })).min(1, "Cart must have at least one item"),
+});
+
+interface CartItem {
+  weight?: number;
+  quantity: number;
+}
+
+interface CourierCompany {
+  courier_name: string;
+  rate: number;
+  etd?: string;
+  courier_company_id: number;
+}
 
 export async function POST(req: Request) {
-  const { destination_pincode, cart_items } = await req.json();
-
-  console.log(cart_items);
-  // Calculate total weight of order
-  const totalWeight = cart_items.reduce(
-    (sum: number, item: any) =>
-      sum + ((item.weight || 0.5) * item.quantity),
-    0
-  );
-
   try {
-    // 1️⃣ Authenticate with Shiprocket
+    // Rate limiting
+    const ip = getClientIp(req);
+    const { success } = await shippingEstimateRateLimit.limit(ip);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+
+    const body = await req.json();
+
+    // Validate input
+    const parseResult = shippingEstimateSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Invalid request", details: parseResult.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { destination_pincode, cart_items } = parseResult.data;
+
+    // Calculate total weight of order
+    const totalWeight = cart_items.reduce(
+      (sum: number, item: CartItem) =>
+        sum + ((item.weight || 0.5) * item.quantity),
+      0
+    );
+
+    // Authenticate with Shiprocket
     const token = await shiprocket.login();
 
-
-    console.log(token);
-    // 2️⃣ Call serviceability API
+    // Call serviceability API
     const srRes = await fetch(
       `https://apiv2.shiprocket.in/v1/external/courier/serviceability?pickup_postcode=${process.env.STORE_PINCODE}&delivery_postcode=${destination_pincode}&weight=${totalWeight}&cod=0`,
       {
@@ -31,16 +73,13 @@ export async function POST(req: Request) {
     );
 
     const data = await srRes.json();
-    console.log("Shiprocket serviceability response:", data);
-
-    const list = data?.data?.available_courier_companies || [];
-    console.log("Available couriers:", list);
+    const list: CourierCompany[] = data?.data?.available_courier_companies || [];
 
     // Sort couriers by price low → high
-    list.sort((a: any, b: any) => a.rate - b.rate);
+    list.sort((a, b) => a.rate - b.rate);
 
     return NextResponse.json({
-      couriers: list.map((c: any) => ({
+      couriers: list.map((c) => ({
         name: c.courier_name,
         rate: c.rate,
         etd: c.etd || null,
@@ -48,7 +87,7 @@ export async function POST(req: Request) {
       })),
     });
   } catch (err) {
-    console.error(err);
+    logError(err as Error, { endpoint: "/api/seller/shiprocket/estimate-shipping" });
     return NextResponse.json(
       { error: "Failed to calculate shipping." },
       { status: 500 }

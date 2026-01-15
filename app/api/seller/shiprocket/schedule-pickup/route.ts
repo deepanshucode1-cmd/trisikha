@@ -1,22 +1,33 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
 import shiprocket from "@/utils/shiprocket";
+import { logError, logOrder } from "@/lib/logger";
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    // Rate limiting
+    const ip = getClientIp(req);
+    const { success } = await adminShippingRateLimit.limit(ip);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+
+    // Authentication - require admin role
+    const { supabase } = await requireRole("admin");
+
     const body = await req.json();
     const orderId = body.orderId;
 
-    console.log(body);
-    console.log("Scheduling pickup for order ID:", orderId);
     if (!orderId) {
       return NextResponse.json(
         { error: "Missing orderId" },
         { status: 400 }
       );
     }
-
-    const supabase = await createClient();
 
     // 1️⃣ Fetch order details (ensure shipment exists)
     const { data: order, error } = await supabase
@@ -60,15 +71,23 @@ export async function POST(req: Request) {
       })
       .eq("id", orderId);
 
+    logOrder("pickup_scheduled", { orderId, pickup_data: pickupRes });
+
     return NextResponse.json({
       success: true,
       message: "Pickup scheduled successfully",
       data: pickupRes,
     });
-  } catch (err: any) {
-    console.error("Schedule pickup API error:", err);
+  } catch (err) {
+    // Handle auth errors specifically
+    const authResponse = handleAuthError(err);
+    if (authResponse.status !== 500) {
+      return authResponse;
+    }
+
+    logError(err as Error, { endpoint: "/api/seller/shiprocket/schedule-pickup" });
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

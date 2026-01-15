@@ -1,9 +1,24 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import shiprocket from "@/utils/shiprocket"; // your helper wrapper
+import shiprocket from "@/utils/shiprocket";
+import { logError, logOrder } from "@/lib/logger";
+import { requireRole, handleAuthError } from "@/lib/auth";
+import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    // Rate limiting
+    const ip = getClientIp(req);
+    const { success } = await adminShippingRateLimit.limit(ip);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+
+    // Authentication - require admin role
+    const { supabase } = await requireRole("admin");
+
     const { order_ids } = await req.json();
 
     if (!order_ids || !Array.isArray(order_ids)) {
@@ -12,8 +27,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    const supabase = await createClient();
 
     // 1. Fetch orders
     const { data: orders } = await supabase
@@ -80,14 +93,22 @@ export async function POST(req: Request) {
       })
       .in("id", order_ids);
 
+    logOrder("manifest_generated", { order_ids, manifest_id: batch.id, manifest_url: batch.manifest_url });
+
     return NextResponse.json({
       success: true,
       manifest: batch,
     });
-  } catch (err: any) {
-    console.error(err);
+  } catch (err) {
+    // Handle auth errors specifically
+    const authResponse = handleAuthError(err);
+    if (authResponse.status !== 500) {
+      return authResponse;
+    }
+
+    logError(err as Error, { endpoint: "/api/seller/shiprocket/generate-manifest-batch" });
     return NextResponse.json(
-      { error: err?.message ?? "Unexpected error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
