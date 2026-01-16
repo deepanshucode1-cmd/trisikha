@@ -14,6 +14,7 @@ import {
   getStateCode,
   TAX_CONFIG,
 } from "@/lib/tax-config";
+import { requireCsrf } from "@/lib/csrf";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -22,6 +23,18 @@ const razorpay = new Razorpay({
 
 export async function POST(req: Request) {
   try {
+    // CSRF validation
+    const csrfResult = await requireCsrf(req);
+    if (!csrfResult.valid) {
+      logSecurityEvent("csrf_validation_failed", {
+        endpoint: "/api/checkout",
+      });
+      return NextResponse.json(
+        { error: csrfResult.error },
+        { status: 403 }
+      );
+    }
+
     // Rate limiting
     const ip = getClientIp(req);
     const { success, limit, reset, remaining } = await checkoutRateLimit.limit(ip);

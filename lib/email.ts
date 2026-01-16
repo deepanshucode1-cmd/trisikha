@@ -1,6 +1,37 @@
 import nodemailer from "nodemailer";
 import { logError, logOrder } from "@/lib/logger";
 
+/**
+ * HTML escape utility to prevent XSS in emails
+ * Use this for any user-provided content embedded in HTML emails
+ */
+export function escapeHtml(unsafe: string | null | undefined): string {
+  if (!unsafe) return "";
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Sanitize URL to prevent javascript: and other dangerous protocols
+ */
+export function sanitizeUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    // Only allow http and https protocols
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "";
+    }
+    return url;
+  } catch {
+    return "";
+  }
+}
+
 // Singleton transporter instance
 let transporter: nodemailer.Transporter | null = null;
 
@@ -66,13 +97,14 @@ export async function sendOrderConfirmation(email: string, orderId: string, tota
 }
 
 export async function sendOrderShipped(email: string, orderId: string, trackingUrl?: string): Promise<boolean> {
+  const safeTrackingUrl = sanitizeUrl(trackingUrl);
   return sendEmail({
     to: email,
     subject: "TrishikhaOrganics: Order has been shipped",
     html: `
       <h2>Your order is on its way!</h2>
-      <p>Your order <strong>#${orderId}</strong> has been shipped.</p>
-      ${trackingUrl ? `<p><a href="${trackingUrl}">Track your order</a></p>` : ''}
+      <p>Your order <strong>#${escapeHtml(orderId)}</strong> has been shipped.</p>
+      ${safeTrackingUrl ? `<p><a href="${escapeHtml(safeTrackingUrl)}">Track your order</a></p>` : ''}
       <br/>
       <p>Thank you for shopping with Trishikha Organics!</p>
     `,

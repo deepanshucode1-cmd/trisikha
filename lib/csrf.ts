@@ -3,7 +3,19 @@ import crypto from "crypto";
 
 const CSRF_TOKEN_NAME = "csrf_token";
 const CSRF_HEADER_NAME = "x-csrf-token";
-const CSRF_SECRET = process.env.CSRF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32) || "default-csrf-secret-change-me";
+
+// Get CSRF secret - must be properly configured in production
+function getCsrfSecret(): string {
+  const secret = process.env.CSRF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32);
+
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("CSRF_SECRET must be set in production environment");
+  }
+
+  return secret || "dev-csrf-secret-for-local-only";
+}
+
+const CSRF_SECRET = getCsrfSecret();
 
 /**
  * Generate a CSRF token

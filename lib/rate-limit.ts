@@ -4,6 +4,16 @@ import { Redis } from "@upstash/redis";
 // Check if Upstash Redis credentials are available
 const hasRedisCredentials = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN;
 
+// CRITICAL: In-memory rate limiting does NOT work on serverless platforms (Vercel, AWS Lambda, etc.)
+// because each invocation may run in a different container with separate memory.
+// For production on Vercel, you MUST configure Upstash Redis.
+if (!hasRedisCredentials && (process.env.VERCEL || process.env.NODE_ENV === "production")) {
+  console.error(
+    "[SECURITY WARNING] Rate limiting is using in-memory fallback which does NOT work on serverless platforms. " +
+    "Configure UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for proper rate limiting."
+  );
+}
+
 // In-memory fallback for development (warning: does not work across serverless function instances)
 class InMemoryRateLimiter {
   private store: Map<string, { count: number; resetAt: number }> = new Map();

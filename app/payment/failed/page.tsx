@@ -11,7 +11,9 @@ function PaymentFailedContent() {
   const orderId = searchParams.get("orderId");
   const reason = searchParams.get("reason");
 
-  const formatReason = (reasonCode: string) => {
+  const formatReason = (reasonCode: string | null) => {
+    if (!reasonCode) return "An error occurred during payment";
+
     const reasons: Record<string, string> = {
       'PAYMENT_TIMEOUT': 'Payment session timed out',
       'INSUFFICIENT_FUNDS': 'Insufficient funds in your account',
@@ -19,8 +21,14 @@ function PaymentFailedContent() {
       'TECHNICAL_ERROR': 'A technical error occurred',
       'CANCELLED_BY_USER': 'Payment was cancelled',
       'INVALID_CARD': 'Card details were invalid',
+      'verification_failed': 'Payment verification failed',
+      'server_error': 'A server error occurred',
+      'cancelled': 'Payment was cancelled',
+      'failed': 'Payment failed',
     };
-    return reasons[reasonCode] || reasonCode.replace(/_/g, " ");
+
+    // Only return known reason codes to prevent XSS
+    return reasons[reasonCode] || "An error occurred during payment";
   };
 
   return (
@@ -121,19 +129,19 @@ function PaymentFailedContent() {
             <p className="text-sm font-medium mb-3 text-center">Need help? Contact us</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <a
-                href="tel:+919876543210"
+                href="tel:+91 7984130253"
                 className="flex items-center justify-center gap-2 text-sm text-[#bdb88c] hover:text-[#e0dbb5] transition-colors"
               >
                 <Phone className="w-4 h-4" />
-                +91 98765 43210
+                +91 7984130253
               </a>
               <span className="hidden sm:inline text-[#6a684d]">|</span>
               <a
-                href="mailto:support@trishikha.com"
+                href="mailto:trishikhaorganic@gmail.com"
                 className="flex items-center justify-center gap-2 text-sm text-[#bdb88c] hover:text-[#e0dbb5] transition-colors"
               >
                 <Mail className="w-4 h-4" />
-                support@trishikha.com
+                trishikhaorganic@gmail.com
               </a>
             </div>
           </div>
