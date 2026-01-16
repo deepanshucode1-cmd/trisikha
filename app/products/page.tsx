@@ -8,7 +8,7 @@ import { Leaf, Shield, Recycle, Truck, BadgeCheck, Sparkles, ArrowRight, CheckCi
 export default function Products() {
   return (
     <div className="min-h-screen bg-[#f5f5f0] text-[#3d3c30]">
-      <Header/>
+      <Header />
 
       <main>
         {/* Hero Section */}
@@ -36,10 +36,6 @@ export default function Products() {
             <div className="flex flex-wrap justify-center gap-4 mt-8 animate-fade-in-up animation-delay-300">
               <div className="flex items-center gap-2 text-sm text-white/80">
                 <CheckCircle2 className="w-4 h-4 text-green-400" />
-                Free Shipping
-              </div>
-              <div className="flex items-center gap-2 text-sm text-white/80">
-                <CheckCircle2 className="w-4 h-4 text-green-400" />
                 100% Organic
               </div>
               <div className="flex items-center gap-2 text-sm text-white/80">
@@ -53,7 +49,7 @@ export default function Products() {
           <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#f5f5f0] to-transparent" />
         </section>
 
-        <SellProducts/>
+        <SellProducts />
 
         {/* Benefits Section */}
         <section className="py-24 px-6 lg:px-16 bg-gradient-to-br from-[#323025] via-[#3d3c30] to-[#4a493a] text-[#e0dbb5] relative overflow-hidden">
@@ -179,7 +175,7 @@ export default function Products() {
         </section>
       </main>
 
-      <Footer/>
+      <Footer />
     </div>
   );
 }

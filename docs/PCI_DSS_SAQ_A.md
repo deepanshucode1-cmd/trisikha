@@ -143,7 +143,7 @@ connect-src 'self' https://*.supabase.co https://api.razorpay.com
 
 ### Razorpay PCI DSS Evidence
 - Razorpay is listed as a **PCI DSS Level 1 Service Provider**
-- Download their Attestation of Compliance (AOC) from: [Razorpay Dashboard → Settings → Compliance]
+- To obtain their Attestation of Compliance (AOC): Contact Razorpay support at **compliance@razorpay.com**
 - Store the AOC with this document
 
 ---
