@@ -2,10 +2,17 @@ import { NextResponse } from "next/server";
 import shiprocket from "@/utils/shiprocket";
 import { logError, logOrder } from "@/lib/logger";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireCsrf } from "@/lib/csrf";
 import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    // CSRF protection for admin routes
+    const csrfResult = await requireCsrf(req);
+    if (!csrfResult.valid) {
+      return NextResponse.json({ error: csrfResult.error }, { status: 403 });
+    }
+
     // Rate limiting
     const ip = getClientIp(req);
     const { success } = await adminShippingRateLimit.limit(ip);
@@ -43,20 +50,32 @@ export async function POST(req: Request) {
 
     const shipment_ids: string[] = [];
     const shiprocket_order_not_created: string[] = [];
+    const awb_not_assigned: string[] = [];
 
-    // 2. Ensure AWBs exist
+    // 2. Ensure orders are registered and AWBs are assigned
     for (const order of orders) {
       if (order.shiprocket_manifest_generated) continue;
-      if(order.shiprocket_shipment_id===null){
+      if (order.shiprocket_shipment_id === null) {
         shiprocket_order_not_created.push(order.id);
+        continue;
+      }
+      if (!order.shiprocket_awb_code) {
+        awb_not_assigned.push(order.id);
         continue;
       }
       shipment_ids.push(order.shiprocket_shipment_id);
     }
 
-    if(shiprocket_order_not_created.length>0){
+    if (shiprocket_order_not_created.length > 0) {
       return NextResponse.json(
-        { error: `Shiprocket order not created for orders: ${shiprocket_order_not_created.join(", ")}, Please assign AWB first` },
+        { error: `Shiprocket order not created for orders: ${shiprocket_order_not_created.join(", ")}. Please assign AWB first.` },
+        { status: 400 }
+      );
+    }
+
+    if (awb_not_assigned.length > 0) {
+      return NextResponse.json(
+        { error: `AWB not assigned for orders: ${awb_not_assigned.join(", ")}. AWB assignment may be pending - please retry.` },
         { status: 400 }
       );
     }

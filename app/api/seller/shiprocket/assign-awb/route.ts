@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import shiprocket, { retryAssignAWB } from "@/utils/shiprocket";
 import { logError, logOrder } from "@/lib/logger";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireCsrf } from "@/lib/csrf";
 import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 
 interface OrderItem {
@@ -18,6 +19,12 @@ interface OrderItem {
 
 export async function POST(request: Request) {
   try {
+    // CSRF protection for admin routes
+    const csrfResult = await requireCsrf(request);
+    if (!csrfResult.valid) {
+      return NextResponse.json({ error: csrfResult.error }, { status: 403 });
+    }
+
     // Rate limiting
     const ip = getClientIp(request);
     const { success } = await adminShippingRateLimit.limit(ip);
@@ -54,15 +61,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: order_items, error: itemError } = await supabase
-      .from("order_items")
-      .select("*")
-      .eq("order_id", order_id);
-
-    if (itemError) {
+    // Check if AWB is already assigned
+    if (order_data.shiprocket_awb_code) {
       return NextResponse.json(
-        { error: "Order items not found" },
-        { status: 404 }
+        { error: "AWB already assigned for this order" },
+        { status: 400 }
       );
     }
 
@@ -72,6 +75,42 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Failed to authenticate with Shipping partner" },
         { status: 500 }
+      );
+    }
+
+    // RETRY CASE: If order already exists in Shiprocket (has shipment_id), just retry AWB
+    if (order_data.shiprocket_shipment_id && order_data.shiprocket_order_id) {
+      logOrder("retrying_awb_assignment", { order_id, shipment_id: order_data.shiprocket_shipment_id });
+
+      const awbResponse = await retryAssignAWB({
+        token: token,
+        shipmentId: order_data.shiprocket_shipment_id,
+        orderId: order_id,
+        shiprocket_order_id: order_data.shiprocket_order_id,
+        supabase: supabase
+      });
+
+      if (awbResponse && !awbResponse.success) {
+        logOrder("awb_retry_failed", { order_id, shipment_id: order_data.shiprocket_shipment_id });
+        return NextResponse.json({ status: 'awb_pending' }, { status: 200 });
+      }
+
+      logOrder("awb_assigned_on_retry", { order_id, shipment_id: order_data.shiprocket_shipment_id });
+      return NextResponse.json(
+        { status: "success", message: "AWB assigned successfully" },
+        { status: 200 }
+      );
+    }
+
+    const { data: order_items, error: itemError } = await supabase
+      .from("order_items")
+      .select("*")
+      .eq("order_id", order_id);
+
+    if (itemError) {
+      return NextResponse.json(
+        { error: "Order items not found" },
+        { status: 404 }
       );
     }
 

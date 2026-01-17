@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useCsrf } from "@/hooks/useCsrf";
 
+// --- Types ---
 type Order = {
   id: string;
   shiprocket_status?: string | null;
@@ -10,8 +12,23 @@ type Order = {
   total_amount?: number | null;
   shipping_first_name?: string | null;
   shipping_last_name?: string | null;
-  item_count?: number | null;
+  // Shiprocket fields
+  shiprocket_order_id?: string | null;
+  shiprocket_shipment_id?: string | null;
+  shiprocket_awb_code?: string | null;
+  shiprocket_label_url?: string | null;
+  shiprocket_manifest_generated?: boolean | null;
+  shiprocket_manifest_url?: string | null;
+  pickup_scheduled_at?: string | null;
 };
+
+/**
+ * Simplified Shipping Stages:
+ * 1. new - Order created, needs AWB assignment
+ * 2. awb_assigned - AWB assigned, ready to ship (Label + Pickup + Manifest)
+ * 3. shipped - Fully processed, awaiting courier pickup
+ */
+type ShippingStage = "new" | "awb_assigned" | "shipped";
 
 type PackageDimensions = {
   weight: number;
@@ -20,20 +37,73 @@ type PackageDimensions = {
   height: number;
 };
 
+// --- Helper Functions ---
+function getShippingStage(order: Order): ShippingStage {
+  // Shipped = manifest generated (means label + pickup + manifest all done)
+  if (order.shiprocket_manifest_generated) {
+    return "shipped";
+  }
+  // AWB Assigned = has AWB code, ready to ship
+  if (order.shiprocket_awb_code) {
+    return "awb_assigned";
+  }
+  // New = needs AWB assignment
+  return "new";
+}
+
+const STAGE_CONFIG: Record<ShippingStage, {
+  label: string;
+  color: string;
+  bgColor: string;
+  action: string;
+  bulkAction: string;
+  description: string;
+}> = {
+  new: {
+    label: "New Orders",
+    color: "text-blue-600",
+    bgColor: "bg-blue-100",
+    action: "Assign AWB",
+    bulkAction: "Assign AWB to Selected",
+    description: "Register order with Shiprocket and assign courier",
+  },
+  awb_assigned: {
+    label: "Ready to Ship",
+    color: "text-yellow-600",
+    bgColor: "bg-yellow-100",
+    action: "Ship Order",
+    bulkAction: "Ship Selected Orders",
+    description: "Generate label, schedule pickup & create manifest",
+  },
+  shipped: {
+    label: "Shipped",
+    color: "text-green-600",
+    bgColor: "bg-green-100",
+    action: "",
+    bulkAction: "",
+    description: "Awaiting courier pickup",
+  },
+};
+
+const STAGE_ORDER: ShippingStage[] = ["new", "awb_assigned", "shipped"];
+
 export default function OrderManagement() {
+  // --- CSRF Protection ---
+  const { csrfFetch, getCsrfHeaders } = useCsrf();
+
   // --- Tab State ---
-  const [activeTab, setActiveTab] = useState<"ready_to_ship" | "cancellation_failed">("ready_to_ship");
+  const [activeMainTab, setActiveMainTab] = useState<"shipping" | "cancellation_failed">("shipping");
+  const [activeShippingStage, setActiveShippingStage] = useState<ShippingStage>("new");
 
   // --- Shared State ---
   const [orders, setOrders] = useState<Order[]>([]);
+  const [cancellationFailedOrders, setCancellationFailedOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Ready to Ship Specific State ---
+  // --- Selection State ---
   const [selected, setSelected] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-
-  // map of orderId -> boolean (for loading spinners on buttons)
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
   // --- Dimension Modal State ---
@@ -45,6 +115,22 @@ export default function OrderManagement() {
     breadth: 15,
     height: 10,
   });
+
+  // --- Computed: Orders grouped by stage ---
+  const ordersByStage = useMemo(() => {
+    const grouped: Record<ShippingStage, Order[]> = {
+      new: [],
+      awb_assigned: [],
+      shipped: [],
+    };
+    for (const order of orders) {
+      const stage = getShippingStage(order);
+      grouped[stage].push(order);
+    }
+    return grouped;
+  }, [orders]);
+
+  const currentStageOrders = ordersByStage[activeShippingStage];
 
   // --- Helpers ---
   const setOrderActionLoading = (orderId: string, val: boolean) => {
@@ -59,40 +145,45 @@ export default function OrderManagement() {
     );
   };
 
-  const selectAll = () => {
-    setSelected(orders.map((o) => o.id));
+  const selectAllInStage = () => {
+    setSelected(currentStageOrders.map((o) => o.id));
   };
 
   const clearSelection = () => setSelected([]);
 
+  // Clear selection when switching stages
+  useEffect(() => {
+    setSelected([]);
+  }, [activeShippingStage]);
+
   // --- API Calls ---
 
-  // 1. Fetch Orders (Dynamic based on Tab)
+  // Fetch Orders
   useEffect(() => {
     let mounted = true;
 
     const fetchOrders = async () => {
       setLoading(true);
       setError(null);
-      // Reset selection when switching tabs
-      setSelected([]);
 
       try {
-        // DETECT ENDPOINT BASED ON TAB
-        const endpoint = activeTab === "ready_to_ship"
-          ? "/api/orders/get-new-orders"
-          : "/api/orders/get-cancellation-failed"; // <--- Ensure this endpoint exists
+        const [shippingRes, cancellationRes] = await Promise.all([
+          fetch("/api/orders/get-new-orders"),
+          fetch("/api/orders/get-cancellation-failed"),
+        ]);
 
-        const res = await fetch(endpoint);
+        if (!shippingRes.ok) throw new Error("Failed to fetch shipping orders");
 
-        if (!res.ok) {
-          throw new Error("Failed to fetch orders");
+        const shippingJson = await shippingRes.json();
+        if (mounted) {
+          setOrders(shippingJson.orders || []);
         }
 
-        const json = await res.json();
-
-        if (mounted) {
-          setOrders(json.orders || []);
+        if (cancellationRes.ok) {
+          const cancellationJson = await cancellationRes.json();
+          if (mounted) {
+            setCancellationFailedOrders(cancellationJson.orders || []);
+          }
         }
       } catch (err) {
         console.error("Fetch orders failed:", err);
@@ -107,83 +198,16 @@ export default function OrderManagement() {
     return () => {
       mounted = false;
     };
-  }, [activeTab]);
+  }, []);
 
-  // 2. Generic Seller API Helper
-  const callSellerApi = async (path: string, body: any) => {
-    const res = await fetch(`/api/seller/shiprocket/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(txt || `Request failed: ${res.status}`);
-    }
-    return res.json();
-  };
+  // --- Single Order Actions ---
 
-  // 3. Batch Manifest (Ready to Ship)
-  const generateManifestBatch = async () => {
-    if (selected.length === 0) return alert("Select at least one order.");
-    setSubmitting(true);
-
-    try {
-      const res = await fetch("/api/seller/shiprocket/generate-manifest-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order_ids: selected }),
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        alert(result.error || "Failed to generate manifest.");
-      } else {
-        alert("Manifest generated successfully!");
-        clearSelection();
-        window.location.reload();
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Manifest failed.");
-    }
-    setSubmitting(false);
-  };
-
-  // 4. Single Order Actions (Ready to Ship)
-  const generateLabel = async (orderId: string) => {
-    try {
-      setOrderActionLoading(orderId, true);
-      await callSellerApi("generate-label", { orderId: orderId });
-      alert("Label generated successfully.");
-    } catch (err: any) {
-      console.error("Generate label error:", err);
-      alert("Failed to generate label: " + (err?.message ?? err));
-    } finally {
-      setOrderActionLoading(orderId, false);
-    }
-  };
-
-  const schedulePickup = async (orderId: string) => {
-    if (!confirm("Schedule pickup for this order?")) return;
-    try {
-      setOrderActionLoading(orderId, true);
-      await callSellerApi("schedule-pickup", { orderId: orderId });
-      alert("Pickup scheduled successfully.");
-    } catch (err: any) {
-      console.error("Schedule pickup error:", err);
-      alert("Failed to schedule pickup: " + (err?.message ?? err));
-    } finally {
-      setOrderActionLoading(orderId, false);
-    }
-  };
-
-  const processOrder = async (orderId: string, providedDimensions?: PackageDimensions) => {
+  // Step 1: Assign AWB (creates Shiprocket order + assigns courier)
+  const assignAwb = async (orderId: string, providedDimensions?: PackageDimensions) => {
     try {
       setOrderActionLoading(orderId, true);
 
-      // First, check total quantity for this order
+      // Check total quantity for this order
       const itemCountRes = await fetch(`/api/orders/get-order-item-count/${orderId}`);
       if (!itemCountRes.ok) {
         throw new Error("Failed to check order items");
@@ -199,8 +223,8 @@ export default function OrderManagement() {
         return;
       }
 
-      // Proceed with order processing
-      const payload: any = { order_id: orderId };
+      // Proceed with AWB assignment
+      const payload: Record<string, unknown> = { order_id: orderId };
       if (providedDimensions) {
         payload.package_weight = providedDimensions.weight;
         payload.package_length = providedDimensions.length;
@@ -208,22 +232,29 @@ export default function OrderManagement() {
         payload.package_height = providedDimensions.height;
       }
 
-      const res = await fetch("/api/seller/shiprocket/assign-awb", {
+      const res = await csrfFetch("/api/seller/shiprocket/assign-awb", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
         body: JSON.stringify(payload),
       });
 
+      const result = await res.json();
+
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || "Failed!");
+        throw new Error(result.error || "Failed to assign AWB");
       }
-      await res.json();
-      alert("Order registered and AWB assigned successfully!");
+
+      // Handle awb_pending status
+      if (result.status === "awb_pending") {
+        alert("Order registered with Shiprocket. AWB assignment is pending - please retry shortly.");
+      } else {
+        alert("AWB assigned successfully! Order is now ready to ship.");
+      }
       window.location.reload();
-    } catch (err: any) {
-      console.error("Shiprocket error:", err);
-      alert(err.message ?? "Failed to process order");
+    } catch (err: unknown) {
+      console.error("Assign AWB error:", err);
+      const message = err instanceof Error ? err.message : "Failed to assign AWB";
+      alert(message);
     } finally {
       setOrderActionLoading(orderId, false);
     }
@@ -232,23 +263,112 @@ export default function OrderManagement() {
   const handleDimensionSubmit = () => {
     if (!dimensionOrderId) return;
     setShowDimensionModal(false);
-    processOrder(dimensionOrderId, dimensions);
+    assignAwb(dimensionOrderId, dimensions);
   };
 
-  // 5. Retry Cancellation (Cancellation Failed Tab)
+  // Step 2: Ship Order (generates label + schedules pickup + creates manifest)
+  const shipOrder = async (orderId: string) => {
+    try {
+      setOrderActionLoading(orderId, true);
+
+      const res = await csrfFetch("/api/seller/shiprocket/ship", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ orderId }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to ship order");
+      }
+
+      alert("Order shipped successfully! Label and manifest generated.");
+
+      // Open label in new tab if available
+      if (result.label_url) {
+        window.open(result.label_url, "_blank");
+      }
+
+      window.location.reload();
+    } catch (err: unknown) {
+      console.error("Ship order error:", err);
+      const message = err instanceof Error ? err.message : "Failed to ship order";
+      alert(message);
+    } finally {
+      setOrderActionLoading(orderId, false);
+    }
+  };
+
+  // --- Bulk Actions ---
+
+  const handleBulkAction = async () => {
+    if (selected.length === 0) {
+      alert("Please select at least one order.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      switch (activeShippingStage) {
+        case "new":
+          // Bulk AWB assignment - process one by one (dimensions might be needed)
+          for (const orderId of selected) {
+            await assignAwb(orderId);
+          }
+          break;
+
+        case "awb_assigned":
+          // Bulk ship - process one by one
+          let successCount = 0;
+          let failCount = 0;
+
+          for (const orderId of selected) {
+            try {
+              const res = await csrfFetch("/api/seller/shiprocket/ship", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+                body: JSON.stringify({ orderId }),
+              });
+
+              if (res.ok) {
+                successCount++;
+              } else {
+                failCount++;
+              }
+            } catch {
+              failCount++;
+            }
+          }
+
+          alert(`Shipped ${successCount} orders. ${failCount > 0 ? `${failCount} failed.` : ""}`);
+          window.location.reload();
+          break;
+
+        default:
+          break;
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // --- Retry Cancellation ---
   const retryCancellation = async (orderId: string) => {
     if (!confirm("Retry cancelling this order?")) return;
 
     try {
-      setOrderActionLoading(orderId, true);
+      setActionLoading((s) => ({ ...s, [orderId]: true }));
 
-      const res = await fetch("/api/orders/cancel/retry", {
+      const res = await csrfFetch("/api/orders/cancel/retry", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          ...getCsrfHeaders(),
         },
-        body: JSON.stringify({ orderId: orderId }),
+        body: JSON.stringify({ orderId }),
       });
 
       let data;
@@ -258,68 +378,258 @@ export default function OrderManagement() {
         data = null;
       }
 
-      console.log("Retry response:", res.status, data);
-
       if (!res.ok) {
         throw new Error(data?.error || "Cancellation retry failed");
       }
 
       alert("Cancellation retry initiated successfully.");
       window.location.reload();
-
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Retry error:", err);
-      alert(err.message || "Failed to retry cancellation");
+      const message = err instanceof Error ? err.message : "Failed to retry cancellation";
+      alert(message);
     } finally {
-      setOrderActionLoading(orderId, false);
+      setActionLoading((s) => ({ ...s, [orderId]: false }));
     }
+  };
+
+  // --- Render Helpers ---
+
+  const renderOrderCard = (order: Order, stage: ShippingStage) => {
+    const formattedDate = order.created_at
+      ? new Date(order.created_at).toLocaleDateString("en-IN", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "N/A";
+    const isLoading = actionLoading[order.id];
+    const config = STAGE_CONFIG[stage];
+
+    const handlePrimaryAction = () => {
+      switch (stage) {
+        case "new":
+          assignAwb(order.id);
+          break;
+        case "awb_assigned":
+          shipOrder(order.id);
+          break;
+        default:
+          break;
+      }
+    };
+
+    return (
+      <div
+        key={order.id}
+        className="bg-white hover:shadow-lg transition-shadow border border-gray-200 rounded-lg overflow-hidden"
+      >
+        {/* Header */}
+        <div className="p-4 pb-3 flex justify-between items-start">
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.color}`}
+          >
+            {config.label}
+          </span>
+          {stage !== "shipped" && (
+            <input
+              type="checkbox"
+              checked={selected.includes(order.id)}
+              onChange={() => toggleSelection(order.id)}
+              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 ml-2"
+            />
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="p-4 pt-0 space-y-3">
+          <div>
+            <p className="text-2xl font-bold text-gray-900">
+              ₹{order.total_amount?.toLocaleString("en-IN")}
+            </p>
+            {order.shipping_first_name && (
+              <p className="text-sm text-gray-600 mt-1">{order.shipping_first_name}</p>
+            )}
+          </div>
+
+          {/* Shiprocket Info */}
+          <div className="space-y-1 text-xs text-gray-500">
+            <p>Created: {formattedDate}</p>
+            {order.shiprocket_awb_code && (
+              <p className="font-mono">AWB: {order.shiprocket_awb_code}</p>
+            )}
+            {/* Show AWB pending indicator */}
+            {stage === "new" && order.shiprocket_shipment_id && !order.shiprocket_awb_code && (
+              <p className="text-orange-600 font-medium">AWB assignment pending - retry</p>
+            )}
+            {order.shiprocket_label_url && (
+              <a
+                href={order.shiprocket_label_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline block"
+              >
+                Download Label
+              </a>
+            )}
+          </div>
+
+          <Link
+            href={`/seller/orders/${order.id}`}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            View Details →
+          </Link>
+        </div>
+
+        {/* Actions */}
+        {stage !== "shipped" && (
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={handlePrimaryAction}
+              disabled={isLoading}
+              className="w-full px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex justify-center items-center font-medium"
+            >
+              {isLoading && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              )}
+              {stage === "new" && order.shiprocket_shipment_id && !order.shiprocket_awb_code
+                ? "Retry AWB Assignment"
+                : config.action}
+            </button>
+            <p className="text-xs text-gray-500 mt-2 text-center">{config.description}</p>
+          </div>
+        )}
+
+        {/* Shipped - Show status and download links */}
+        {stage === "shipped" && (
+          <div className="p-4 border-t border-gray-100 space-y-2">
+            <p className="text-sm text-center text-green-600 font-medium">
+              Awaiting courier pickup
+            </p>
+            <div className="flex gap-2">
+              {order.shiprocket_label_url && (
+                <a
+                  href={order.shiprocket_label_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-center"
+                >
+                  Label
+                </a>
+              )}
+              {order.shiprocket_manifest_url && (
+                <a
+                  href={order.shiprocket_manifest_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-3 py-2 text-sm border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 text-center"
+                >
+                  Manifest
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderCancellationFailedCard = (order: Order) => {
+    const formattedDate = order.created_at
+      ? new Date(order.created_at).toLocaleDateString("en-IN", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "N/A";
+    const isLoading = actionLoading[order.id];
+
+    return (
+      <div
+        key={order.id}
+        className="bg-white hover:shadow-lg transition-shadow border border-red-200 rounded-lg overflow-hidden"
+      >
+        <div className="p-4 pb-3">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            Failed Cancellation
+          </span>
+        </div>
+        <div className="p-4 pt-0 space-y-3">
+          <div>
+            <p className="text-2xl font-bold text-gray-900">
+              ₹{order.total_amount?.toLocaleString("en-IN")}
+            </p>
+            {order.shipping_first_name && (
+              <p className="text-sm text-gray-600 mt-1">{order.shipping_first_name}</p>
+            )}
+          </div>
+          <p className="text-sm text-gray-500">Created: {formattedDate}</p>
+          <Link
+            href={`/seller/orders/cancellation-requested/${order.id}`}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            View Details →
+          </Link>
+        </div>
+        <div className="p-4 border-t border-gray-100">
+          <button
+            onClick={() => retryCancellation(order.id)}
+            disabled={isLoading}
+            className="w-full px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex justify-center items-center font-medium transition-colors"
+          >
+            {isLoading && (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            )}
+            Retry Cancellation
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="mb-6 pb-2">
         <h1 className="text-3xl font-bold text-gray-900">Order Management</h1>
         <p className="text-gray-600 mt-1">Manage shipments and exception flows.</p>
       </div>
 
-      {/* --- TABS --- */}
+      {/* Main Tabs: Shipping vs Cancellation Failed */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           <button
-            onClick={() => setActiveTab("ready_to_ship")}
-            className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
-              ${activeTab === "ready_to_ship"
+            onClick={() => setActiveMainTab("shipping")}
+            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeMainTab === "shipping"
                 ? "border-blue-500 text-blue-600"
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }
-            `}
+            }`}
           >
-            Ready to Ship
+            Shipping ({orders.length})
           </button>
           <button
-            onClick={() => setActiveTab("cancellation_failed")}
-            className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors
-              ${activeTab === "cancellation_failed"
+            onClick={() => setActiveMainTab("cancellation_failed")}
+            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeMainTab === "cancellation_failed"
                 ? "border-red-500 text-red-600"
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }
-            `}
+            }`}
           >
-            Cancellation Failed
+            Cancellation Failed ({cancellationFailedOrders.length})
           </button>
         </nav>
       </div>
 
-      {/* --- ERROR STATE --- */}
+      {/* Error State */}
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-red-700">{error}</p>
         </div>
       )}
 
-      {/* --- LOADING STATE --- */}
+      {/* Loading State */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -327,159 +637,104 @@ export default function OrderManagement() {
         </div>
       ) : (
         <>
-          {/* --- EMPTY STATE --- */}
-          {orders.length === 0 && !error && (
-            <div className="mt-4 bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="p-8 text-center py-12">
-                <p className="text-gray-500 text-lg">
-                  No orders found in {activeTab === "ready_to_ship" ? "READY_TO_SHIP" : "CANCELLATION_FAILED"} state.
+          {/* SHIPPING TAB */}
+          {activeMainTab === "shipping" && (
+            <>
+              {/* Shipping Flow Info */}
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Shipping Flow:</strong> New Orders → Assign AWB → Ship Order (Label + Pickup + Manifest) → Awaiting Pickup
                 </p>
               </div>
-            </div>
-          )}
 
-          {/* --- CONTENT --- */}
-          {orders.length > 0 && (
-            <>
-              {/* --- TAB 1: READY TO SHIP --- */}
-              {activeTab === "ready_to_ship" && (
-                <>
-                  {/* Batch Controls */}
-                  <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-gray-50 p-4 rounded-lg border">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="select-all"
-                          checked={selected.length === orders.length}
-                          onChange={(e) => {
-                            if (e.target.checked) selectAll();
-                            else clearSelection();
-                          }}
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <label htmlFor="select-all" className="text-sm font-medium text-gray-700">
-                          Select all ({selected.length})
-                        </label>
-                      </div>
-                      <button onClick={clearSelection} className="px-3 py-1 text-sm text-gray-600 border rounded-md hover:bg-gray-100">
-                        Clear
-                      </button>
+              {/* Shipping Stage Tabs */}
+              <div className="mb-6 flex flex-wrap gap-2">
+                {STAGE_ORDER.map((stage) => {
+                  const count = ordersByStage[stage].length;
+                  const config = STAGE_CONFIG[stage];
+                  const isActive = activeShippingStage === stage;
+
+                  return (
+                    <button
+                      key={stage}
+                      onClick={() => setActiveShippingStage(stage)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        isActive
+                          ? `${config.bgColor} ${config.color} ring-2 ring-offset-1 ring-current`
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {config.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bulk Controls - hide for shipped since no action needed */}
+              {activeShippingStage !== "shipped" && currentStageOrders.length > 0 && (
+                <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-gray-50 p-4 rounded-lg border">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="select-all"
+                        checked={selected.length === currentStageOrders.length && currentStageOrders.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) selectAllInStage();
+                          else clearSelection();
+                        }}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="select-all" className="text-sm font-medium text-gray-700">
+                        Select all ({selected.length}/{currentStageOrders.length})
+                      </label>
                     </div>
                     <button
-                      onClick={generateManifestBatch}
-                      disabled={submitting || selected.length === 0}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md font-medium"
+                      onClick={clearSelection}
+                      className="px-3 py-1 text-sm text-gray-600 border rounded-md hover:bg-gray-100"
                     >
-                      {submitting ? "Generating..." : `Generate Manifest (${selected.length})`}
+                      Clear
                     </button>
                   </div>
-
-                  {/* Ready to Ship Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {orders.map((order) => {
-                      const formattedDate = order.created_at
-                        ? new Date(order.created_at).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })
-                        : 'N/A';
-                      const isLoading = actionLoading[order.id];
-
-                      return (
-                        <div key={order.id} className="bg-white hover:shadow-lg transition-shadow border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="p-4 pb-3 flex justify-between items-start">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              {order.shiprocket_status || "Ready"}
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={selected.includes(order.id)}
-                              onChange={() => toggleSelection(order.id)}
-                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 ml-2"
-                            />
-                          </div>
-                          <div className="p-4 pt-0 space-y-3">
-                            <div>
-                              <p className="text-2xl font-bold text-gray-900">₹{order.total_amount?.toLocaleString('en-IN')}</p>
-                              {order.shipping_first_name && <p className="text-sm text-gray-600 mt-1">{order.shipping_first_name}</p>}
-                            </div>
-                            <p className="text-sm text-gray-500">Created: {formattedDate}</p>
-                            <Link href={`/seller/orders/${order.id}`} className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                              View Details →
-                            </Link>
-                          </div>
-                          <div className="p-4 border-t border-gray-100 space-y-2">
-                            <button
-                              onClick={() => processOrder(order.id)}
-                              disabled={isLoading}
-                              className="w-full px-4 py-2 text-sm border text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 flex justify-center items-center"
-                            >
-                              {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>}
-                              Register & Assign AWB
-                            </button>
-                            <button
-                              onClick={() => generateLabel(order.id)}
-                              disabled={isLoading}
-                              className="w-full px-4 py-2 text-sm border text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 flex justify-center items-center"
-                            >
-                              {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>}
-                              Generate Label
-                            </button>
-                            <button
-                              onClick={() => schedulePickup(order.id)}
-                              disabled={isLoading}
-                              className="w-full px-4 py-2 text-sm border text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 flex justify-center items-center"
-                            >
-                              {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>}
-                              Schedule Pickup
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
+                  <button
+                    onClick={handleBulkAction}
+                    disabled={submitting || selected.length === 0}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md font-medium text-sm"
+                  >
+                    {submitting ? "Processing..." : STAGE_CONFIG[activeShippingStage].bulkAction}
+                  </button>
+                </div>
               )}
 
-              {/* --- TAB 2: CANCELLATION FAILED --- */}
-              {activeTab === "cancellation_failed" && (
+              {/* Orders Grid */}
+              {currentStageOrders.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-8 text-center py-12">
+                    <p className="text-gray-500 text-lg">
+                      No orders in {STAGE_CONFIG[activeShippingStage].label} stage.
+                    </p>
+                  </div>
+                </div>
+              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {orders.map((order) => {
-                    const formattedDate = order.created_at
-                      ? new Date(order.created_at).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })
-                      : 'N/A';
-                    const isLoading = actionLoading[order.id];
+                  {currentStageOrders.map((order) => renderOrderCard(order, activeShippingStage))}
+                </div>
+              )}
+            </>
+          )}
 
-                    return (
-                      <div key={order.id} className="bg-white hover:shadow-lg transition-shadow border border-red-200 rounded-lg overflow-hidden">
-                        <div className="p-4 pb-3 flex justify-between items-start">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            Failed Cancellation
-                          </span>
-                        </div>
-                        <div className="p-4 pt-0 space-y-3">
-                          <div>
-                            <p className="text-2xl font-bold text-gray-900">₹{order.total_amount?.toLocaleString('en-IN')}</p>
-                            {order.shipping_first_name && <p className="text-sm text-gray-600 mt-1">{order.shipping_first_name}</p>}
-                          </div>
-                          <p className="text-sm text-gray-500">Created: {formattedDate}</p>
-                          <Link href={`/seller/orders/cancellation-requested/${order.id}`} className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            View Details →
-                          </Link>
-                        </div>
-                        <div className="p-4 border-t border-gray-100">
-                          <button
-                            onClick={() => retryCancellation(order.id)}
-                            disabled={isLoading}
-                            className="w-full px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex justify-center items-center font-medium transition-colors"
-                          >
-                            {isLoading && (
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            )}
-                            Retry Cancellation
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+          {/* CANCELLATION FAILED TAB */}
+          {activeMainTab === "cancellation_failed" && (
+            <>
+              {cancellationFailedOrders.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-8 text-center py-12">
+                    <p className="text-gray-500 text-lg">No orders with failed cancellation.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {cancellationFailedOrders.map((order) => renderCancellationFailedCard(order))}
                 </div>
               )}
             </>
@@ -487,7 +742,7 @@ export default function OrderManagement() {
         </>
       )}
 
-      {/* --- DIMENSION INPUT MODAL --- */}
+      {/* Dimension Input Modal */}
       {showDimensionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
@@ -499,45 +754,61 @@ export default function OrderManagement() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Weight (kg)
+                  </label>
                   <input
                     type="number"
                     step="0.1"
                     min="0.1"
                     value={dimensions.weight}
-                    onChange={(e) => setDimensions({ ...dimensions, weight: parseFloat(e.target.value) || 1 })}
+                    onChange={(e) =>
+                      setDimensions({ ...dimensions, weight: parseFloat(e.target.value) || 1 })
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Length (cm)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Length (cm)
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={dimensions.length}
-                      onChange={(e) => setDimensions({ ...dimensions, length: parseFloat(e.target.value) || 20 })}
+                      onChange={(e) =>
+                        setDimensions({ ...dimensions, length: parseFloat(e.target.value) || 20 })
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Breadth (cm)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Breadth (cm)
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={dimensions.breadth}
-                      onChange={(e) => setDimensions({ ...dimensions, breadth: parseFloat(e.target.value) || 15 })}
+                      onChange={(e) =>
+                        setDimensions({ ...dimensions, breadth: parseFloat(e.target.value) || 15 })
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Height (cm)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Height (cm)
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={dimensions.height}
-                      onChange={(e) => setDimensions({ ...dimensions, height: parseFloat(e.target.value) || 10 })}
+                      onChange={(e) =>
+                        setDimensions({ ...dimensions, height: parseFloat(e.target.value) || 10 })
+                      }
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>

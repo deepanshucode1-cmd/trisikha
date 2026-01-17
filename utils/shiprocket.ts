@@ -109,12 +109,14 @@ interface CancelResponse {
 // -----------------------------------------------------
 // 📦 CREATE LABEL
 // -----------------------------------------------------
-export async function generateLabel(orderId: string): Promise<LabelResponse> {
+export async function generateLabel(shipmentId: string | number): Promise<LabelResponse> {
+  // Shiprocket expects shipment_id as an array of numbers
+  const numericId = typeof shipmentId === 'string' ? parseInt(shipmentId, 10) : shipmentId;
   return authedFetch(
     "https://apiv2.shiprocket.in/v1/external/courier/generate/label",
     {
       method: "POST",
-      body: JSON.stringify({ shipment_id: orderId }),
+      body: JSON.stringify({ shipment_id: [numericId] }),
     }
   ) as Promise<LabelResponse>;
 }
@@ -166,7 +168,7 @@ export async function retryAssignAWB({
           .from("orders")
           .update({
             shiprocket_awb_code: result.response.data.awb_code,
-            shiprocket_status: "PICKUP_SCHEDULED",
+            shiprocket_status: "AWB_ASSIGNED",
             shiprocket_shipment_id: shipmentId,
             shiprocket_order_id: shiprocket_order_id
           })
@@ -187,10 +189,11 @@ export async function retryAssignAWB({
       attempt++;
 
       if (attempt >= maxRetries) {
+        // Keep NOT_SHIPPED status but store shipment IDs so we can retry AWB assignment
+        // Note: NOT_SHIPPED with shipment_id but no awb_code = AWB pending
         await supabase
           .from("orders")
           .update({
-            shiprocket_status: "AWB_PENDING",
             shiprocket_shipment_id: shipmentId,
             shiprocket_order_id: shiprocket_order_id
           })
@@ -211,12 +214,14 @@ export async function retryAssignAWB({
 // -----------------------------------------------------
 // 🧾 CREATE MANIFEST (Batch)
 // -----------------------------------------------------
-export async function generateManifestBatch(orderIds: string[]): Promise<ManifestResponse> {
+export async function generateManifestBatch(shipmentIds: (string | number)[]): Promise<ManifestResponse> {
+  // Shiprocket expects shipment_id as an array of numbers
+  const numericIds = shipmentIds.map(id => typeof id === 'string' ? parseInt(id, 10) : id);
   return authedFetch(
     "https://apiv2.shiprocket.in/v1/external/manifests/generate",
     {
       method: "POST",
-      body: JSON.stringify({ shipment_id: orderIds }),
+      body: JSON.stringify({ shipment_id: numericIds }),
     }
   ) as Promise<ManifestResponse>;
 }
@@ -224,8 +229,8 @@ export async function generateManifestBatch(orderIds: string[]): Promise<Manifes
 // -----------------------------------------------------
 // 🧾 CREATE MANIFEST (Single order – rarely used)
 // -----------------------------------------------------
-export async function generateManifest(orderId: string): Promise<ManifestResponse> {
-  return generateManifestBatch([orderId]);
+export async function generateManifest(shipmentId: string | number): Promise<ManifestResponse> {
+  return generateManifestBatch([shipmentId]);
 }
 
 // -----------------------------------------------------
@@ -243,12 +248,14 @@ export async function printManifest(manifestId: number | string): Promise<Manife
 // -----------------------------------------------------
 // 🚚 SCHEDULE PICKUP
 // -----------------------------------------------------
-export async function schedulePickup(orderId: string): Promise<PickupResponse> {
+export async function schedulePickup(shipmentId: string | number): Promise<PickupResponse> {
+  // Shiprocket expects shipment_id as an array of numbers
+  const numericId = typeof shipmentId === 'string' ? parseInt(shipmentId, 10) : shipmentId;
   return authedFetch(
     "https://apiv2.shiprocket.in/v1/external/courier/generate/pickup",
     {
       method: "POST",
-      body: JSON.stringify({ shipment_id: [orderId] }),
+      body: JSON.stringify({ shipment_id: [numericId] }),
     }
   ) as Promise<PickupResponse>;
 }
