@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";
+import { useCsrf } from "@/hooks/useCsrf";
 
 export default function SellerOrderDetails({ params }: any) {
   const orderId = params;
+  const { csrfFetch, getCsrfHeaders } = useCsrf();
 
   const [order, setOrder] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
@@ -38,33 +40,37 @@ export default function SellerOrderDetails({ params }: any) {
   if (!order) return <p className="p-6">Order not found.</p>;
 
   const assignAwb = async () => {
-    await fetch("/api/seller/shiprocket/assign-awb", {
+    await csrfFetch("/api/seller/shiprocket/assign-awb", {
       method: "POST",
+      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
       body: JSON.stringify({ order_id: order.id }),
     });
     alert("AWB assigned (if possible)");
   };
 
   const generateLabel = async () => {
-    await fetch("/api/seller/shiprocket/label", {
+    await csrfFetch("/api/seller/shiprocket/generate-label", {
       method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
+      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+      body: JSON.stringify({ orderId: order.id }),
     });
     alert("Label generated");
   };
 
   const generateManifest = async () => {
-    await fetch("/api/seller/shiprocket/manifest", {
+    await csrfFetch("/api/seller/shiprocket/generate-manifest-batch", {
       method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
+      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+      body: JSON.stringify({ order_ids: [order.id] }),
     });
     alert("Manifest generated");
   };
 
   const schedulePickup = async () => {
-    await fetch("/api/seller/shiprocket/pickup", {
+    await csrfFetch("/api/seller/shiprocket/schedule-pickup", {
       method: "POST",
-      body: JSON.stringify({ order_id: order.id }),
+      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+      body: JSON.stringify({ orderId: order.id }),
     });
     alert("Pickup scheduled");
   };

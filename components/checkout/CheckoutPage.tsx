@@ -7,7 +7,6 @@ import { useCartStore } from "@/utils/store/cartStore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useCsrf } from "@/hooks/useCsrf";
 
 // Validation rules based on backend schema
 interface ValidationRule {
@@ -70,7 +69,6 @@ const states = [
 export default function CheckoutPage() {
   const { items, clearCart } = useCartStore();
   const router = useRouter();
-  const { getCsrfHeaders } = useCsrf();
   const [sameAsShipping, setSameAsShipping] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
 
@@ -256,7 +254,7 @@ export default function CheckoutPage() {
 
     const result = fetch("/api/checkout", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         guest_email: email,
         guest_phone: shipping.phone,
@@ -302,7 +300,7 @@ export default function CheckoutPage() {
               try {
                 const verifyRes = await fetch("/api/payment/verify", {
                   method: "POST",
-                  headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     order_id: data.order_id,
                     razorpay_order_id: response.razorpay_order_id,

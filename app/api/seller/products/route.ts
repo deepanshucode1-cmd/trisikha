@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireCsrf } from "@/lib/csrf";
 import { productSchema } from "@/lib/validation";
 import { handleApiError } from "@/lib/errors";
 import { logAuth, logError } from "@/lib/logger";
@@ -33,6 +34,12 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // CSRF protection for admin routes
+    const csrfResult = await requireCsrf(req);
+    if (!csrfResult.valid) {
+      return NextResponse.json({ error: csrfResult.error }, { status: 403 });
+    }
+
     // Require admin role for creating products
     const { supabase, user } = await requireRole("admin");
 

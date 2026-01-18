@@ -9,7 +9,6 @@ import { paymentRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logPayment, logOrder, logSecurityEvent, logError } from "@/lib/logger";
 import { generateReceiptPDF } from "@/lib/receipt";
-import { requireCsrf } from "@/lib/csrf";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -18,18 +17,6 @@ const razorpay = new Razorpay({
 
 export async function POST(req: Request) {
   try {
-    // CSRF validation
-    const csrfResult = await requireCsrf(req);
-    if (!csrfResult.valid) {
-      logSecurityEvent("csrf_validation_failed", {
-        endpoint: "/api/payment/verify",
-      });
-      return NextResponse.json(
-        { error: csrfResult.error },
-        { status: 403 }
-      );
-    }
-
     // Rate limiting
     const ip = getClientIp(req);
     const { success, limit, reset, remaining } = await paymentRateLimit.limit(ip);

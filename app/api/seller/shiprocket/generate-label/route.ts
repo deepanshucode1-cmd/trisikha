@@ -2,10 +2,17 @@ import { NextResponse } from "next/server";
 import shiprocket from "@/utils/shiprocket";
 import { logError, logOrder } from "@/lib/logger";
 import { requireRole, handleAuthError } from "@/lib/auth";
+import { requireCsrf } from "@/lib/csrf";
 import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   try {
+    // CSRF protection for admin routes
+    const csrfResult = await requireCsrf(req);
+    if (!csrfResult.valid) {
+      return NextResponse.json({ error: csrfResult.error }, { status: 403 });
+    }
+
     // Rate limiting
     const ip = getClientIp(req);
     const { success } = await adminShippingRateLimit.limit(ip);
@@ -57,6 +64,8 @@ export async function POST(req: Request) {
     const labelRes = await shiprocket.generateLabel(
       order.shiprocket_shipment_id
     );
+
+    console.log(labelRes);
 
     if (!labelRes || !labelRes.label_url) {
       return NextResponse.json(
