@@ -528,6 +528,14 @@ export default function OrderManagement() {
                   Manifest
                 </a>
               )}
+              <a
+                href={`/api/seller/orders/${order.id}/invoice`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 px-3 py-2 text-sm border border-green-300 text-green-700 rounded-md hover:bg-green-50 text-center"
+              >
+                Invoice
+              </a>
             </div>
           </div>
         )}
