@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import { Search, Package, CheckCircle, Clock, MapPin, Truck, UserCheck, ArrowUpRight, FileText } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { sanitizeUrl } from "@/lib/xss";
 
 // Validation rules based on backend schema
 const validation = {
@@ -372,9 +373,9 @@ function TrackOrderContent() {
                   <strong className="text-[#d1cd9f]">Tracking Number:</strong> 
                   {trackingNumber}
                 </p>
-                {trackUrl && (
+                {sanitizeUrl(trackUrl) && (
                   <a
-                    href={trackUrl}
+                    href={sanitizeUrl(trackUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-[#d1cd9f] hover:text-[#e0dbb5] underline underline-offset-2 transition-colors"

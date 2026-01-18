@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     const orderPayload = {
       "order_id": order_data.id,
       "order_date": new Date().toISOString(),
-      "pickup_location": "Home",
+      "pickup_location": "warehouse",
       "comment": "Reselling order",
       "billing_customer_name": order_data.billing_first_name,
       "billing_last_name": order_data.billing_last_name,

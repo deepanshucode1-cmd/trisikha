@@ -1,6 +1,8 @@
 import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { NextResponse } from "next/server";
+import { isAccountLocked } from "./incident";
+import { logSecurityEvent } from "./logger";
 
 export class AuthError extends Error {
   constructor(public status: number, message: string) {
@@ -11,6 +13,7 @@ export class AuthError extends Error {
 
 /**
  * Get authenticated user or throw 401
+ * Also checks if account is locked (for admin accounts)
  */
 export async function requireAuth() {
   const supabase = await createClient();
@@ -18,6 +21,17 @@ export async function requireAuth() {
 
   if (error || !user) {
     throw new AuthError(401, "Unauthorized");
+  }
+
+  // Check if account is locked
+  const lockStatus = await isAccountLocked(user.id);
+  if (lockStatus.locked) {
+    logSecurityEvent("locked_account_access_attempt", {
+      userId: user.id,
+      lockedUntil: lockStatus.lockedUntil,
+      reason: lockStatus.reason,
+    });
+    throw new AuthError(403, `Account locked: ${lockStatus.reason || "Contact support"}`);
   }
 
   return { user, supabase };

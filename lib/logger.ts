@@ -58,9 +58,42 @@ const logger = winston.createLogger({
   transports
 });
 
-// Security event logger
+// Security event logger (basic logging only)
 export const logSecurityEvent = (event: string, details: Record<string, any>) => {
   logger.warn('SECURITY_EVENT', { event, ...details, timestamp: new Date().toISOString() });
+};
+
+/**
+ * Track security event with anomaly detection
+ * Use this instead of logSecurityEvent when you want automatic incident creation
+ * for repeated suspicious events (rate limits, signature failures, etc.)
+ */
+export const trackSecurityEvent = async (
+  event: string,
+  details: Record<string, any>
+): Promise<void> => {
+  // Always log the event
+  logSecurityEvent(event, details);
+
+  // Attempt anomaly detection (async, non-blocking)
+  try {
+    // Dynamic import to avoid circular dependency
+    const { detectAnomaly } = await import('./incident');
+    await detectAnomaly({
+      eventType: event,
+      ip: details.ip,
+      userId: details.userId,
+      orderId: details.orderId,
+      endpoint: details.endpoint,
+      details,
+    });
+  } catch (err) {
+    // Don't fail if anomaly detection fails
+    logger.error('ANOMALY_DETECTION_ERROR', {
+      error: err instanceof Error ? err.message : 'Unknown error',
+      event,
+    });
+  }
 };
 
 // Payment logger

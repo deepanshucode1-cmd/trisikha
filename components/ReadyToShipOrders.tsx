@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useCsrf } from "@/hooks/useCsrf";
+import { sanitizeUrl } from "@/lib/xss";
 
 // --- Types ---
 type Order = {
@@ -285,9 +286,10 @@ export default function OrderManagement() {
 
       alert("Order shipped successfully! Label and manifest generated.");
 
-      // Open label in new tab if available
-      if (result.label_url) {
-        window.open(result.label_url, "_blank");
+      // Open label in new tab if available (sanitized to prevent XSS)
+      const safeLabelUrl = sanitizeUrl(result.label_url);
+      if (safeLabelUrl) {
+        window.open(safeLabelUrl, "_blank");
       }
 
       window.location.reload();
@@ -462,9 +464,9 @@ export default function OrderManagement() {
             {stage === "new" && order.shiprocket_shipment_id && !order.shiprocket_awb_code && (
               <p className="text-orange-600 font-medium">AWB assignment pending - retry</p>
             )}
-            {order.shiprocket_label_url && (
+            {sanitizeUrl(order.shiprocket_label_url) && (
               <a
-                href={order.shiprocket_label_url}
+                href={sanitizeUrl(order.shiprocket_label_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline block"
@@ -508,9 +510,9 @@ export default function OrderManagement() {
               Awaiting courier pickup
             </p>
             <div className="flex gap-2">
-              {order.shiprocket_label_url && (
+              {sanitizeUrl(order.shiprocket_label_url) && (
                 <a
-                  href={order.shiprocket_label_url}
+                  href={sanitizeUrl(order.shiprocket_label_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-center"
@@ -518,9 +520,9 @@ export default function OrderManagement() {
                   Label
                 </a>
               )}
-              {order.shiprocket_manifest_url && (
+              {sanitizeUrl(order.shiprocket_manifest_url) && (
                 <a
-                  href={order.shiprocket_manifest_url}
+                  href={sanitizeUrl(order.shiprocket_manifest_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 px-3 py-2 text-sm border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 text-center"

@@ -87,8 +87,8 @@ export async function sendOrderConfirmation(email: string, orderId: string, tota
     subject: "TrishikhaOrganics: Order Confirmed",
     html: `
       <h2>Thank you for your order!</h2>
-      <p>Your order <strong>#${orderId}</strong> has been confirmed.</p>
-      <p>Total Amount: <strong>₹${total}</strong></p>
+      <p>Your order <strong>#${escapeHtml(orderId)}</strong> has been confirmed.</p>
+      <p>Total Amount: <strong>₹${total.toFixed(2)}</strong></p>
       <p>We will notify you once your order is shipped.</p>
       <br/>
       <p>Thank you for shopping with Trishikha Organics!</p>
@@ -117,7 +117,7 @@ export async function sendOrderDelivered(email: string, orderId: string): Promis
     subject: "TrishikhaOrganics: Order has been Delivered",
     html: `
       <h2>Your order has been delivered!</h2>
-      <p>Your order <strong>#${orderId}</strong> has been successfully delivered.</p>
+      <p>Your order <strong>#${escapeHtml(orderId)}</strong> has been successfully delivered.</p>
       <p>We hope you enjoy your purchase!</p>
       <br/>
       <p>Thank you for shopping with Trishikha Organics!</p>
@@ -131,7 +131,7 @@ export async function sendCancellationOTP(email: string, otp: string): Promise<b
     subject: "TrishikhaOrganics: Order Cancellation OTP",
     html: `
       <h2>Order Cancellation Request</h2>
-      <p>Your OTP for order cancellation is: <strong>${otp}</strong></p>
+      <p>Your OTP for order cancellation is: <strong>${escapeHtml(otp)}</strong></p>
       <p>This OTP is valid for 10 minutes.</p>
       <p>If you did not request this, please ignore this email.</p>
     `,
@@ -144,7 +144,7 @@ export async function sendRefundInitiated(email: string, orderId: string, amount
     subject: "TrishikhaOrganics: Refund Initiated",
     html: `
       <h2>Refund Initiated</h2>
-      <p>A refund of <strong>₹${amount}</strong> has been initiated for your order <strong>#${orderId}</strong>.</p>
+      <p>A refund of <strong>₹${amount.toFixed(2)}</strong> has been initiated for your order <strong>#${escapeHtml(orderId)}</strong>.</p>
       <p>The amount will be credited to your original payment method within 5-7 business days.</p>
       <br/>
       <p>Thank you for shopping with Trishikha Organics!</p>
@@ -163,7 +163,7 @@ export async function sendReturnRequestConfirmation(
     subject: "TrishikhaOrganics: Return Request Confirmed",
     html: `
       <h2>Return Request Confirmed</h2>
-      <p>Your return request for order <strong>#${orderId}</strong> has been confirmed.</p>
+      <p>Your return request for order <strong>#${escapeHtml(orderId)}</strong> has been confirmed.</p>
       <p>Our courier partner will contact you shortly to schedule a pickup.</p>
       <br/>
       <h3>Refund Details</h3>
@@ -194,8 +194,8 @@ export async function sendReturnPickupScheduled(
     subject: "TrishikhaOrganics: Return Pickup Scheduled",
     html: `
       <h2>Return Pickup Scheduled</h2>
-      <p>Your return pickup for order <strong>#${orderId}</strong> has been scheduled.</p>
-      ${pickupDate ? `<p>Expected pickup date: <strong>${pickupDate}</strong></p>` : ''}
+      <p>Your return pickup for order <strong>#${escapeHtml(orderId)}</strong> has been scheduled.</p>
+      ${pickupDate ? `<p>Expected pickup date: <strong>${escapeHtml(pickupDate)}</strong></p>` : ''}
       <br/>
       <h3>Preparation Checklist</h3>
       <ul>
@@ -223,11 +223,11 @@ export async function sendReturnRefundProcessed(
     subject: "TrishikhaOrganics: Return Refund Processed",
     html: `
       <h2>Refund Processed</h2>
-      <p>Good news! Your return for order <strong>#${orderId}</strong> has been received and your refund has been processed.</p>
+      <p>Good news! Your return for order <strong>#${escapeHtml(orderId)}</strong> has been received and your refund has been processed.</p>
       <br/>
       <h3>Refund Details</h3>
       <p>Amount Refunded: <strong>₹${refundAmount.toFixed(2)}</strong></p>
-      ${refundId ? `<p>Refund ID: ${refundId}</p>` : ''}
+      ${refundId ? `<p>Refund ID: ${escapeHtml(refundId)}</p>` : ''}
       <br/>
       <p>The amount will be credited to your original payment method within 5-7 business days, depending on your bank's processing time.</p>
       <br/>
@@ -251,12 +251,12 @@ export async function sendCreditNote(
     await transport.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
-      subject: `TrishikhaOrganics: Credit Note - ${creditNoteNumber}`,
+      subject: `TrishikhaOrganics: Credit Note - ${escapeHtml(creditNoteNumber)}`,
       html: `
-        <h2>Credit Note Generated for Order #${orderId}</h2>
+        <h2>Credit Note Generated for Order #${escapeHtml(orderId)}</h2>
         <p>Dear Customer,</p>
-        <p>Your refund of <strong>₹${refundAmount}</strong> for order <strong>#${orderId}</strong> has been processed.</p>
-        <p>Please find the attached Credit Note (<strong>${creditNoteNumber}</strong>) for your reference.</p>
+        <p>Your refund of <strong>₹${refundAmount.toFixed(2)}</strong> for order <strong>#${escapeHtml(orderId)}</strong> has been processed.</p>
+        <p>Please find the attached Credit Note (<strong>${escapeHtml(creditNoteNumber)}</strong>) for your reference.</p>
         <br/>
         <p>The amount should reflect in your account within 5-7 business days.</p>
         <br/>
@@ -265,7 +265,7 @@ export async function sendCreditNote(
       `,
       attachments: [
         {
-          filename: `Credit_Note_${creditNoteNumber}.pdf`,
+          filename: `Credit_Note_${creditNoteNumber.replace(/[^a-zA-Z0-9-_]/g, '_')}.pdf`,
           content: pdfBuffer,
           contentType: "application/pdf",
         },
@@ -281,4 +281,325 @@ export async function sendCreditNote(
     });
     return false;
   }
+}
+
+// --- Breach Notification Emails ---
+
+/**
+ * Send breach notification to a guest user (by order email)
+ */
+export async function sendBreachNotificationUser(
+  email: string,
+  params: {
+    incidentType: string;
+    affectedData: string[];
+    recommendedActions: string[];
+    orderId?: string;
+  }
+): Promise<boolean> {
+  const { incidentType, affectedData, recommendedActions, orderId } = params;
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Important Security Notice",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #c41e3a;">Important Security Notice</h2>
+        <p>Dear Customer,</p>
+        <p>We are writing to inform you about a security incident that may have affected your information.</p>
+
+        ${orderId ? `<p><strong>Related Order:</strong> #${escapeHtml(orderId)}</p>` : ''}
+
+        <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin: 20px 0;">
+          <h3 style="margin-top: 0; color: #856404;">What Happened</h3>
+          <p>${escapeHtml(incidentType)}</p>
+        </div>
+
+        <h3>Information That May Have Been Affected</h3>
+        <ul>
+          ${affectedData.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
+
+        <h3>What You Should Do</h3>
+        <ul>
+          ${recommendedActions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}
+        </ul>
+
+        <p>We take the security of your information seriously and are taking steps to prevent this from happening again.</p>
+
+        <p>If you have any questions or notice any suspicious activity related to your orders, please contact us immediately at <a href="mailto:trishikhaorganic@gmail.com">trishikhaorganic@gmail.com</a>.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          We sincerely apologize for any inconvenience this may cause.<br>
+          Thank you for your understanding.<br><br>
+          Best regards,<br>
+          Trishikha Organics Security Team
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send internal security alert to admin team
+ */
+export async function sendInternalSecurityAlert(
+  incidentId: string,
+  severity: string,
+  details: {
+    type: string;
+    description: string;
+    sourceIp?: string;
+    endpoint?: string;
+    orderId?: string;
+    count?: number;
+  }
+): Promise<boolean> {
+  const alertEmail = process.env.INCIDENT_ALERT_EMAIL || "trishikhaorganic@gmail.com";
+
+  const severityColors: Record<string, string> = {
+    critical: "#dc3545",
+    high: "#fd7e14",
+    medium: "#ffc107",
+    low: "#28a745",
+  };
+
+  const bgColor = severityColors[severity] || "#6c757d";
+
+  return sendEmail({
+    to: alertEmail,
+    subject: `[${severity.toUpperCase()}] Security Incident - ${details.type}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: ${bgColor}; color: white; padding: 15px; border-radius: 5px 5px 0 0;">
+          <h2 style="margin: 0;">Security Incident Alert</h2>
+          <p style="margin: 5px 0 0 0;">Severity: ${severity.toUpperCase()}</p>
+        </div>
+
+        <div style="border: 1px solid #ddd; border-top: none; padding: 20px; border-radius: 0 0 5px 5px;">
+          <p><strong>Incident ID:</strong> ${escapeHtml(incidentId)}</p>
+          <p><strong>Type:</strong> ${escapeHtml(details.type)}</p>
+          <p><strong>Description:</strong> ${escapeHtml(details.description)}</p>
+
+          <h3>Details</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            ${details.sourceIp ? `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Source IP:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(details.sourceIp)}</td></tr>` : ''}
+            ${details.endpoint ? `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Endpoint:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(details.endpoint)}</td></tr>` : ''}
+            ${details.orderId ? `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Order ID:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(details.orderId)}</td></tr>` : ''}
+            ${details.count ? `<tr><td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Event Count:</strong></td><td style="padding: 8px; border-bottom: 1px solid #eee;">${details.count}</td></tr>` : ''}
+            <tr><td style="padding: 8px;"><strong>Timestamp:</strong></td><td style="padding: 8px;">${new Date().toISOString()}</td></tr>
+          </table>
+
+          <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+            <p style="margin: 0;"><strong>Action Required:</strong> Please review this incident in the admin dashboard.</p>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send regulatory breach notification template (for GDPR/DPDP compliance)
+ * This generates a template that can be used for regulatory reporting
+ */
+export async function sendRegulatoryBreachNotification(
+  params: {
+    incidentId: string;
+    discoveryDate: Date;
+    affectedRecords: number;
+    dataTypes: string[];
+    containmentActions: string[];
+    riskAssessment: string;
+  }
+): Promise<boolean> {
+  const alertEmail = process.env.INCIDENT_ALERT_EMAIL || "trishikhaorganic@gmail.com";
+
+  return sendEmail({
+    to: alertEmail,
+    subject: `[REGULATORY] Data Breach Report - Incident ${params.incidentId}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+        <h1 style="color: #c41e3a; border-bottom: 2px solid #c41e3a; padding-bottom: 10px;">Data Breach Incident Report</h1>
+
+        <p><em>This report is prepared for regulatory notification purposes (GDPR Article 33, DPDP Act)</em></p>
+
+        <h2>1. Incident Overview</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Incident ID</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${escapeHtml(params.incidentId)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Discovery Date/Time</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${params.discoveryDate.toISOString()}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Report Generated</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${new Date().toISOString()}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8f9fa;"><strong>Affected Records</strong></td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${params.affectedRecords}</td>
+          </tr>
+        </table>
+
+        <h2>2. Categories of Data Affected</h2>
+        <ul>
+          ${params.dataTypes.map(type => `<li>${escapeHtml(type)}</li>`).join('')}
+        </ul>
+
+        <h2>3. Risk Assessment</h2>
+        <p>${escapeHtml(params.riskAssessment)}</p>
+
+        <h2>4. Containment Actions Taken</h2>
+        <ol>
+          ${params.containmentActions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}
+        </ol>
+
+        <h2>5. Data Controller Information</h2>
+        <p><strong>Organization:</strong> Trishikha Organics</p>
+        <p><strong>Contact:</strong> trishikhaorganic@gmail.com</p>
+
+        <hr style="margin: 30px 0;">
+        <p style="color: #666; font-size: 12px;">
+          <strong>Note:</strong> Under GDPR, the supervisory authority must be notified within 72 hours of becoming aware of a personal data breach.
+          Under India's DPDP Act, similar notification requirements apply to the Data Protection Board.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send Data Protection Board (DPB) breach notification template
+ * For India's DPDP Act compliance - zero threshold reporting requirement
+ * This generates an email that can be used as a template for DPB notification
+ */
+export async function sendDPBBreachNotification(
+  params: {
+    incidentId: string;
+    breachType: "confidentiality" | "integrity" | "availability";
+    discoveryDate: Date;
+    affectedDataPrincipals: number;
+    dataCategories: string[];
+    breachDescription: string;
+    containmentMeasures: string[];
+    riskMitigation: string[];
+    likelyConsequences?: string;
+    transferToThirdParty?: boolean;
+    crossBorderTransfer?: boolean;
+  }
+): Promise<boolean> {
+  const alertEmail = process.env.INCIDENT_ALERT_EMAIL || "trishikhaorganic@gmail.com";
+
+  const breachTypeLabels: Record<string, string> = {
+    confidentiality: "Confidentiality Breach (Unauthorized access/disclosure)",
+    integrity: "Integrity Breach (Unauthorized modification/deletion)",
+    availability: "Availability Breach (Loss of access to data)",
+  };
+
+  return sendEmail({
+    to: alertEmail,
+    subject: `[DPB NOTIFICATION] Personal Data Breach - Incident ${escapeHtml(params.incidentId)}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; background-color: #fff; border: 2px solid #1a365d;">
+        <div style="background-color: #1a365d; color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0; font-size: 24px;">PERSONAL DATA BREACH NOTIFICATION</h1>
+          <p style="margin: 10px 0 0 0; font-size: 14px;">Under Digital Personal Data Protection Act, 2023 (DPDP Act)</p>
+        </div>
+
+        <div style="padding: 30px;">
+          <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <p style="margin: 0; color: #92400e; font-weight: bold;">
+              ZERO THRESHOLD REPORTING: Under DPDP Act, all personal data breaches must be reported to the Data Protection Board, regardless of the number of affected Data Principals.
+            </p>
+          </div>
+
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">1. Basic Information</h2>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc; width: 40%;"><strong>Incident Reference ID</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${escapeHtml(params.incidentId)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Type of Breach</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${escapeHtml(breachTypeLabels[params.breachType])}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Date/Time of Discovery</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${params.discoveryDate.toISOString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Report Generated</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${new Date().toISOString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Affected Data Principals</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${params.affectedDataPrincipals}</td>
+            </tr>
+          </table>
+
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">2. Description of Breach</h2>
+          <p style="padding: 15px; background-color: #f8fafc; border-radius: 8px;">${escapeHtml(params.breachDescription)}</p>
+
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">3. Categories of Personal Data Affected</h2>
+          <ul style="padding-left: 20px;">
+            ${params.dataCategories.map(cat => `<li style="padding: 5px 0;">${escapeHtml(cat)}</li>`).join('')}
+          </ul>
+
+          ${params.likelyConsequences ? `
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">4. Likely Consequences</h2>
+          <p style="padding: 15px; background-color: #fef2f2; border-radius: 8px; border: 1px solid #fecaca;">${escapeHtml(params.likelyConsequences)}</p>
+          ` : ''}
+
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">5. Containment Measures Taken</h2>
+          <ol style="padding-left: 20px;">
+            ${params.containmentMeasures.map(measure => `<li style="padding: 5px 0;">${escapeHtml(measure)}</li>`).join('')}
+          </ol>
+
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">6. Risk Mitigation Measures</h2>
+          <ol style="padding-left: 20px;">
+            ${params.riskMitigation.map(measure => `<li style="padding: 5px 0;">${escapeHtml(measure)}</li>`).join('')}
+          </ol>
+
+          <h2 style="color: #1a365d; border-bottom: 2px solid #1a365d; padding-bottom: 10px;">7. Data Fiduciary Information</h2>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc; width: 40%;"><strong>Organization Name</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">Trishikha Organics</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Contact Email</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">trishikhaorganic@gmail.com</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Data Processing by Third Party</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${params.transferToThirdParty ? 'Yes' : 'No'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border: 1px solid #ddd; background-color: #f8fafc;"><strong>Cross-Border Data Transfer</strong></td>
+              <td style="padding: 10px; border: 1px solid #ddd;">${params.crossBorderTransfer ? 'Yes' : 'No'}</td>
+            </tr>
+          </table>
+
+          <div style="background-color: #e0f2fe; border: 1px solid #0284c7; border-radius: 8px; padding: 20px; margin-top: 30px;">
+            <h3 style="margin-top: 0; color: #0369a1;">Next Steps</h3>
+            <ul style="margin-bottom: 0;">
+              <li>Submit this report to the Data Protection Board of India</li>
+              <li>Notify affected Data Principals as required</li>
+              <li>Preserve all evidence related to the breach</li>
+              <li>Implement additional safeguards to prevent recurrence</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="background-color: #f8fafc; padding: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #64748b;">
+          <p style="margin: 0 0 10px 0;"><strong>Legal Disclaimer:</strong> This notification is prepared in compliance with the Digital Personal Data Protection Act, 2023. The Data Fiduciary is required to notify the Data Protection Board within the prescribed time period of becoming aware of a personal data breach.</p>
+          <p style="margin: 0;">Generated: ${new Date().toISOString()}</p>
+        </div>
+      </div>
+    `,
+  });
 }
