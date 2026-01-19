@@ -1,0 +1,145 @@
+name: Weekly Database Backup
+
+on:
+  schedule:
+    # Every Sunday at 2:00 AM IST (Saturday 8:30 PM UTC)
+    - cron: '30 20 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+
+      - name: Create database backup
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_FILE="backup_${TIMESTAMP}.sql"
+
+          echo "Starting backup at $(date)"
+
+          # Create backup using pg_dump
+          pg_dump "$SUPABASE_DB_URL" \
+            --no-owner \
+            --no-acl \
+            --disable-triggers \
+            --format=plain \
+            > "$BACKUP_FILE"
+
+          # Check if backup was created
+          if [ ! -f "$BACKUP_FILE" ]; then
+            echo "ERROR: Backup file was not created"
+            exit 1
+          fi
+
+          # Compress the backup
+          gzip "$BACKUP_FILE"
+
+          # Generate checksum for integrity verification
+          sha256sum "${BACKUP_FILE}.gz" > "${BACKUP_FILE}.gz.sha256"
+
+          # Export for subsequent steps
+          echo "BACKUP_FILE=${BACKUP_FILE}.gz" >> $GITHUB_ENV
+          echo "CHECKSUM_FILE=${BACKUP_FILE}.gz.sha256" >> $GITHUB_ENV
+          echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
+
+          echo "Backup created: ${BACKUP_FILE}.gz"
+
+      - name: Verify backup integrity
+        run: |
+          # Check file exists
+          if [ ! -f "$BACKUP_FILE" ]; then
+            echo "ERROR: Backup file not found"
+            exit 1
+          fi
+
+          # Check file size (should be > 5KB for non-empty DB)
+          FILE_SIZE=$(stat -c%s "$BACKUP_FILE")
+          echo "Backup file size: $FILE_SIZE bytes"
+
+          if [ "$FILE_SIZE" -lt 5120 ]; then
+            echo "ERROR: Backup file too small ($FILE_SIZE bytes) - may be empty or corrupted"
+            exit 1
+          fi
+
+          # Verify critical tables exist in backup
+          echo "Checking for critical tables..."
+
+          TABLES_TO_CHECK=("products" "orders" "order_items" "user_role")
+          for table in "${TABLES_TO_CHECK[@]}"; do
+            if zcat "$BACKUP_FILE" | grep -q "CREATE TABLE.*${table}\|COPY.*${table}"; then
+              echo "  ✓ Found table: $table"
+            else
+              echo "  ⚠ Table '$table' not found (may be empty, continuing...)"
+            fi
+          done
+
+          # Verify checksum file
+          sha256sum -c "$CHECKSUM_FILE"
+
+          echo "Backup integrity verification passed"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Upload to AWS S3
+        env:
+          S3_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+        run: |
+          # Upload backup file
+          aws s3 cp "$BACKUP_FILE" "s3://${S3_BUCKET}/backups/${BACKUP_FILE}" \
+            --storage-class STANDARD_IA
+
+          # Upload checksum file
+          aws s3 cp "$CHECKSUM_FILE" "s3://${S3_BUCKET}/backups/${CHECKSUM_FILE}"
+
+          echo "Uploaded to s3://${S3_BUCKET}/backups/${BACKUP_FILE}"
+
+          # List recent backups
+          echo ""
+          echo "Recent backups in S3:"
+          aws s3 ls "s3://${S3_BUCKET}/backups/" --human-readable | tail -10
+
+      - name: Cleanup old backups (keep last 8 weeks)
+        env:
+          S3_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+        run: |
+          # List all backups older than 56 days (8 weeks) and delete
+          CUTOFF_DATE=$(date -d '56 days ago' +%Y-%m-%d)
+          echo "Cleaning up backups older than $CUTOFF_DATE"
+
+          aws s3 ls "s3://${S3_BUCKET}/backups/" | while read -r line; do
+            FILE_DATE=$(echo "$line" | awk '{print $1}')
+            FILE_NAME=$(echo "$line" | awk '{print $4}')
+
+            if [[ "$FILE_DATE" < "$CUTOFF_DATE" ]] && [[ -n "$FILE_NAME" ]]; then
+              echo "Deleting old backup: $FILE_NAME"
+              aws s3 rm "s3://${S3_BUCKET}/backups/${FILE_NAME}"
+            fi
+          done
+
+      - name: Summary
+        run: |
+          echo "## Backup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp | $TIMESTAMP |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backup File | $BACKUP_FILE |" >> $GITHUB_STEP_SUMMARY
+          echo "| File Size | $(stat -c%s "$BACKUP_FILE") bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Checksum | $(cat "$CHECKSUM_FILE" | cut -d' ' -f1) |" >> $GITHUB_STEP_SUMMARY
+          echo "| S3 Location | s3://${{ secrets.S3_BACKUP_BUCKET }}/backups/$BACKUP_FILE |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Backup completed successfully at $(date)" >> $GITHUB_STEP_SUMMARY
