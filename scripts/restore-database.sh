@@ -1,14 +1,19 @@
 #!/bin/bash
 # =============================================================================
-# Database Restore Script
+# Database Restore Script (Cloudflare R2)
 # =============================================================================
 # WARNING: This script will OVERWRITE your current database!
 # Only run this when you need to restore from a backup.
 #
 # Prerequisites:
-# - AWS CLI configured (aws configure)
+# - AWS CLI installed (used for S3-compatible R2 API)
 # - PostgreSQL client installed (psql, pg_dump)
-# - SUPABASE_DB_URL environment variable set
+# - Environment variables set:
+#   - SUPABASE_DB_URL
+#   - R2_ACCESS_KEY_ID
+#   - R2_SECRET_ACCESS_KEY
+#   - R2_ACCOUNT_ID
+#   - R2_BUCKET
 # =============================================================================
 
 set -e
@@ -20,16 +25,26 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-S3_BUCKET="${S3_BACKUP_BUCKET:-trishikha-db-backups}"
+R2_BUCKET="${R2_BUCKET:-trishikha-db-backups}"
 BACKUP_PREFIX="backups/"
 
-echo -e "${YELLOW}=== Database Restore Script ===${NC}"
+echo -e "${YELLOW}=== Database Restore Script (Cloudflare R2) ===${NC}"
 echo ""
 
 # Check prerequisites
 if [ -z "$SUPABASE_DB_URL" ]; then
   echo -e "${RED}ERROR: SUPABASE_DB_URL environment variable is not set${NC}"
   echo "Set it with: export SUPABASE_DB_URL='postgresql://...'"
+  exit 1
+fi
+
+if [ -z "$R2_ACCOUNT_ID" ]; then
+  echo -e "${RED}ERROR: R2_ACCOUNT_ID environment variable is not set${NC}"
+  exit 1
+fi
+
+if [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ]; then
+  echo -e "${RED}ERROR: R2 credentials not set (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)${NC}"
   exit 1
 fi
 
@@ -43,10 +58,17 @@ if ! command -v psql &> /dev/null; then
   exit 1
 fi
 
+# Configure AWS CLI for R2
+aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+aws configure set default.region auto
+
+R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
 # List available backups
-echo -e "${GREEN}Available backups in S3:${NC}"
+echo -e "${GREEN}Available backups in Cloudflare R2:${NC}"
 echo ""
-aws s3 ls "s3://${S3_BUCKET}/${BACKUP_PREFIX}" --human-readable | grep ".sql.gz" | tail -10
+aws s3 ls "s3://${R2_BUCKET}/${BACKUP_PREFIX}" --endpoint-url "$R2_ENDPOINT" --human-readable | grep ".sql.gz" | tail -10
 echo ""
 
 # Ask for backup file
@@ -62,9 +84,9 @@ TEMP_DIR=$(mktemp -d)
 echo "Using temp directory: $TEMP_DIR"
 
 # Download backup
-echo -e "${YELLOW}Downloading backup from S3...${NC}"
-aws s3 cp "s3://${S3_BUCKET}/${BACKUP_PREFIX}${BACKUP_FILE}" "$TEMP_DIR/"
-aws s3 cp "s3://${S3_BUCKET}/${BACKUP_PREFIX}${BACKUP_FILE}.sha256" "$TEMP_DIR/" 2>/dev/null || echo "No checksum file found, skipping verification"
+echo -e "${YELLOW}Downloading backup from Cloudflare R2...${NC}"
+aws s3 cp "s3://${R2_BUCKET}/${BACKUP_PREFIX}${BACKUP_FILE}" "$TEMP_DIR/" --endpoint-url "$R2_ENDPOINT"
+aws s3 cp "s3://${R2_BUCKET}/${BACKUP_PREFIX}${BACKUP_FILE}.sha256" "$TEMP_DIR/" --endpoint-url "$R2_ENDPOINT" 2>/dev/null || echo "No checksum file found, skipping verification"
 
 cd "$TEMP_DIR"
 

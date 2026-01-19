@@ -87,50 +87,59 @@ jobs:
 
           echo "Backup integrity verification passed"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
-
-      - name: Upload to AWS S3
+      - name: Upload to Cloudflare R2
         env:
-          S3_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
+          # Configure AWS CLI for Cloudflare R2 (S3-compatible)
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+
+          R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
           # Upload backup file
-          aws s3 cp "$BACKUP_FILE" "s3://${S3_BUCKET}/backups/${BACKUP_FILE}" \
-            --storage-class STANDARD_IA
+          aws s3 cp "$BACKUP_FILE" "s3://${R2_BUCKET}/backups/${BACKUP_FILE}" \
+            --endpoint-url "$R2_ENDPOINT"
 
           # Upload checksum file
-          aws s3 cp "$CHECKSUM_FILE" "s3://${S3_BUCKET}/backups/${CHECKSUM_FILE}"
+          aws s3 cp "$CHECKSUM_FILE" "s3://${R2_BUCKET}/backups/${CHECKSUM_FILE}" \
+            --endpoint-url "$R2_ENDPOINT"
 
-          echo "Uploaded to s3://${S3_BUCKET}/backups/${BACKUP_FILE}"
+          echo "Uploaded to Cloudflare R2: ${R2_BUCKET}/backups/${BACKUP_FILE}"
 
           # List recent backups
           echo ""
-          echo "Recent backups in S3:"
-          aws s3 ls "s3://${S3_BUCKET}/backups/" --human-readable | tail -10
+          echo "Recent backups in R2:"
+          aws s3 ls "s3://${R2_BUCKET}/backups/" --endpoint-url "$R2_ENDPOINT" | tail -10
 
       - name: Cleanup old backups (keep last 8 weeks)
         env:
-          S3_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          # List all backups older than 56 days (8 weeks) and delete
+          R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           CUTOFF_DATE=$(date -d '56 days ago' +%Y-%m-%d)
           echo "Cleaning up backups older than $CUTOFF_DATE"
 
-          aws s3 ls "s3://${S3_BUCKET}/backups/" | while read -r line; do
+          aws s3 ls "s3://${R2_BUCKET}/backups/" --endpoint-url "$R2_ENDPOINT" | while read -r line; do
             FILE_DATE=$(echo "$line" | awk '{print $1}')
             FILE_NAME=$(echo "$line" | awk '{print $4}')
 
             if [[ "$FILE_DATE" < "$CUTOFF_DATE" ]] && [[ -n "$FILE_NAME" ]]; then
               echo "Deleting old backup: $FILE_NAME"
-              aws s3 rm "s3://${S3_BUCKET}/backups/${FILE_NAME}"
+              aws s3 rm "s3://${R2_BUCKET}/backups/${FILE_NAME}" --endpoint-url "$R2_ENDPOINT"
             fi
           done
 
       - name: Summary
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           echo "## Backup Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -140,6 +149,6 @@ jobs:
           echo "| Backup File | $BACKUP_FILE |" >> $GITHUB_STEP_SUMMARY
           echo "| File Size | $(stat -c%s "$BACKUP_FILE") bytes |" >> $GITHUB_STEP_SUMMARY
           echo "| Checksum | $(cat "$CHECKSUM_FILE" | cut -d' ' -f1) |" >> $GITHUB_STEP_SUMMARY
-          echo "| S3 Location | s3://${{ secrets.S3_BACKUP_BUCKET }}/backups/$BACKUP_FILE |" >> $GITHUB_STEP_SUMMARY
+          echo "| R2 Location | ${R2_BUCKET}/backups/$BACKUP_FILE |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Backup completed successfully at $(date)" >> $GITHUB_STEP_SUMMARY
