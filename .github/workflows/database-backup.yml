@@ -19,6 +19,8 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
+          # Verify correct version is installed
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Force IPv4 (GitHub Actions has limited IPv6 support)
         run: |
@@ -34,8 +36,8 @@ jobs:
 
           echo "Starting backup at $(date)"
 
-          # Create backup using pg_dump
-          pg_dump "$SUPABASE_DB_URL" \
+          # Create backup using pg_dump (explicit path to v17)
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-acl \
             --disable-triggers \
