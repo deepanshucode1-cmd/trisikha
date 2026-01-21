@@ -109,6 +109,69 @@ This document tracks the security hardening work for the Trisikha e-commerce pla
 |------|-------------|--------|
 | Penetration testing | External security audit | Pending |
 
+### 3.4 DPDP Availability Compliance Plan
+
+**Goal:** Full compliance with DPDP "Loss of Availability" requirements (ransomware, accidental deletion, DDoS)
+
+#### ✅ Completed
+
+| Item | Implementation | Date |
+|------|----------------|------|
+| Daily automated backups | GitHub Actions → Cloudflare R2 | 2026-01-21 |
+| Backup integrity verification | SHA-256 checksums, table validation | 2026-01-19 |
+| Backup failure alerting | GitHub Issues auto-created on failure | 2026-01-21 |
+| Restore script | `scripts/restore-database.sh` | 2026-01-19 |
+| Incident types for availability | `service_disruption`, `backup_failure`, `data_deletion_alert` | 2026-01-19 |
+
+#### 🔄 Phase 1: Monitoring (Next 2 weeks)
+
+| Task | Description | Priority | Effort |
+|------|-------------|----------|--------|
+| Uptime monitoring | Set up UptimeRobot/Checkly for site + API health checks | High | 1 hour |
+| Supabase health check | API endpoint to verify DB connectivity, create incident if fails | High | 2 hours |
+| Alert routing | Configure email/Slack/Discord notifications for critical incidents | Medium | 1 hour |
+
+**Implementation Notes:**
+- UptimeRobot free tier: 50 monitors, 5-minute intervals
+- Health endpoint: `/api/health` returns `{ db: "ok", timestamp: "..." }`
+- On failure: Call `createIncident({ incident_type: "service_disruption", ... })`
+
+#### 🔄 Phase 2: Restore Testing (Monthly)
+
+| Task | Description | Priority | Effort |
+|------|-------------|----------|--------|
+| Quarterly restore drill | Test restoring backup to staging DB | High | 2 hours/quarter |
+| Document RTO/RPO | Recovery Time Objective, Recovery Point Objective | Medium | 1 hour |
+| Runbook creation | Step-by-step disaster recovery procedures | Medium | 2 hours |
+
+**Current Metrics:**
+- **RPO (Recovery Point Objective):** 24 hours (daily backups)
+- **RTO (Recovery Time Objective):** ~30 minutes (manual restore)
+
+**Target Metrics:**
+- RPO: 24 hours ✅
+- RTO: 15 minutes (with automation)
+
+#### 🔄 Phase 3: Advanced Protection (Future)
+
+| Task | Description | Priority | Effort |
+|------|-------------|----------|--------|
+| Point-in-time recovery | Enable Supabase PITR (Pro plan) | Low | Config only |
+| Read replica | Supabase read replica for failover | Low | Config only |
+| DDoS protection | Cloudflare Pro for advanced DDoS mitigation | Low | Config only |
+| File integrity monitoring | Detect unauthorized changes to critical files | Low | 4 hours |
+
+#### Ransomware Protection Strategy
+
+| Layer | Protection | Status |
+|-------|------------|--------|
+| **Prevention** | Strong auth, MFA for admin, least privilege | Partial |
+| **Detection** | Anomaly detection in `lib/incident.ts` | Done |
+| **Recovery** | Daily backups to immutable R2 storage | Done |
+| **Isolation** | Backups in separate cloud account (R2) | Done |
+
+**Note:** R2 backups are append-only by default (no delete API exposed to workflow), providing ransomware resilience.
+
 ---
 
 ## Architecture Decisions
