@@ -248,8 +248,24 @@ CSRF_SECRET=your-32-char-secret
 | [ ] Data Localization | Verify data storage location (Supabase region) | Pending |
 | Consent Management | Clear consent for data collection | Done (Cookie Consent) |
 | [ ] Grievance Officer | Appoint and publish contact details | Pending |
-| [ ] Data Retention Policy | Define how long data is kept | Pending |
-| [ ] Children's Data | Age verification if applicable | N/A |
+| Data Retention Policy | Define how long data is kept | Done (see below) |
+| Data Portability | Export user data in machine-readable format | Done (`/my-data` page) |
+| Right to Erasure | Allow users to delete their data | Done (`/my-data` page) |
+| [ ] Children's Data | Age verification if applicable | N/A (18+ in ToS) |
+
+#### Data Retention Schedule
+
+| Data Type | Retention Period | Legal Basis | Deletion Method |
+|-----------|------------------|-------------|-----------------|
+| Order Data (transactions) | 7 years | Income Tax Act, Section 44AA | Anonymization on request |
+| Personal Info (name, email, phone, address) | Until deletion request | Consent / Contractual necessity | Via `/my-data` page |
+| Security Incidents | 3 years | Legitimate interest | Automatic purge |
+| Audit Logs | 3 years | Legal compliance (DPDP Act) | Automatic purge |
+| OTP Codes | 10 minutes | Security | Automatic expiry |
+| Session Tokens | 15 minutes | Security | Automatic expiry |
+| Rate Limit Data | 1 hour | Security | In-memory, automatic |
+| Payment Data | Per Razorpay policy | PCI-DSS compliance | Handled by Razorpay |
+| Shipping Data | Per Shiprocket policy | Contractual | Handled by Shiprocket |
 
 ### E-Commerce Compliance (India)
 
@@ -375,7 +391,12 @@ CSRF_SECRET=your-32-char-secret
 | 2026-01-19 | Implemented DPDP Act compliance (audit logging, CIA triad monitoring) | Claude |
 | 2026-01-19 | Added DPB breach notification template | Claude |
 | 2026-01-19 | Created vendor breach tracking system | Claude |
+| 2026-01-21 | Implemented guest data access page (`/my-data`) | Claude |
+| 2026-01-21 | Added guest data export/delete APIs with OTP verification | Claude |
+| 2026-01-21 | Added DPDP compliance tab to security dashboard | Claude |
+| 2026-01-21 | Documented data retention schedule | Claude |
+| 2026-01-21 | Added DPDP audit logging to checkout, order detail, admin orders, cancel, track endpoints | Claude |
 
 ---
 
-*Last Updated: 2026-01-19*
+*Last Updated: 2026-01-21*

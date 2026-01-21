@@ -7,6 +7,7 @@ import { checkoutSchema } from "@/lib/validation";
 import { checkoutRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logPayment, logSecurityEvent, logError } from "@/lib/logger";
+import { logDataAccess } from "@/lib/audit";
 import shiprocket from "@/utils/shiprocket";
 import {
   calculateTaxBreakdown,
@@ -326,6 +327,24 @@ export async function POST(req: Request) {
         amount: totalWithShipping,
         subtotal: calculatedTotal,
         shipping: verifiedShippingCost,
+      });
+
+      // DPDP Audit: Log personal data collection
+      await logDataAccess({
+        tableName: "orders",
+        operation: "INSERT",
+        ip,
+        queryType: "single",
+        rowCount: 1,
+        endpoint: "/api/checkout",
+        reason: "Order creation - personal data collected (email, phone, name, address)",
+        newData: {
+          orderId: orderData.id,
+          email: guest_email,
+          hasPhone: !!guest_phone,
+          hasShippingAddress: true,
+          hasBillingAddress: true,
+        },
       });
 
       // Update order with Razorpay order ID

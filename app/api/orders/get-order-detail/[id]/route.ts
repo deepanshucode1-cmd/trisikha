@@ -1,9 +1,10 @@
-// app/api/orders/get-order-detail/[id]/route.ts
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { verifyOrderAccess, AuthError, requireAuth } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
+import { logDataAccess } from "@/lib/audit";
+import { getClientIp } from "@/lib/rate-limit";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -44,6 +45,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .from("order_items")
       .select("*")
       .eq("order_id", id);
+
+    // DPDP Audit: Log access to personal data
+    const ip = getClientIp(req);
+    await logDataAccess({
+      tableName: "orders",
+      operation: "SELECT",
+      userId: user?.id,
+      userRole: user ? "authenticated" : "guest",
+      ip,
+      queryType: "single",
+      rowCount: 1,
+      endpoint: "/api/orders/get-order-detail",
+      reason: "Order detail access - contains PII (name, email, phone, address)",
+    });
 
     return NextResponse.json({
       order: orderData,

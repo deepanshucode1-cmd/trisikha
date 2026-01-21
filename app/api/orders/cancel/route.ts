@@ -9,6 +9,7 @@ import { cancelOrderSchema } from "@/lib/validation";
 import { cancelOrderRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logSecurityEvent, logPayment, logError } from "@/lib/logger";
+import { logDataAccess } from "@/lib/audit";
 import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
 import { sendCreditNote, sendReturnRequestConfirmation } from "@/lib/email";
 
@@ -366,6 +367,19 @@ export async function POST(req: Request) {
           returnAwb: returnResult.awb_code,
         });
 
+        // DPDP Audit: Log return request (status modification)
+        await logDataAccess({
+          tableName: "orders",
+          operation: "UPDATE",
+          ip,
+          queryType: "single",
+          rowCount: 1,
+          endpoint: "/api/orders/cancel",
+          reason: "Return request - status changed to RETURN_PICKUP_SCHEDULED",
+          oldData: { orderId, previousStatus: freshOrder.order_status },
+          newData: { orderId, newStatus: "RETURN_PICKUP_SCHEDULED", refundAmount },
+        });
+
         // Update order with return details
         await supabase.from("orders").update({
           return_status: "RETURN_PICKUP_SCHEDULED",
@@ -562,6 +576,19 @@ export async function POST(req: Request) {
             refundAmount: refund_amount,
             refundId: razorpay_refund_result.id,
             creditNoteNumber: creditNoteNo
+          });
+
+          // DPDP Audit: Log order cancellation (status modification)
+          await logDataAccess({
+            tableName: "orders",
+            operation: "UPDATE",
+            ip,
+            queryType: "single",
+            rowCount: 1,
+            endpoint: "/api/orders/cancel",
+            reason: "Order cancellation - status changed to CANCELLED, refund processed",
+            oldData: { orderId, previousStatus: freshOrder.order_status },
+            newData: { orderId, newStatus: "CANCELLED", refundAmount: refund_amount },
           });
 
           // Step 3: Generate and send Credit Note Email

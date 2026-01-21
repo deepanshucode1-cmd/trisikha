@@ -7,6 +7,8 @@ import { requireRole, handleAuthError } from "@/lib/auth";
 import { requireCsrf } from "@/lib/csrf";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logPayment, logAuth, logError } from "@/lib/logger";
+import { logDataAccess } from "@/lib/audit";
+import { getClientIp } from "@/lib/rate-limit";
 import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
 import { sendCreditNote } from "@/lib/email";
 
@@ -275,6 +277,23 @@ export async function POST(req: Request) {
             }
 
             logPayment("return_refund_success", { orderId, refundId: result.id, amount: actualRefundAmount, adminId: user.id });
+
+            // DPDP Audit: Log admin-initiated return refund
+            const ip = getClientIp(req);
+            await logDataAccess({
+              tableName: "orders",
+              operation: "UPDATE",
+              userId: user.id,
+              userRole: "admin",
+              ip,
+              queryType: "single",
+              rowCount: 1,
+              endpoint: "/api/orders/cancel/retry",
+              reason: "Admin return refund - order status changed to RETURNED",
+              oldData: { orderId, previousStatus: order.order_status, returnStatus: order.return_status },
+              newData: { orderId, newStatus: "RETURNED", refundAmount: actualRefundAmount },
+            });
+
             return NextResponse.json({ success: true, refundAmount: actualRefundAmount, refundId: result.id });
           }
         } catch (refundErr: any) {
@@ -457,6 +476,22 @@ export async function POST(req: Request) {
             refundId: result.id,
             amount: refund_amount,
             adminId: user.id,
+          });
+
+          // DPDP Audit: Log admin-initiated refund
+          const ip = getClientIp(req);
+          await logDataAccess({
+            tableName: "orders",
+            operation: "UPDATE",
+            userId: user.id,
+            userRole: "admin",
+            ip,
+            queryType: "single",
+            rowCount: 1,
+            endpoint: "/api/orders/cancel/retry",
+            reason: "Admin retry - order cancelled and refund processed",
+            oldData: { orderId, previousStatus: order.order_status },
+            newData: { orderId, newStatus: "CANCELLED", refundAmount: refund_amount },
           });
 
           // Send refund email

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole, handleAuthError } from "@/lib/auth";
 import { logAuth, logError } from "@/lib/logger";
+import { logDataAccess } from "@/lib/audit";
 
 export async function GET() {
   try {
@@ -27,6 +28,18 @@ export async function GET() {
         { status: 500 }
       );
     }
+
+    // DPDP Audit: Log admin access to failed cancellation orders
+    await logDataAccess({
+      tableName: "orders",
+      operation: "SELECT",
+      userId: user.id,
+      userRole: "admin",
+      queryType: (data?.length ?? 0) > 10 ? "bulk" : "single",
+      rowCount: data?.length ?? 0,
+      endpoint: "/api/orders/get-cancellation-failed",
+      reason: "Admin dashboard - viewing failed cancellations (contains customer names)",
+    });
 
     return NextResponse.json({ orders: data ?? [] });
   } catch (error) {

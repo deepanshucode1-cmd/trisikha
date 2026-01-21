@@ -4,6 +4,7 @@ import shiprocket from "@/utils/shiprocket";
 import { trackOrderSchema } from "@/lib/validation";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, logError, logSecurityEvent } from "@/lib/logger";
+import { logDataAccess } from "@/lib/audit";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function GET(req: Request) {
@@ -71,6 +72,18 @@ export async function GET(req: Request) {
     }
 
     logOrder("tracking_request", { orderId: validatedData.order_id, ip });
+
+    // DPDP Audit: Log order data access
+    await logDataAccess({
+      tableName: "orders",
+      operation: "SELECT",
+      userRole: "guest",
+      ip,
+      queryType: "single",
+      rowCount: 1,
+      endpoint: "/api/track",
+      reason: "Order tracking - guest accessing own order data",
+    });
 
     // Payment not confirmed yet
     if (order.payment_status !== "paid") {
