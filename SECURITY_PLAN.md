@@ -396,6 +396,8 @@ CSRF_SECRET=your-32-char-secret
 | 2026-01-21 | Added DPDP compliance tab to security dashboard | Claude |
 | 2026-01-21 | Documented data retention schedule | Claude |
 | 2026-01-21 | Added DPDP audit logging to checkout, order detail, admin orders, cancel, track endpoints | Claude |
+| 2026-01-21 | Changed backup frequency from weekly to daily (reduces RPO from 7 days to 24 hours) | Claude |
+| 2026-01-21 | Added backup failure alerting via GitHub Issues (DPDP availability compliance) | Claude |
 
 ---
 
