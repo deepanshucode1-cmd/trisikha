@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createServiceClient } from "@/utils/supabase/service";
-import { logSecurityEvent, logError } from "@/lib/logger";
+import { trackSecurityEvent, logSecurityEvent, logError } from "@/lib/logger";
 import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
 import { sendCreditNote } from "@/lib/email";
 
@@ -48,9 +48,10 @@ export async function POST(req: Request) {
 
     // verify signature - CRITICAL: reject invalid signatures
     if (!verifySignature(rawBody, signature)) {
-      logSecurityEvent("invalid_webhook_signature", {
+      await trackSecurityEvent("invalid_webhook_signature", {
         endpoint: "/api/webhooks/razorpay/refund",
         hasSignature: !!signature,
+        ip: req.headers.get("x-forwarded-for") || "unknown",
       });
       return NextResponse.json({ error: "invalid signature" }, { status: 400 });
     }

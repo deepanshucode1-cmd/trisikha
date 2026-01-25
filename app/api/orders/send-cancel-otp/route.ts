@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import { otpRequestSchema } from "@/lib/validation";
 import { otpRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
-import { logOrder, logSecurityEvent } from "@/lib/logger";
+import { logOrder, trackSecurityEvent, logSecurityEvent } from "@/lib/logger";
 import { getReturnShippingRate } from "@/utils/shiprocket";
 
 export async function POST(req: Request) {
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const { success, limit, reset, remaining } = await otpRateLimit.limit(ip);
 
     if (!success) {
-      logSecurityEvent("rate_limit_exceeded", {
+      await trackSecurityEvent("rate_limit_exceeded", {
         endpoint: "/api/orders/send-cancel-otp",
         ip,
         limit,

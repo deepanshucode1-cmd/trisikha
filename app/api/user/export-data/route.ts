@@ -3,6 +3,7 @@ import { requireAuth, handleAuthError } from "@/lib/auth";
 import { logSecurityEvent, logError } from "@/lib/logger";
 import { createServiceClient } from "@/utils/supabase/service";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
+import { logDataAccess } from "@/lib/audit";
 
 /**
  * GET /api/user/export-data
@@ -113,6 +114,19 @@ export async function GET(request: Request) {
         paymentData: "Handled by Razorpay - see their privacy policy",
       },
     };
+
+    // Audit log for DPDP compliance
+    await logDataAccess({
+      tableName: "orders",
+      operation: "SELECT",
+      userId,
+      userRole: profile?.role || "customer",
+      ip,
+      queryType: "export",
+      rowCount: orders?.length || 0,
+      endpoint: "/api/user/export-data",
+      reason: "DPDP data portability request",
+    });
 
     // Log the export event
     logSecurityEvent("user_data_export", {

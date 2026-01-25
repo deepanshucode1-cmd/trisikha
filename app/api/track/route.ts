@@ -3,7 +3,7 @@ import { createServiceClient } from "@/utils/supabase/service";
 import shiprocket from "@/utils/shiprocket";
 import { trackOrderSchema } from "@/lib/validation";
 import { handleApiError } from "@/lib/errors";
-import { logOrder, logError, logSecurityEvent } from "@/lib/logger";
+import { logOrder, logError, trackSecurityEvent, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     const { success, limit, reset, remaining } = await apiRateLimit.limit(ip);
 
     if (!success) {
-      logSecurityEvent("rate_limit_exceeded", {
+      await trackSecurityEvent("rate_limit_exceeded", {
         endpoint: "/api/track",
         ip,
         limit,

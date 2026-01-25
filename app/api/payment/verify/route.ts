@@ -7,7 +7,7 @@ import nodemailer from "nodemailer";
 import { paymentVerifySchema } from "@/lib/validation";
 import { paymentRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
-import { logPayment, logOrder, logSecurityEvent, logError } from "@/lib/logger";
+import { logPayment, logOrder, trackSecurityEvent, logSecurityEvent, logError } from "@/lib/logger";
 import { generateReceiptPDF } from "@/lib/receipt";
 
 const razorpay = new Razorpay({
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const { success, limit, reset, remaining } = await paymentRateLimit.limit(ip);
 
     if (!success) {
-      logSecurityEvent("rate_limit_exceeded", {
+      await trackSecurityEvent("rate_limit_exceeded", {
         endpoint: "/api/payment/verify",
         ip,
         limit,
@@ -66,11 +66,12 @@ export async function POST(req: Request) {
     );
 
     if (!isValid) {
-      logSecurityEvent("payment_signature_invalid", {
+      await trackSecurityEvent("payment_signature_invalid", {
         orderId: order_id,
         razorpayOrderId: razorpay_order_id,
         razorpayPaymentId: razorpay_payment_id,
         ip,
+        endpoint: "/api/payment/verify",
       });
       return NextResponse.json({ error: "Invalid payment signature" }, { status: 400 });
     }
@@ -369,12 +370,12 @@ export async function POST(req: Request) {
         text: `Hi,\n\nYour order with Order ID: ${order_id} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Qty: ${item.quantity}) - Rs ${(item.unit_price * item.quantity).toFixed(2)}`).join('\n')}\n\nTaxable Value: Rs ${taxableAmount.toFixed(2)}\nGST @${gstRate}%: Rs ${totalGst.toFixed(2)}${shippingCost > 0 ? `\nShipping: Rs ${shippingCost.toFixed(2)}` : ''}\nTotal Amount Paid: Rs ${data[0].total_amount.toFixed(2)}\nPayment ID: ${razorpay_payment_id}\n\nPlease find your tax invoice/receipt attached.\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
         attachments: receiptPdf
           ? [
-              {
-                filename: `TrishikhaOrganics_Receipt_${order_id.slice(0, 8).toUpperCase()}.pdf`,
-                content: receiptPdf,
-                contentType: "application/pdf",
-              },
-            ]
+            {
+              filename: `TrishikhaOrganics_Receipt_${order_id.slice(0, 8).toUpperCase()}.pdf`,
+              content: receiptPdf,
+              contentType: "application/pdf",
+            },
+          ]
           : [],
       });
 

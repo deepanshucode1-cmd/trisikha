@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 # - AWS CLI installed (used for S3-compatible R2 API)
-# - PostgreSQL client installed (psql, pg_dump)
+# - PostgreSQL 17 client installed (pg_restore)
 # - Environment variables set:
 #   - SUPABASE_DB_URL
 #   - R2_ACCESS_KEY_ID
@@ -53,9 +53,16 @@ if ! command -v aws &> /dev/null; then
   exit 1
 fi
 
-if ! command -v psql &> /dev/null; then
-  echo -e "${RED}ERROR: psql is not installed${NC}"
+if ! command -v pg_restore &> /dev/null; then
+  echo -e "${RED}ERROR: pg_restore is not installed${NC}"
+  echo "Install PostgreSQL 17 client: sudo apt install postgresql-client-17"
   exit 1
+fi
+
+# Check pg_restore version
+PG_VERSION=$(pg_restore --version | grep -oP '\d+' | head -1)
+if [ "$PG_VERSION" -lt 17 ]; then
+  echo -e "${YELLOW}WARNING: pg_restore version $PG_VERSION detected. Version 17+ recommended.${NC}"
 fi
 
 # Configure AWS CLI for R2
@@ -68,11 +75,15 @@ R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 # List available backups
 echo -e "${GREEN}Available backups in Cloudflare R2:${NC}"
 echo ""
-aws s3 ls "s3://${R2_BUCKET}/${BACKUP_PREFIX}" --endpoint-url "$R2_ENDPOINT" --human-readable | grep ".sql.gz" | tail -10
+aws s3 ls "s3://${R2_BUCKET}/${BACKUP_PREFIX}" --endpoint-url "$R2_ENDPOINT" --human-readable | grep ".dump" | tail -10
 echo ""
 
-# Ask for backup file
-read -p "Enter the backup filename (e.g., backup_20260119_203000.sql.gz): " BACKUP_FILE
+# Ask for backup file or use argument
+if [ -n "$1" ]; then
+  BACKUP_FILE="$1"
+else
+  read -p "Enter the backup filename (e.g., backup_20260120_064534.dump): " BACKUP_FILE
+fi
 
 if [ -z "$BACKUP_FILE" ]; then
   echo -e "${RED}ERROR: No backup file specified${NC}"
@@ -97,27 +108,24 @@ if [ -f "${BACKUP_FILE}.sha256" ]; then
     echo -e "${GREEN}Checksum verified!${NC}"
   else
     echo -e "${RED}ERROR: Checksum verification failed!${NC}"
+    rm -rf "$TEMP_DIR"
     exit 1
   fi
 fi
 
-# Decompress
-echo -e "${YELLOW}Decompressing backup...${NC}"
-gunzip -k "$BACKUP_FILE"
-SQL_FILE="${BACKUP_FILE%.gz}"
-
 # Show backup info
 echo ""
 echo -e "${GREEN}Backup file info:${NC}"
-echo "  Size: $(ls -lh "$SQL_FILE" | awk '{print $5}')"
-echo "  Tables found:"
-grep "CREATE TABLE" "$SQL_FILE" | head -10 | sed 's/^/    /'
+echo "  Size: $(ls -lh "$BACKUP_FILE" | awk '{print $5}')"
+echo ""
+echo "  Contents (first 30 items):"
+pg_restore --list "$BACKUP_FILE" 2>/dev/null | head -30 | sed 's/^/    /'
 echo ""
 
 # Final confirmation
 echo -e "${RED}=== WARNING ===${NC}"
-echo -e "${RED}This will COMPLETELY OVERWRITE your current database!${NC}"
-echo -e "${RED}All existing data will be LOST!${NC}"
+echo -e "${RED}This will restore data to your database!${NC}"
+echo -e "${RED}Existing objects in public schema may be overwritten!${NC}"
 echo ""
 read -p "Type 'RESTORE' to confirm: " CONFIRM
 
@@ -129,19 +137,33 @@ fi
 
 # Create a backup of current state first
 echo -e "${YELLOW}Creating backup of current database state...${NC}"
-CURRENT_BACKUP="pre_restore_$(date +%Y%m%d_%H%M%S).sql"
-pg_dump "$SUPABASE_DB_URL" --no-owner --no-acl > "$CURRENT_BACKUP" 2>/dev/null || echo "Warning: Could not backup current state"
+CURRENT_BACKUP="pre_restore_$(date +%Y%m%d_%H%M%S).dump"
+pg_dump "$SUPABASE_DB_URL" \
+  --format=custom \
+  --blobs \
+  --schema=public \
+  --no-owner \
+  --no-acl \
+  --file="$CURRENT_BACKUP" 2>/dev/null || echo "Warning: Could not backup current state"
 
 # Perform restore
 echo -e "${YELLOW}Restoring database...${NC}"
 
-# Option 1: Drop and recreate schema (clean restore)
-echo "Dropping existing schema..."
-psql "$SUPABASE_DB_URL" -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;" 2>/dev/null
-
-# Restore from backup
-echo "Restoring from backup..."
-psql "$SUPABASE_DB_URL" < "$SQL_FILE"
+# Restore from backup using pg_restore
+# --clean: Drop existing objects before restoring
+# --if-exists: Don't error if objects don't exist when dropping
+# --no-owner: Skip ownership commands
+# --no-acl: Skip permission commands
+# --schema=public: Only restore public schema
+pg_restore \
+  --verbose \
+  --no-owner \
+  --no-acl \
+  --clean \
+  --if-exists \
+  --schema=public \
+  -d "$SUPABASE_DB_URL" \
+  "$BACKUP_FILE" 2>&1 || echo -e "${YELLOW}Some non-critical errors may have occurred (this is normal)${NC}"
 
 # Re-enable RLS on all tables
 echo -e "${YELLOW}Re-enabling Row Level Security...${NC}"
@@ -160,10 +182,11 @@ EOF
 
 # Verify restore
 echo -e "${YELLOW}Verifying restore...${NC}"
-psql "$SUPABASE_DB_URL" -c "SELECT 'products' as table_name, COUNT(*) as count FROM products UNION ALL SELECT 'orders', COUNT(*) FROM orders UNION ALL SELECT 'order_items', COUNT(*) FROM order_items;"
+psql "$SUPABASE_DB_URL" -c "SELECT 'products' as table_name, COUNT(*) as count FROM products UNION ALL SELECT 'orders', COUNT(*) FROM orders UNION ALL SELECT 'order_items', COUNT(*) FROM order_items;" 2>/dev/null || echo "Could not verify tables (some may not exist)"
 
 # Cleanup
 echo -e "${YELLOW}Cleaning up...${NC}"
+cd /
 rm -rf "$TEMP_DIR"
 
 echo ""

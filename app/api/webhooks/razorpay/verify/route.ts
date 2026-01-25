@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { createServiceClient } from "@/utils/supabase/service";
-import { logPayment, logOrder, logSecurityEvent, logError } from "@/lib/logger";
+import { logPayment, logOrder, trackSecurityEvent, logError } from "@/lib/logger";
 import { generateReceiptPDF } from "@/lib/receipt";
 
 export async function POST(request: Request) {
@@ -25,14 +25,16 @@ export async function POST(request: Request) {
     );
 
     if (!isValid) {
-      logSecurityEvent("webhook_signature_invalid", {
+      await trackSecurityEvent("webhook_signature_invalid", {
         endpoint: "/api/webhooks/razorpay/verify",
+        ip: request.headers.get("x-forwarded-for") || "unknown",
       });
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
   } catch {
-    logSecurityEvent("webhook_signature_invalid", {
+    await trackSecurityEvent("webhook_signature_invalid", {
       endpoint: "/api/webhooks/razorpay/verify",
+      ip: request.headers.get("x-forwarded-for") || "unknown",
     });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
@@ -301,12 +303,12 @@ export async function POST(request: Request) {
           text: `Hi,\n\nYour order with Order ID: ${orderId} has been successfully placed and confirmed.\n\nOrder Details:\n${order_items?.map((item: any) => `- ${item.product_name} (Qty: ${item.quantity}) - Rs ${(item.unit_price * item.quantity).toFixed(2)}`).join("\n")}\n\nTaxable Value: Rs ${taxableAmount.toFixed(2)}\nGST @${gstRate}%: Rs ${totalGst.toFixed(2)}${shippingCost > 0 ? `\nShipping: Rs ${shippingCost.toFixed(2)}` : ''}\nTotal Amount Paid: Rs ${orderData.total_amount.toFixed(2)}\nPayment ID: ${razorpay_payment_id}\n\nPlease find your tax invoice/receipt attached.\nWe will notify you once your order is shipped.\n\nThank you for shopping with TrishikhaOrganics!\n\nBest regards,\nTrishikhaOrganics Team`,
           attachments: receiptPdf
             ? [
-                {
-                  filename: `TrishikhaOrganics_Receipt_${orderId.slice(0, 8).toUpperCase()}.pdf`,
-                  content: receiptPdf,
-                  contentType: "application/pdf",
-                },
-              ]
+              {
+                filename: `TrishikhaOrganics_Receipt_${orderId.slice(0, 8).toUpperCase()}.pdf`,
+                content: receiptPdf,
+                contentType: "application/pdf",
+              },
+            ]
             : [],
         });
 

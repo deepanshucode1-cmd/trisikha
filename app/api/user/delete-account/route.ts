@@ -5,6 +5,7 @@ import { createServiceClient } from "@/utils/supabase/service";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { logDataAccess } from "@/lib/audit";
 
 // Validation schema for delete request
 const deleteAccountSchema = z.object({
@@ -156,6 +157,28 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    // Audit log for DPDP compliance
+    await logDataAccess({
+      tableName: "orders",
+      operation: "UPDATE",
+      userId,
+      ip,
+      queryType: "bulk",
+      endpoint: "/api/user/delete-account",
+      reason: "DPDP right to erasure request - account deleted, data anonymized",
+    });
+
+    await logDataAccess({
+      tableName: "user_role",
+      operation: "DELETE",
+      userId,
+      ip,
+      queryType: "single",
+      rowCount: 1,
+      endpoint: "/api/user/delete-account",
+      reason: "DPDP right to erasure request - user profile deleted",
+    });
 
     // Log the deletion event
     logSecurityEvent("account_deleted", {

@@ -6,7 +6,7 @@ import Razorpay from "razorpay";
 import { checkoutSchema } from "@/lib/validation";
 import { checkoutRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
-import { logOrder, logPayment, logSecurityEvent, logError } from "@/lib/logger";
+import { logOrder, logPayment, trackSecurityEvent, logSecurityEvent, logError } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
 import shiprocket from "@/utils/shiprocket";
 import {
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const { success, limit, reset, remaining } = await checkoutRateLimit.limit(ip);
 
     if (!success) {
-      logSecurityEvent("rate_limit_exceeded", {
+      await trackSecurityEvent("rate_limit_exceeded", {
         endpoint: "/api/checkout",
         ip,
         limit,
@@ -210,7 +210,7 @@ export async function POST(req: Request) {
         shipping_first_name: shipping_address.first_name,
         shipping_last_name: shipping_address.last_name,
         shipping_address_line1: shipping_address.address_line1,
-        shipping_address_line2: shipping_address.address_line2|| '',
+        shipping_address_line2: shipping_address.address_line2 || '',
         shipping_city: shipping_address.city,
         shipping_state: shipping_address.state,
         shipping_pincode: shipping_address.pincode,

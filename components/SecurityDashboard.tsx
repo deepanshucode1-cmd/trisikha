@@ -8,7 +8,7 @@ import { useCsrf } from "@/hooks/useCsrf";
 type IncidentSeverity = "low" | "medium" | "high" | "critical";
 type IncidentStatus = "open" | "investigating" | "resolved" | "false_positive";
 type RemediationStatus = "pending" | "in_progress" | "completed";
-type TabType = "incidents" | "vendor-breaches";
+type TabType = "incidents" | "vendor-breaches" | "compliance" | "ip-blocking";
 
 type VendorBreach = {
   id: string;
@@ -28,6 +28,38 @@ type VendorBreach = {
   notes?: string;
   created_at: string;
   updated_at: string;
+};
+
+type BlockedIp = {
+  id: string;
+  ip_address: string;
+  block_type: "temporary" | "permanent";
+  reason: string;
+  offense_count: number;
+  blocked_at: string;
+  blocked_until?: string;
+  incident_type?: string;
+  is_active: boolean;
+};
+
+type WhitelistEntry = {
+  id: string;
+  ip_address: string;
+  cidr_range?: string;
+  label: string;
+  category: string;
+  notes?: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+type IpHistoryEntry = {
+  id: string;
+  ip_address: string;
+  incident_type: string;
+  severity?: string;
+  endpoint?: string;
+  created_at: string;
 };
 
 type Incident = {
@@ -193,6 +225,34 @@ export default function SecurityDashboard() {
     notes: "",
   });
 
+  // IP Blocking state
+  const [blockedIps, setBlockedIps] = useState<BlockedIp[]>([]);
+  const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
+  const [ipBlockingLoading, setIpBlockingLoading] = useState(false);
+  const [showBlockIpForm, setShowBlockIpForm] = useState(false);
+  const [showWhitelistForm, setShowWhitelistForm] = useState(false);
+  const [selectedIpHistory, setSelectedIpHistory] = useState<IpHistoryEntry[] | null>(null);
+  const [selectedIpAddress, setSelectedIpAddress] = useState<string | null>(null);
+  const [showIpHistoryModal, setShowIpHistoryModal] = useState(false);
+  const [ipHistoryLoading, setIpHistoryLoading] = useState(false);
+
+  // Block IP form state
+  const [blockIpForm, setBlockIpForm] = useState({
+    ip: "",
+    blockType: "temporary" as "temporary" | "permanent",
+    reason: "",
+    durationMinutes: 60,
+  });
+
+  // Whitelist form state
+  const [whitelistForm, setWhitelistForm] = useState({
+    ip: "",
+    cidrRange: "",
+    label: "",
+    category: "internal" as "payment_gateway" | "webhook_provider" | "internal" | "monitoring" | "admin",
+    notes: "",
+  });
+
   // --- Fetch Incidents ---
   const fetchIncidents = async () => {
     setLoading(true);
@@ -246,7 +306,160 @@ export default function SecurityDashboard() {
     if (activeTab === "vendor-breaches") {
       fetchVendorBreaches();
     }
+    if (activeTab === "ip-blocking") {
+      fetchBlockedIps();
+      fetchWhitelist();
+    }
   }, [activeTab]);
+
+  // --- Fetch Blocked IPs ---
+  const fetchBlockedIps = async () => {
+    setIpBlockingLoading(true);
+    try {
+      const res = await fetch("/api/admin/ip-blocking?active=true");
+      if (!res.ok) throw new Error("Failed to fetch blocked IPs");
+      const data = await res.json();
+      setBlockedIps(data.blocks || []);
+    } catch (err) {
+      console.error("Fetch blocked IPs error:", err);
+    } finally {
+      setIpBlockingLoading(false);
+    }
+  };
+
+  // --- Fetch Whitelist ---
+  const fetchWhitelist = async () => {
+    try {
+      const res = await fetch("/api/admin/ip-whitelist");
+      if (!res.ok) throw new Error("Failed to fetch whitelist");
+      const data = await res.json();
+      setWhitelist(data.whitelist || []);
+    } catch (err) {
+      console.error("Fetch whitelist error:", err);
+    }
+  };
+
+  // --- Fetch IP History ---
+  const fetchIpHistory = async (ip: string) => {
+    setIpHistoryLoading(true);
+    setSelectedIpAddress(ip);
+    try {
+      const res = await fetch(`/api/admin/ip-blocking/${encodeURIComponent(ip)}`);
+      if (!res.ok) throw new Error("Failed to fetch IP history");
+      const data = await res.json();
+      setSelectedIpHistory(data.history || []);
+      setShowIpHistoryModal(true);
+    } catch (err) {
+      console.error("Fetch IP history error:", err);
+      alert("Failed to fetch IP history");
+    } finally {
+      setIpHistoryLoading(false);
+    }
+  };
+
+  // --- Block IP ---
+  const handleBlockIp = async () => {
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch("/api/admin/ip-blocking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify(blockIpForm),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to block IP");
+      }
+
+      alert("IP blocked successfully");
+      setShowBlockIpForm(false);
+      setBlockIpForm({ ip: "", blockType: "temporary", reason: "", durationMinutes: 60 });
+      fetchBlockedIps();
+    } catch (err) {
+      console.error("Block IP error:", err);
+      alert(err instanceof Error ? err.message : "Failed to block IP");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // --- Unblock IP ---
+  const handleUnblockIp = async (ip: string) => {
+    if (!confirm(`Are you sure you want to unblock ${ip}?`)) return;
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch(`/api/admin/ip-blocking?ip=${encodeURIComponent(ip)}`, {
+        method: "DELETE",
+        headers: getCsrfHeaders(),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to unblock IP");
+      }
+
+      alert("IP unblocked successfully");
+      fetchBlockedIps();
+    } catch (err) {
+      console.error("Unblock IP error:", err);
+      alert(err instanceof Error ? err.message : "Failed to unblock IP");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // --- Add to Whitelist ---
+  const handleAddWhitelist = async () => {
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch("/api/admin/ip-whitelist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify(whitelistForm),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add to whitelist");
+      }
+
+      alert("IP added to whitelist");
+      setShowWhitelistForm(false);
+      setWhitelistForm({ ip: "", cidrRange: "", label: "", category: "internal", notes: "" });
+      fetchWhitelist();
+    } catch (err) {
+      console.error("Add whitelist error:", err);
+      alert(err instanceof Error ? err.message : "Failed to add to whitelist");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // --- Remove from Whitelist ---
+  const handleRemoveWhitelist = async (ip: string) => {
+    if (!confirm(`Remove ${ip} from whitelist?`)) return;
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch(`/api/admin/ip-whitelist?ip=${encodeURIComponent(ip)}`, {
+        method: "DELETE",
+        headers: getCsrfHeaders(),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to remove from whitelist");
+      }
+
+      alert("IP removed from whitelist");
+      fetchWhitelist();
+    } catch (err) {
+      console.error("Remove whitelist error:", err);
+      alert(err instanceof Error ? err.message : "Failed to remove from whitelist");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // --- Create Vendor Breach ---
   const handleCreateBreach = async () => {
@@ -604,6 +817,31 @@ export default function SecurityDashboard() {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveTab("compliance")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "compliance"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            DPDP Compliance
+          </button>
+          <button
+            onClick={() => setActiveTab("ip-blocking")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "ip-blocking"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            IP Blocking
+            {blockedIps.length > 0 && (
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-600">
+                {blockedIps.length}
+              </span>
+            )}
+          </button>
         </nav>
       </div>
 
@@ -876,6 +1114,606 @@ export default function SecurityDashboard() {
             </div>
           )}
         </>
+      )}
+
+      {/* Compliance Tab Content */}
+      {activeTab === "compliance" && (
+        <div className="space-y-6">
+          {/* DPDP Compliance Checklist */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">DPDP Act Compliance Checklist</h2>
+            <p className="text-gray-600 mb-6">Digital Personal Data Protection Act 2023 requirements</p>
+
+            <div className="space-y-4">
+              {/* Implemented Items */}
+              <div className="border-l-4 border-green-500 pl-4">
+                <h3 className="font-semibold text-green-700 mb-2">Implemented</h3>
+                <ul className="space-y-2">
+                  {[
+                    { item: "Privacy Policy", desc: "Published at /privacy-policy" },
+                    { item: "Data Export (Portability)", desc: "API and UI at /my-data" },
+                    { item: "Data Deletion (Erasure)", desc: "API and UI at /my-data" },
+                    { item: "Cookie Consent", desc: "Banner with granular preferences" },
+                    { item: "Audit Logging", desc: "All data access logged" },
+                    { item: "Breach Notification System", desc: "Email templates ready" },
+                    { item: "Vendor Breach Tracking", desc: "Dashboard for 3rd party breaches" },
+                    { item: "Security Incident Monitoring", desc: "CIA triad monitoring" },
+                    { item: "Rate Limiting", desc: "Protection against brute force" },
+                    { item: "Data Encryption", desc: "TLS/SSL, HTTPS enforced" },
+                  ].map((check, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <div>
+                        <span className="font-medium text-gray-900">{check.item}</span>
+                        <span className="text-gray-500 text-sm ml-2">- {check.desc}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Pending Items */}
+              <div className="border-l-4 border-yellow-500 pl-4 mt-6">
+                <h3 className="font-semibold text-yellow-700 mb-2">Requires Action</h3>
+                <ul className="space-y-2">
+                  {[
+                    { item: "Grievance Officer", desc: "Designate and publish contact details", priority: "high" },
+                    { item: "Data Processing Agreements", desc: "Sign DPAs with Supabase, Razorpay, Shiprocket", priority: "high" },
+                    { item: "Data Localization Verification", desc: "Confirm Supabase stores data in India", priority: "medium" },
+                    { item: "VAPT Report", desc: "Schedule penetration testing", priority: "medium" },
+                  ].map((check, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div>
+                        <span className="font-medium text-gray-900">{check.item}</span>
+                        <span className={`ml-2 px-2 py-0.5 text-xs rounded ${check.priority === "high" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
+                          {check.priority}
+                        </span>
+                        <p className="text-gray-500 text-sm">{check.desc}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Retention Policy */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Data Retention Policy</h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Retention Period</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Legal Basis</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deletion</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">Order Data</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">7 years</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Income Tax Act</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Anonymization on request</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">Personal Info (Name, Email, Phone, Address)</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Until deletion request</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Consent / Contract</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">On request via /my-data</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">Security Incidents</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">3 years</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Legitimate Interest</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Automatic</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">Audit Logs</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">3 years</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Legal Compliance</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Automatic</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">OTP Codes</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">10 minutes</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Security</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Automatic</td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">Payment Data</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Handled by Razorpay</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">PCI-DSS</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">Per Razorpay policy</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Third-Party Vendors */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Third-Party Data Processors</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { name: "Supabase", purpose: "Database & Authentication", dpa: "pending", location: "Verify India region" },
+                { name: "Razorpay", purpose: "Payment Processing", dpa: "pending", location: "India" },
+                { name: "Shiprocket", purpose: "Logistics & Shipping", dpa: "pending", location: "India" },
+              ].map((vendor, i) => (
+                <div key={i} className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900">{vendor.name}</h3>
+                  <p className="text-sm text-gray-600 mt-1">{vendor.purpose}</p>
+                  <div className="mt-3 space-y-1">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-gray-500">DPA Status:</span>
+                      <span className={`px-2 py-0.5 rounded text-xs ${vendor.dpa === "signed" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                        {vendor.dpa === "signed" ? "Signed" : "Pending"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-gray-500">Location:</span>
+                      <span className="text-gray-700">{vendor.location}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Links */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-blue-900 mb-4">Quick Links</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Link href="/privacy-policy" target="_blank" className="text-blue-700 hover:underline text-sm">
+                Privacy Policy
+              </Link>
+              <Link href="/terms" target="_blank" className="text-blue-700 hover:underline text-sm">
+                Terms of Service
+              </Link>
+              <Link href="/my-data" target="_blank" className="text-blue-700 hover:underline text-sm">
+                Data Request Page
+              </Link>
+              <a href="mailto:trishikhaorganic@gmail.com" className="text-blue-700 hover:underline text-sm">
+                Support Email
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IP Blocking Tab Content */}
+      {activeTab === "ip-blocking" && (
+        <>
+          {/* Header with Action Buttons */}
+          <div className="mb-6 flex justify-between items-center">
+            <div>
+              <p className="text-gray-600">
+                Manage blocked IPs and trusted IP whitelist for security protection.
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                IPs are automatically blocked based on security incidents with exponential backoff.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowWhitelistForm(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
+              >
+                + Add Whitelist
+              </button>
+              <button
+                onClick={() => setShowBlockIpForm(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+              >
+                + Block IP
+              </button>
+            </div>
+          </div>
+
+          {ipBlockingLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-2">Loading...</span>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Blocked IPs Section */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 bg-red-50">
+                  <h2 className="text-lg font-semibold text-gray-900">Blocked IPs ({blockedIps.length})</h2>
+                </div>
+                {blockedIps.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No IPs currently blocked</p>
+                    <p className="text-gray-400 text-sm mt-1">IPs are automatically blocked when security incidents occur</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Offenses</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Blocked Until</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {blockedIps.map((block) => (
+                          <tr key={block.id}>
+                            <td className="px-4 py-3 text-sm font-mono text-gray-900">{block.ip_address}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                block.block_type === "permanent"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-yellow-100 text-yellow-700"
+                              }`}>
+                                {block.block_type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={block.reason}>
+                              {block.reason}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{block.offense_count}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {block.block_type === "permanent"
+                                ? "Never"
+                                : block.blocked_until
+                                  ? formatDate(block.blocked_until)
+                                  : "-"}
+                            </td>
+                            <td className="px-4 py-3 text-sm space-x-2">
+                              <button
+                                onClick={() => fetchIpHistory(block.ip_address)}
+                                className="text-blue-600 hover:underline"
+                              >
+                                History
+                              </button>
+                              <button
+                                onClick={() => handleUnblockIp(block.ip_address)}
+                                disabled={actionLoading}
+                                className="text-red-600 hover:underline disabled:opacity-50"
+                              >
+                                Unblock
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Whitelist Section */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 bg-green-50">
+                  <h2 className="text-lg font-semibold text-gray-900">Whitelisted IPs ({whitelist.length})</h2>
+                  <p className="text-sm text-gray-500">These IPs are trusted and will never be blocked</p>
+                </div>
+                {whitelist.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No whitelisted IPs</p>
+                    <p className="text-gray-400 text-sm mt-1">Add payment gateway and webhook provider IPs here</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP/CIDR</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Label</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Added</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {whitelist.map((entry) => (
+                          <tr key={entry.id}>
+                            <td className="px-4 py-3 text-sm font-mono text-gray-900">
+                              {entry.ip_address}
+                              {entry.cidr_range && <span className="text-gray-500 ml-1">({entry.cidr_range})</span>}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{entry.label}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                {
+                                  payment_gateway: "bg-purple-100 text-purple-700",
+                                  webhook_provider: "bg-blue-100 text-blue-700",
+                                  internal: "bg-gray-100 text-gray-700",
+                                  monitoring: "bg-cyan-100 text-cyan-700",
+                                  admin: "bg-orange-100 text-orange-700",
+                                }[entry.category] || "bg-gray-100 text-gray-700"
+                              }`}>
+                                {entry.category.replace("_", " ")}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{formatDate(entry.created_at)}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <button
+                                onClick={() => handleRemoveWhitelist(entry.ip_address)}
+                                disabled={actionLoading}
+                                className="text-red-600 hover:underline disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Block Duration Reference */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <h3 className="font-semibold text-blue-900 mb-3">Exponential Backoff Schedule</h3>
+                <p className="text-sm text-blue-700 mb-3">
+                  Temporary blocks increase in duration with each offense. After 30 days without incidents, the offense count resets.
+                </p>
+                <div className="grid grid-cols-5 gap-4 text-center text-sm">
+                  {[
+                    { offense: "1st", duration: "15 min" },
+                    { offense: "2nd", duration: "1 hour" },
+                    { offense: "3rd", duration: "6 hours" },
+                    { offense: "4th", duration: "24 hours" },
+                    { offense: "5th+", duration: "7 days" },
+                  ].map((item, i) => (
+                    <div key={i} className="bg-white rounded-lg p-3 border border-blue-200">
+                      <p className="font-medium text-blue-900">{item.offense}</p>
+                      <p className="text-blue-700">{item.duration}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Block IP Modal */}
+      {showBlockIpForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-4 border-b bg-red-50">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">Block IP Address</h2>
+                <button
+                  onClick={() => setShowBlockIpForm(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IP Address *</label>
+                <input
+                  type="text"
+                  value={blockIpForm.ip}
+                  onChange={(e) => setBlockIpForm({ ...blockIpForm, ip: e.target.value })}
+                  placeholder="e.g., 192.168.1.1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Block Type *</label>
+                <select
+                  value={blockIpForm.blockType}
+                  onChange={(e) => setBlockIpForm({ ...blockIpForm, blockType: e.target.value as "temporary" | "permanent" })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="temporary">Temporary</option>
+                  <option value="permanent">Permanent</option>
+                </select>
+              </div>
+              {blockIpForm.blockType === "temporary" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
+                  <select
+                    value={blockIpForm.durationMinutes}
+                    onChange={(e) => setBlockIpForm({ ...blockIpForm, durationMinutes: parseInt(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500"
+                  >
+                    <option value={15}>15 minutes</option>
+                    <option value={60}>1 hour</option>
+                    <option value={360}>6 hours</option>
+                    <option value={1440}>24 hours</option>
+                    <option value={10080}>7 days</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+                <textarea
+                  value={blockIpForm.reason}
+                  onChange={(e) => setBlockIpForm({ ...blockIpForm, reason: e.target.value })}
+                  rows={3}
+                  placeholder="Reason for blocking this IP..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+              <button
+                onClick={() => setShowBlockIpForm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBlockIp}
+                disabled={actionLoading || !blockIpForm.ip || !blockIpForm.reason}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
+              >
+                {actionLoading ? "Blocking..." : "Block IP"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Whitelist Modal */}
+      {showWhitelistForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-4 border-b bg-green-50">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">Add to Whitelist</h2>
+                <button
+                  onClick={() => setShowWhitelistForm(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IP Address *</label>
+                <input
+                  type="text"
+                  value={whitelistForm.ip}
+                  onChange={(e) => setWhitelistForm({ ...whitelistForm, ip: e.target.value })}
+                  placeholder="e.g., 192.168.1.1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">CIDR Range (optional)</label>
+                <input
+                  type="text"
+                  value={whitelistForm.cidrRange}
+                  onChange={(e) => setWhitelistForm({ ...whitelistForm, cidrRange: e.target.value })}
+                  placeholder="e.g., 10.0.0.0/8"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Label *</label>
+                <input
+                  type="text"
+                  value={whitelistForm.label}
+                  onChange={(e) => setWhitelistForm({ ...whitelistForm, label: e.target.value })}
+                  placeholder="e.g., Razorpay Webhook"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                <select
+                  value={whitelistForm.category}
+                  onChange={(e) => setWhitelistForm({ ...whitelistForm, category: e.target.value as typeof whitelistForm.category })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="payment_gateway">Payment Gateway</option>
+                  <option value="webhook_provider">Webhook Provider</option>
+                  <option value="internal">Internal</option>
+                  <option value="monitoring">Monitoring</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={whitelistForm.notes}
+                  onChange={(e) => setWhitelistForm({ ...whitelistForm, notes: e.target.value })}
+                  rows={2}
+                  placeholder="Additional notes..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+              <button
+                onClick={() => setShowWhitelistForm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddWhitelist}
+                disabled={actionLoading || !whitelistForm.ip || !whitelistForm.label}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50"
+              >
+                {actionLoading ? "Adding..." : "Add to Whitelist"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IP History Modal */}
+      {showIpHistoryModal && selectedIpAddress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b bg-gray-50">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">IP History</h2>
+                  <p className="text-sm font-mono text-gray-600">{selectedIpAddress}</p>
+                </div>
+                <button
+                  onClick={() => { setShowIpHistoryModal(false); setSelectedIpHistory(null); }}
+                  className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              {ipHistoryLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : selectedIpHistory && selectedIpHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedIpHistory.map((entry) => (
+                    <div key={entry.id} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {INCIDENT_TYPE_LABELS[entry.incident_type] || entry.incident_type}
+                          </p>
+                          {entry.endpoint && (
+                            <p className="text-sm font-mono text-gray-500 truncate">{entry.endpoint}</p>
+                          )}
+                        </div>
+                        {entry.severity && (
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${SEVERITY_CONFIG[entry.severity as IncidentSeverity]?.bgColor} ${SEVERITY_CONFIG[entry.severity as IncidentSeverity]?.color}`}>
+                            {entry.severity}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">{formatDate(entry.created_at)}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-500">No offense history for this IP</p>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end rounded-b-lg">
+              <button
+                onClick={() => { setShowIpHistoryModal(false); setSelectedIpHistory(null); }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Vendor Breach Form Modal */}

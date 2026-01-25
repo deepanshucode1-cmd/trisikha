@@ -152,6 +152,22 @@ export async function createIncident(incident: Omit<Incident, "id" | "created_at
     ip: incident.source_ip,
   });
 
+  // Trigger IP blocking if incident has a source IP
+  if (incident.source_ip) {
+    try {
+      const { blockIp } = await import("./ip-blocking");
+      await blockIp({
+        ip: incident.source_ip,
+        incidentType: incident.incident_type,
+        severity: incident.severity,
+        incidentId: data.id,
+        endpoint: incident.endpoint,
+      });
+    } catch (err) {
+      logError(err as Error, { context: "auto_ip_block_failed", incidentId: data.id });
+    }
+  }
+
   return data.id;
 }
 

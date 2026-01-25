@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { createIncident, updateIncident } from "@/lib/incident";
 import { sendAlertToAll } from "@/lib/alert-routing";
-import { logSecurityEvent, logError } from "@/lib/logger";
+import { trackSecurityEvent, logSecurityEvent, logError } from "@/lib/logger";
 
 /**
  * UptimeRobot webhook payload structure
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (secret !== expectedSecret) {
-    logSecurityEvent("webhook_signature_invalid", {
+    await trackSecurityEvent("webhook_signature_invalid", {
       endpoint: "/api/webhooks/monitoring",
       ip: request.headers.get("x-forwarded-for") || "unknown",
     });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/utils/supabase/server";
 import { sendOrderDelivered, sendOrderShipped } from "@/lib/email";
-import { logSecurityEvent, logOrder, logError } from "@/lib/logger";
+import { trackSecurityEvent, logOrder, logError } from "@/lib/logger";
 
 // Timing-safe string comparison to prevent timing attacks
 function timingSafeCompare(a: string, b: string): boolean {
@@ -21,9 +21,10 @@ export async function POST(req: Request) {
     const expectedKey = process.env.SHIPROCKET_WEBHOOK_SECRET;
 
     if (!apiKey || !expectedKey || !timingSafeCompare(apiKey, expectedKey)) {
-      logSecurityEvent("invalid_shiprocket_webhook_token", {
+      await trackSecurityEvent("invalid_shiprocket_webhook_token", {
         endpoint: "/api/webhooks/shiprocket",
         hasApiKey: !!apiKey,
+        ip: req.headers.get("x-forwarded-for") || "unknown",
       });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

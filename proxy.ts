@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isIpBlockedFast } from "@/lib/ip-blocking";
 
 // Routes that should verify origin (state-changing operations)
 const PROTECTED_API_ROUTES = [
@@ -24,7 +25,7 @@ function isWebhookRoute(pathname: string): boolean {
   return WEBHOOK_ROUTES.some((route) => pathname.startsWith(route));
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip non-API routes
@@ -35,6 +36,34 @@ export function proxy(request: NextRequest) {
   // Skip webhooks - they use signature verification
   if (isWebhookRoute(pathname)) {
     return NextResponse.next();
+  }
+
+  // --- IP Blocking Check ---
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown";
+
+  const blockCheck = await isIpBlockedFast(ip);
+  if (blockCheck.blocked) {
+    return new NextResponse(
+      JSON.stringify({
+        error: "Access denied",
+        reason: blockCheck.reason || "Your IP has been blocked due to suspicious activity",
+        blockedUntil: blockCheck.blockedUntil,
+        support: "contact@trishikhaorganics.com",
+      }),
+      {
+        status: 403,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Blocked-IP": ip,
+          ...(blockCheck.blockedUntil && {
+            "X-Blocked-Until": blockCheck.blockedUntil,
+          }),
+        },
+      }
+    );
   }
 
   // Skip GET requests (read-only)
