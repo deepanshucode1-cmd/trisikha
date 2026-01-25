@@ -123,18 +123,49 @@ This document tracks the security hardening work for the Trisikha e-commerce pla
 | Restore script | `scripts/restore-database.sh` | 2026-01-19 |
 | Incident types for availability | `service_disruption`, `backup_failure`, `data_deletion_alert` | 2026-01-19 |
 
-#### 🔄 Phase 1: Monitoring (Next 2 weeks)
+#### ✅ Phase 1: Monitoring [COMPLETED]
 
-| Task | Description | Priority | Effort |
-|------|-------------|----------|--------|
-| Uptime monitoring | Set up UptimeRobot/Checkly for site + API health checks | High | 1 hour |
-| Supabase health check | API endpoint to verify DB connectivity, create incident if fails | High | 2 hours |
-| Alert routing | Configure email/Slack/Discord notifications for critical incidents | Medium | 1 hour |
+| Task | Description | Status | Date |
+|------|-------------|--------|------|
+| Uptime monitoring | UptimeRobot integration for site + API health checks | Done | 2026-01-22 |
+| Supabase health check | `/api/health` endpoint verifies DB connectivity | Done | 2026-01-22 |
+| Alert routing | Slack/Discord webhook notifications via `lib/alert-routing.ts` | Done | 2026-01-22 |
+| Uptime logging | `uptime_log` table for SLA tracking with `get_uptime_percentage()` | Done | 2026-01-22 |
 
-**Implementation Notes:**
-- UptimeRobot free tier: 50 monitors, 5-minute intervals
-- Health endpoint: `/api/health` returns `{ db: "ok", timestamp: "..." }`
-- On failure: Call `createIncident({ incident_type: "service_disruption", ... })`
+**Implementation:**
+- `/api/health` - Health check endpoint (returns 200/503, logs to `uptime_log`)
+- `/api/health?mode=lite` - Fast ping (default, recommended for monitoring)
+- `/api/health?mode=full` - Detailed check with table counts
+- `/api/webhooks/monitoring` - UptimeRobot webhook handler (creates/resolves incidents)
+- `lib/alert-routing.ts` - Slack/Discord notification utilities
+- `uptime_log` table - Health check history for SLA compliance
+- `get_uptime_stats()` - Function for uptime percentage reporting
+
+**Serverless (Vercel) Optimizations:**
+- Uses simple SELECT query instead of complex RPC (faster response)
+- Async logging (fire-and-forget, doesn't block response)
+- Higher degraded threshold (8s) to account for cold starts
+- Periodic logging (every 6th check) to reduce database writes
+- Cold start detection flag in response
+
+**Configuration Required:**
+```env
+MONITORING_WEBHOOK_SECRET=<random-32-char-string>  # Required
+SLACK_WEBHOOK_URL=https://hooks.slack.com/...      # Optional
+DISCORD_WEBHOOK_URL=https://discord.com/api/...    # Optional
+```
+
+**UptimeRobot Setup:**
+1. Create monitor: HTTP(s), URL: `https://your-domain.com/api/health`, Interval: 5 min
+2. Set timeout to 30 seconds (default) - accounts for serverless cold starts
+3. Primary alert: Email (works when server is down)
+4. Secondary alert: Webhook to `/api/webhooks/monitoring?secret=YOUR_SECRET`
+
+**Expected Response Times:**
+- Warm function: 100-500ms
+- Cold start: 1-3 seconds (normal for serverless)
+- Degraded threshold: 8 seconds
+- Unhealthy threshold: 25 seconds
 
 #### 🔄 Phase 2: Restore Testing (Monthly)
 
@@ -244,6 +275,11 @@ STORE_PINCODE=382721
 
 # CSRF (optional - falls back to using part of SUPABASE_SERVICE_ROLE_KEY)
 CSRF_SECRET=your-32-char-secret
+
+# Monitoring (DPDP Availability Compliance)
+MONITORING_WEBHOOK_SECRET=your-32-char-secret  # Required for webhook auth
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...  # Optional
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... # Optional
 ```
 
 ---
@@ -434,6 +470,16 @@ CSRF_SECRET=your-32-char-secret
 
 ---
 
+## Files Created/Modified (2026-01-22)
+
+### New Files - DPDP Uptime Monitoring
+- `app/api/health/route.ts` - Health check endpoint for monitoring services
+- `app/api/webhooks/monitoring/route.ts` - UptimeRobot webhook handler
+- `lib/alert-routing.ts` - Slack/Discord notification utilities
+- `supabase/migrations/20260122120000_uptime_monitoring.sql` - Uptime log table and SLA functions
+
+---
+
 ## Changelog
 
 | Date | Change | Author |
@@ -461,7 +507,9 @@ CSRF_SECRET=your-32-char-secret
 | 2026-01-21 | Added DPDP audit logging to checkout, order detail, admin orders, cancel, track endpoints | Claude |
 | 2026-01-21 | Changed backup frequency from weekly to daily (reduces RPO from 7 days to 24 hours) | Claude |
 | 2026-01-21 | Added backup failure alerting via GitHub Issues (DPDP availability compliance) | Claude |
+| 2026-01-22 | Implemented DPDP Phase 1 uptime monitoring (health endpoint, webhook, alert routing) | Claude |
+| 2026-01-22 | Created `uptime_log` table and SLA tracking functions | Claude |
 
 ---
 
-*Last Updated: 2026-01-21*
+*Last Updated: 2026-01-22*

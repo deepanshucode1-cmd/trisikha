@@ -10,6 +10,7 @@ import { CheckCircle, Package, Truck, MapPin, ArrowRight, ExternalLink, Shopping
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
+  const guestEmail = searchParams.get("email");
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -19,7 +20,10 @@ export default function PaymentSuccessPage() {
 
     const fetchOrder = async () => {
       try {
-        const res = await fetch(`/api/orders/get-order/${orderId}`);
+        const url = guestEmail
+          ? `/api/orders/get-order/${orderId}?email=${encodeURIComponent(guestEmail)}`
+          : `/api/orders/get-order/${orderId}`;
+        const res = await fetch(url);
         const data = await res.json();
         setOrder(data);
       } catch (err) {
@@ -30,7 +34,7 @@ export default function PaymentSuccessPage() {
     };
 
     fetchOrder();
-  }, [orderId]);
+  }, [orderId, guestEmail]);
 
   if (loading) {
     return (

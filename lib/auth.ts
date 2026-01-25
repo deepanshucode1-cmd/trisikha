@@ -4,9 +4,11 @@ import { NextResponse } from "next/server";
 import { isAccountLocked } from "./incident";
 import { logSecurityEvent } from "./logger";
 
-export class AuthError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
+import { AppError } from "./errors";
+
+export class AuthError extends AppError {
+  constructor(status: number, message: string) {
+    super(status, message);
     this.name = "AuthError";
   }
 }
@@ -83,6 +85,9 @@ export async function verifyOrderAccess(orderId: string, user?: any, guestEmail?
     .eq("id", orderId)
     .single();
 
+  console.log("verifyOrderAccess debug:", order);
+
+
   if (error || !order) {
     throw new AuthError(404, "Order not found");
   }
@@ -105,6 +110,9 @@ export async function verifyOrderAccess(orderId: string, user?: any, guestEmail?
     return order;
   }
 
+  console.log(guestEmail);
+  console.log(order.guest_email);
+
   throw new AuthError(404, "Order not found"); // Don't reveal order exists
 }
 
@@ -115,7 +123,7 @@ export function handleAuthError(error: unknown) {
   if (error instanceof AuthError) {
     return NextResponse.json(
       { error: error.message },
-      { status: error.status }
+      { status: error.statusCode }
     );
   }
 
