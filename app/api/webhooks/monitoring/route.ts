@@ -79,7 +79,9 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
   // Verify webhook secret
-  const secret = request.nextUrl.searchParams.get("secret");
+  // Use URL constructor directly - nextUrl.searchParams can be null on Vercel in some cases
+  const url = new URL(request.url);
+  const secret = url.searchParams.get("secret");
   const expectedSecret = process.env.MONITORING_WEBHOOK_SECRET;
 
   if (!expectedSecret) {
@@ -354,7 +356,8 @@ async function handleOtherAlert(payload: NormalizedPayload) {
  * GET endpoint for testing/verification
  */
 export async function GET(request: NextRequest) {
-  const secret = request.nextUrl.searchParams.get("secret");
+  const url = new URL(request.url);
+  const secret = url.searchParams.get("secret");
   const expectedSecret = process.env.MONITORING_WEBHOOK_SECRET;
 
   if (!expectedSecret || secret !== expectedSecret) {

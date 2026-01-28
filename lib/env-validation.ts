@@ -66,9 +66,18 @@ export function validateEnvironment(): { valid: boolean; errors: string[]; warni
         envVar.name === "RAZORPAY_KEY_ID" &&
         value.startsWith("rzp_test_")
       ) {
-        errors.push(
-          `RAZORPAY_KEY_ID appears to be a test key in production environment`
-        );
+        // Allow test keys in Preview/Development environments on Vercel
+        const isPreview = process.env.VERCEL_ENV === "preview" || process.env.VERCEL_ENV === "development";
+
+        if (!isPreview) {
+          errors.push(
+            `RAZORPAY_KEY_ID appears to be a test key in production environment`
+          );
+        } else {
+          warnings.push(
+            `RAZORPAY_KEY_ID is a test key (allowed in ${process.env.VERCEL_ENV} environment)`
+          );
+        }
       }
 
       // Check for weak secrets

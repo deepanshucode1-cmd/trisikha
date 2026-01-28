@@ -50,6 +50,7 @@ interface HealthResponse {
  * - Logs only every Nth check to reduce writes
  */
 export async function GET(request: Request) {
+
   const startTime = Date.now();
   const url = new URL(request.url);
   const mode = url.searchParams.get("mode") || "lite";
