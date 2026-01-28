@@ -4,8 +4,12 @@
  */
 
 export async function register() {
-  // Skip validation in test environment
-  if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+  // Skip validation in test environment or if explicitly disabled
+  if (
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST ||
+    process.env.SKIP_ENV_VALIDATION === "true"
+  ) {
     return;
   }
 
