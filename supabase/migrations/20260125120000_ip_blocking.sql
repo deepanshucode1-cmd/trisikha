@@ -78,7 +78,7 @@ CREATE INDEX idx_whitelist_ip_active ON ip_whitelist(ip_address) WHERE is_active
 CREATE INDEX idx_whitelist_cidr ON ip_whitelist(cidr_range) WHERE is_active = true AND cidr_range IS NOT NULL;
 CREATE INDEX idx_offense_history_ip ON ip_offense_history(ip_address);
 CREATE INDEX idx_offense_history_created ON ip_offense_history(ip_address, created_at DESC);
-CREATE INDEX idx_offense_history_cooling ON ip_offense_history(ip_address, created_at) WHERE created_at > now() - interval '30 days';
+-- idx_offense_history_cooling removed (cannot use mutable now() in predicate)
 
 -- RLS Policies
 ALTER TABLE ip_blocklist ENABLE ROW LEVEL SECURITY;

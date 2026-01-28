@@ -37,6 +37,15 @@ COMMENT ON COLUMN guest_data_sessions.session_expires_at IS 'When the session ex
 ALTER TABLE guest_data_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Only service role can access this table (no public access)
-CREATE POLICY "Service role only" ON guest_data_sessions
-  FOR ALL
-  USING (auth.role() = 'service_role');
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'guest_data_sessions' 
+    AND policyname = 'Service role only'
+  ) THEN
+    CREATE POLICY "Service role only" ON guest_data_sessions
+      FOR ALL
+      USING (auth.role() = 'service_role');
+  END IF;
+END $$;

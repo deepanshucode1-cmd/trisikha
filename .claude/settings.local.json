@@ -3,7 +3,19 @@
     "allow": [
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run test:*)",
+      "WebSearch",
+      "WebFetch(domain:betterstack.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pulsetic.com)",
+      "Bash(git -C /home/nishant/Desktop/trisikha/trisikha log --oneline --all)",
+      "WebFetch(domain:hetrixtools.com)",
+      "WebFetch(domain:docs.hetrixtools.com)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

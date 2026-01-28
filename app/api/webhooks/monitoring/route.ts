@@ -22,20 +22,53 @@ interface UptimeRobotPayload {
 }
 
 /**
- * Webhook endpoint for UptimeRobot alerts
+ * HetrixTools webhook payload structure
+ * https://docs.hetrixtools.com/uptime-monitoring-webhook-notifications/
+ */
+interface HetrixToolsPayload {
+  monitor_id: string;
+  monitor_name: string;
+  monitor_target: string;
+  monitor_type: string; // "website" | "ping" | "service" | "smtp"
+  monitor_category?: string;
+  monitor_status: "online" | "offline";
+  timestamp: number; // Unix timestamp
+  monitor_errors?: Record<string, string>; // { "Location": "error message" } - only when offline
+}
+
+/**
+ * Normalized payload for internal processing
+ */
+interface NormalizedPayload {
+  source: "uptimerobot" | "hetrixtools";
+  monitorId: string;
+  monitorName: string;
+  monitorUrl: string;
+  status: "up" | "down" | "other";
+  alertDetails?: string;
+  alertDuration?: string;
+  sslExpiryDaysLeft?: string;
+  sslExpiryDate?: string;
+}
+
+/**
+ * Webhook endpoint for uptime monitoring alerts
  *
  * POST /api/webhooks/monitoring?secret=YOUR_SECRET
+ *
+ * Supported services:
+ * - UptimeRobot (https://uptimerobot.com)
+ * - HetrixTools (https://hetrixtools.com)
  *
  * This endpoint handles:
  * 1. DOWN alerts: Creates service_disruption incident, logs to uptime_log
  * 2. UP alerts: Auto-resolves open incident, sends recovery notification to Slack/Discord
- * 3. SSL alerts: Sends warning notifications for expiring certificates
+ * 3. SSL alerts: Sends warning notifications for expiring certificates (UptimeRobot only)
  *
  * IMPORTANT - Alerting Architecture:
  * ─────────────────────────────────
- * DOWN alerts: Use UptimeRobot's NATIVE integrations (Slack/Discord/Email)
+ * DOWN alerts: Configure native email alerts in your monitoring service
  *              because this endpoint is unreachable when the server is fully down.
- *              Configure at: UptimeRobot → My Settings → Alert Contacts
  *
  * UP alerts:   This endpoint receives recovery notifications and sends
  *              supplementary alerts to Slack/Discord (server is back up).
@@ -68,20 +101,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Parse form data (UptimeRobot sends as form-urlencoded)
+    // Parse payload (supports JSON and form-urlencoded)
     const contentType = request.headers.get("content-type") || "";
-    let payload: UptimeRobotPayload;
+    let rawPayload: UptimeRobotPayload | HetrixToolsPayload;
 
     if (contentType.includes("application/json")) {
-      payload = await request.json();
+      rawPayload = await request.json();
     } else if (contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await request.formData();
-      payload = Object.fromEntries(formData.entries()) as unknown as UptimeRobotPayload;
+      rawPayload = Object.fromEntries(formData.entries()) as unknown as UptimeRobotPayload;
     } else {
       // Try to parse as JSON anyway (for testing)
       const text = await request.text();
       try {
-        payload = JSON.parse(text);
+        rawPayload = JSON.parse(text);
       } catch {
         return NextResponse.json(
           { error: "Unsupported content type" },
@@ -90,23 +123,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Detect source and normalize payload
+    const payload = normalizePayload(rawPayload);
+
     logSecurityEvent("monitoring_webhook_received", {
-      monitorId: payload.monitorID,
-      alertType: payload.alertTypeFriendlyName,
-      monitorName: payload.monitorFriendlyName,
+      source: payload.source,
+      monitorId: payload.monitorId,
+      status: payload.status,
+      monitorName: payload.monitorName,
     });
 
     const supabase = createServiceClient();
 
-    // Handle based on alert type
-    if (payload.alertType === "1" || payload.alertTypeFriendlyName?.toLowerCase() === "down") {
-      // Server is DOWN - create incident
+    // Handle based on status
+    if (payload.status === "down") {
       await handleDownAlert(supabase, payload);
-    } else if (payload.alertType === "2" || payload.alertTypeFriendlyName?.toLowerCase() === "up") {
-      // Server is UP (recovered) - resolve incident and notify
+    } else if (payload.status === "up") {
       await handleUpAlert(supabase, payload);
     } else {
-      // Other alert types (SSL expiry, etc.)
       await handleOtherAlert(payload);
     }
 
@@ -115,7 +149,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        processed: payload.alertTypeFriendlyName,
+        source: payload.source,
+        processed: payload.status,
         latency_ms: latencyMs,
       },
       { status: 200 }
@@ -130,14 +165,57 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Handle DOWN alert from UptimeRobot
+ * Detect monitoring service and normalize payload to common format
+ */
+function normalizePayload(raw: UptimeRobotPayload | HetrixToolsPayload): NormalizedPayload {
+  // HetrixTools detection: has monitor_status field
+  if ("monitor_status" in raw) {
+    const hetrix = raw as HetrixToolsPayload;
+    const errorMessages = hetrix.monitor_errors
+      ? Object.entries(hetrix.monitor_errors).map(([loc, err]) => `${loc}: ${err}`).join("; ")
+      : undefined;
+
+    return {
+      source: "hetrixtools",
+      monitorId: hetrix.monitor_id,
+      monitorName: hetrix.monitor_name,
+      monitorUrl: hetrix.monitor_target,
+      status: hetrix.monitor_status === "offline" ? "down" : "up",
+      alertDetails: errorMessages,
+    };
+  }
+
+  // UptimeRobot format
+  const uptime = raw as UptimeRobotPayload;
+  let status: "up" | "down" | "other" = "other";
+
+  if (uptime.alertType === "1" || uptime.alertTypeFriendlyName?.toLowerCase() === "down") {
+    status = "down";
+  } else if (uptime.alertType === "2" || uptime.alertTypeFriendlyName?.toLowerCase() === "up") {
+    status = "up";
+  }
+
+  return {
+    source: "uptimerobot",
+    monitorId: uptime.monitorID,
+    monitorName: uptime.monitorFriendlyName,
+    monitorUrl: uptime.monitorURL,
+    status,
+    alertDetails: uptime.alertDetails,
+    alertDuration: uptime.alertDuration,
+    sslExpiryDaysLeft: uptime.sslExpiryDaysLeft,
+    sslExpiryDate: uptime.sslExpiryDate,
+  };
+}
+
+/**
+ * Handle DOWN alert from monitoring service
  *
  * IMPORTANT: If this endpoint receives a DOWN alert, the server is at least
  * partially responsive. For complete outages, this endpoint won't be reachable.
  *
- * Primary DOWN notifications should be configured via UptimeRobot's native
- * integrations (Slack, Discord, Email) which are sent from their servers:
- * - UptimeRobot → My Settings → Alert Contacts → Add Slack/Discord/Email
+ * Primary DOWN notifications should be configured via your monitoring service's
+ * native email alerts which are sent from their servers.
  *
  * This handler is useful for:
  * - Partial outages (server responding slowly but still up)
@@ -146,20 +224,20 @@ export async function POST(request: NextRequest) {
  */
 async function handleDownAlert(
   supabase: ReturnType<typeof createServiceClient>,
-  payload: UptimeRobotPayload
+  payload: NormalizedPayload
 ) {
   // Create service_disruption incident (for internal tracking)
   try {
     await createIncident({
       incident_type: "service_disruption",
       severity: "critical",
-      endpoint: payload.monitorURL,
-      description: `Service disruption detected: ${payload.monitorFriendlyName} is DOWN`,
+      endpoint: payload.monitorUrl,
+      description: `Service disruption detected: ${payload.monitorName} is DOWN`,
       details: {
-        source: "uptimerobot",
-        monitorId: payload.monitorID,
-        monitorName: payload.monitorFriendlyName,
-        monitorUrl: payload.monitorURL,
+        source: payload.source,
+        monitorId: payload.monitorId,
+        monitorName: payload.monitorName,
+        monitorUrl: payload.monitorUrl,
         alertDetails: payload.alertDetails,
       },
     });
@@ -171,7 +249,7 @@ async function handleDownAlert(
   try {
     await supabase.from("uptime_log").insert({
       status: "unhealthy",
-      source: "uptimerobot",
+      source: payload.source,
       error_message: `DOWN alert: ${payload.alertDetails || "No details"}`,
     });
   } catch (err) {
@@ -180,17 +258,17 @@ async function handleDownAlert(
 
   // NOTE: We intentionally do NOT send Slack/Discord alerts here.
   // If this endpoint is reachable, the server isn't fully down,
-  // and UptimeRobot's native integrations handle the primary alerting.
+  // and the monitoring service's native integrations handle primary alerting.
   // This avoids duplicate notifications and ensures alerts work even
   // when the server is completely unreachable.
 }
 
 /**
- * Handle UP (recovery) alert from UptimeRobot
+ * Handle UP (recovery) alert from monitoring service
  */
 async function handleUpAlert(
   supabase: ReturnType<typeof createServiceClient>,
-  payload: UptimeRobotPayload
+  payload: NormalizedPayload
 ) {
   // Find and resolve open service_disruption incident
   try {
@@ -199,7 +277,7 @@ async function handleUpAlert(
     if (openIncident) {
       await updateIncident(openIncident, {
         status: "resolved",
-        notes: `Auto-resolved: Service recovered after ${payload.alertDuration || "unknown"} seconds downtime`,
+        notes: `Auto-resolved (${payload.source}): Service recovered after ${payload.alertDuration || "unknown"} seconds downtime`,
       });
     }
   } catch (err) {
@@ -212,7 +290,7 @@ async function handleUpAlert(
   try {
     await supabase.from("uptime_log").insert({
       status: "healthy",
-      source: "uptimerobot",
+      source: payload.source,
       error_message: downtimeSeconds
         ? `Recovery after ${downtimeSeconds}s downtime`
         : "Service recovered",
@@ -225,11 +303,11 @@ async function handleUpAlert(
   try {
     await sendAlertToAll({
       type: "up",
-      monitorName: payload.monitorFriendlyName,
-      monitorUrl: payload.monitorURL,
+      monitorName: payload.monitorName,
+      monitorUrl: payload.monitorUrl,
       timestamp: new Date().toISOString(),
       duration: downtimeSeconds,
-      details: { alertDetails: payload.alertDetails },
+      details: { alertDetails: payload.alertDetails, source: payload.source },
     });
   } catch (err) {
     logError(err as Error, { context: "send_up_alert" });
@@ -239,16 +317,16 @@ async function handleUpAlert(
 /**
  * Handle other alert types (SSL expiry, etc.)
  */
-async function handleOtherAlert(payload: UptimeRobotPayload) {
+async function handleOtherAlert(payload: NormalizedPayload) {
   // Log the alert for visibility
   logSecurityEvent("monitoring_alert_other", {
-    alertType: payload.alertTypeFriendlyName,
-    monitorName: payload.monitorFriendlyName,
+    source: payload.source,
+    monitorName: payload.monitorName,
     sslExpiryDaysLeft: payload.sslExpiryDaysLeft,
     sslExpiryDate: payload.sslExpiryDate,
   });
 
-  // Send notification for SSL expiry warnings
+  // Send notification for SSL expiry warnings (UptimeRobot only)
   if (payload.sslExpiryDaysLeft) {
     const daysLeft = parseInt(payload.sslExpiryDaysLeft, 10);
 
@@ -256,12 +334,13 @@ async function handleOtherAlert(payload: UptimeRobotPayload) {
       try {
         await sendAlertToAll({
           type: "degraded",
-          monitorName: `SSL Certificate (${payload.monitorFriendlyName})`,
-          monitorUrl: payload.monitorURL,
+          monitorName: `SSL Certificate (${payload.monitorName})`,
+          monitorUrl: payload.monitorUrl,
           timestamp: new Date().toISOString(),
           details: {
             sslExpiryDate: payload.sslExpiryDate,
             daysLeft,
+            source: payload.source,
           },
         });
       } catch (err) {
@@ -285,6 +364,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     status: "ok",
     message: "Monitoring webhook endpoint is active",
+    supported_services: ["uptimerobot", "hetrixtools"],
     timestamp: new Date().toISOString(),
   });
 }
