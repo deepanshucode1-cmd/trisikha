@@ -9,8 +9,11 @@ interface EnvVar {
   secret?: boolean; // If true, won't log the value
 }
 
-// Check if running on Vercel (serverless)
+// Check if running on Vercel (serverless) - indicates actual production deployment
 const isVercel = !!process.env.VERCEL;
+// NODE_ENV is "production" during `next build` even locally, so we need to distinguish
+// actual production deployment from local production builds
+const isProductionDeployment = isVercel || !!process.env.CI;
 const isProduction = process.env.NODE_ENV === "production";
 
 const REQUIRED_ENV_VARS: EnvVar[] = [
@@ -44,9 +47,9 @@ const REQUIRED_ENV_VARS: EnvVar[] = [
   { name: "UPSTASH_REDIS_REST_TOKEN", required: isVercel || isProduction, secret: true },
 ];
 
-export function validateEnvironment(): { valid: boolean; errors: string[] } {
+export function validateEnvironment(): { valid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
-  const isProduction = process.env.NODE_ENV === "production";
+  const warnings: string[] = [];
 
   for (const envVar of REQUIRED_ENV_VARS) {
     const value = process.env[envVar.name];
@@ -56,8 +59,8 @@ export function validateEnvironment(): { valid: boolean; errors: string[] } {
       errors.push(`Missing required environment variable: ${envVar.name}`);
     }
 
-    // Additional production checks
-    if (isProduction && value) {
+    // Additional production deployment checks (only on Vercel/CI, not local builds)
+    if (isProductionDeployment && value) {
       // Check for test/demo values in production
       if (
         envVar.name === "RAZORPAY_KEY_ID" &&
@@ -75,11 +78,24 @@ export function validateEnvironment(): { valid: boolean; errors: string[] } {
         );
       }
     }
+
+    // Warn about test keys during local production builds (not an error)
+    if (isProduction && !isProductionDeployment && value) {
+      if (
+        envVar.name === "RAZORPAY_KEY_ID" &&
+        value.startsWith("rzp_test_")
+      ) {
+        warnings.push(
+          `RAZORPAY_KEY_ID is a test key - use live keys for actual production deployment`
+        );
+      }
+    }
   }
 
   return {
     valid: errors.length === 0,
     errors,
+    warnings,
   };
 }
 
@@ -87,12 +103,24 @@ export function validateEnvironment(): { valid: boolean; errors: string[] } {
  * Run validation and optionally throw on errors
  */
 export function assertEnvironment(): void {
-  const { valid, errors } = validateEnvironment();
+  // Skip validation if explicitly disabled (for staging environments with test keys)
+  if (process.env.SKIP_ENV_VALIDATION === "true") {
+    console.warn("[ENV] Skipping environment validation (SKIP_ENV_VALIDATION=true)");
+    return;
+  }
+
+  const { valid, errors, warnings } = validateEnvironment();
+
+  // Show warnings (non-fatal)
+  if (warnings.length > 0) {
+    console.warn(`[ENV WARNING]\n${warnings.map((w) => `  - ${w}`).join("\n")}`);
+  }
 
   if (!valid) {
     const errorMessage = `Environment validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`;
 
-    if (process.env.NODE_ENV === "production") {
+    // Only throw on actual production deployments (Vercel/CI)
+    if (isProductionDeployment) {
       throw new Error(errorMessage);
     } else {
       console.warn(`[ENV WARNING] ${errorMessage}`);

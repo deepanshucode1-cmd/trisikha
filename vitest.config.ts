@@ -14,6 +14,9 @@ export default defineConfig({
       exclude: ["node_modules", ".next", "**/*.test.ts"],
     },
     setupFiles: ["./tests/setup.ts"],
+    env: {
+      NODE_ENV: "test",
+    },
   },
   resolve: {
     alias: {
