@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   // Check cache first (won't help on cold start, but prevents hammering)
   if (lastCheck && Date.now() - lastCheck.timestamp < CACHE_TTL_MS) {
     return NextResponse.json(lastCheck.result, {
-      status: lastCheck.result.status === "unhealthy" ? 503 : 200,
+      status: lastCheck.result.status === "unhealthy" ? 503 : 503,
       headers: {
         "Cache-Control": "no-store, max-age=0",
         "X-Cache": "HIT",
