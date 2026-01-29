@@ -153,7 +153,7 @@ export async function GET(request: Request) {
     lastCheck = { result: response, timestamp: Date.now() };
 
     return NextResponse.json(response, {
-      status: status === "unhealthy" ? 503 : 200,
+      status: status === "unhealthy" ? 503 : 503,
       headers: {
         "Cache-Control": "no-store, max-age=0",
         "X-Cache": "MISS",
