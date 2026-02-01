@@ -5,6 +5,7 @@ import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
+import { getPendingDeletionRequest, getDaysRemaining } from "@/lib/deletion-request";
 
 const requestSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -122,6 +123,20 @@ export async function POST(req: Request) {
       orderItems = items || [];
     }
 
+    // Check for pending deletion request
+    const pendingDeletion = await getPendingDeletionRequest(normalizedEmail);
+    let pendingDeletionInfo = null;
+
+    if (pendingDeletion) {
+      pendingDeletionInfo = {
+        exists: true,
+        requestId: pendingDeletion.id,
+        requestedAt: pendingDeletion.requested_at,
+        scheduledDeletionAt: pendingDeletion.scheduled_deletion_at,
+        daysRemaining: getDaysRemaining(pendingDeletion.scheduled_deletion_at),
+      };
+    }
+
     // Audit log for DPDP compliance
     await logDataAccess({
       tableName: "orders",
@@ -137,6 +152,7 @@ export async function POST(req: Request) {
       email: normalizedEmail,
       ip,
       ordersCount: orders?.length || 0,
+      hasPendingDeletion: !!pendingDeletion,
     });
 
     return NextResponse.json({
@@ -147,6 +163,7 @@ export async function POST(req: Request) {
         ...order,
         items: orderItems.filter((item: Record<string, unknown>) => item.order_id === order.id),
       })) || [],
+      pendingDeletion: pendingDeletionInfo,
     });
   } catch (error) {
     return handleApiError(error, {

@@ -26,6 +26,14 @@ type Order = {
   }[];
 };
 
+type PendingDeletion = {
+  exists: boolean;
+  requestId: string;
+  requestedAt: string;
+  scheduledDeletionAt: string;
+  daysRemaining: number;
+} | null;
+
 type Step = "email" | "otp" | "data";
 
 export default function MyDataPage() {
@@ -41,6 +49,11 @@ export default function MyDataPage() {
   const [attemptsRemaining, setAttemptsRemaining] = useState(5);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletePhrase, setDeletePhrase] = useState("");
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelOtp, setCancelOtp] = useState("");
+  const [cancelOtpSent, setCancelOtpSent] = useState(false);
+  const [cancelPhrase, setCancelPhrase] = useState("");
 
   // Send OTP
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -125,6 +138,7 @@ export default function MyDataPage() {
       }
 
       setOrders(data.orders || []);
+      setPendingDeletion(data.pendingDeletion || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
     }
@@ -166,7 +180,7 @@ export default function MyDataPage() {
     }
   };
 
-  // Delete data
+  // Delete data (now creates a pending request)
   const handleDeleteData = async () => {
     if (deletePhrase !== "DELETE MY DATA") {
       setError("Please type 'DELETE MY DATA' exactly to confirm");
@@ -186,17 +200,87 @@ export default function MyDataPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to delete data");
+        throw new Error(data.error || "Failed to submit deletion request");
       }
 
-      setSuccess(`Your data has been deleted. ${data.details?.ordersAnonymized || 0} order(s) were anonymized.`);
+      // Update state with new pending deletion
+      const scheduledDate = new Date(data.details.scheduledDeletionDate);
+      setPendingDeletion({
+        exists: true,
+        requestId: data.details.requestId,
+        requestedAt: new Date().toISOString(),
+        scheduledDeletionAt: data.details.scheduledDeletionDate,
+        daysRemaining: data.details.windowPeriodDays,
+      });
+
+      setSuccess(`Deletion request submitted. Your data will be deleted on ${scheduledDate.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}. You can cancel this request anytime before then.`);
       setShowDeleteConfirm(false);
-      setOrders([]);
-      setStep("email");
-      setEmail("");
-      setSessionToken("");
+      setDeletePhrase("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete data");
+      setError(err instanceof Error ? err.message : "Failed to submit deletion request");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Send OTP for cancellation
+  const handleSendCancelOtp = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/guest/send-data-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send OTP");
+      }
+
+      setCancelOtpSent(true);
+      setSuccess("Verification code sent to your email.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancel deletion request
+  const handleCancelDeletion = async () => {
+    if (cancelPhrase !== "CANCEL DELETION") {
+      setError("Please type 'CANCEL DELETION' exactly to confirm");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/guest/cancel-deletion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: cancelOtp, confirmPhrase: cancelPhrase }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to cancel deletion request");
+      }
+
+      setPendingDeletion(null);
+      setShowCancelConfirm(false);
+      setCancelOtp("");
+      setCancelOtpSent(false);
+      setCancelPhrase("");
+      setSuccess("Your deletion request has been cancelled. Your data is safe.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel deletion request");
     } finally {
       setLoading(false);
     }
@@ -346,6 +430,41 @@ export default function MyDataPage() {
         {/* Step 3: Data Display */}
         {step === "data" && (
           <>
+            {/* Pending Deletion Banner */}
+            {pendingDeletion?.exists && (
+              <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-6 mb-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0">
+                    <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-amber-800">
+                      Data Deletion Scheduled
+                    </h3>
+                    <p className="mt-1 text-amber-700">
+                      Your data will be permanently deleted in <strong>{pendingDeletion.daysRemaining} day{pendingDeletion.daysRemaining !== 1 ? 's' : ''}</strong>
+                    </p>
+                    <p className="mt-1 text-sm text-amber-600">
+                      Scheduled for: {new Date(pendingDeletion.scheduledDeletionAt).toLocaleDateString("en-IN", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric"
+                      })}
+                    </p>
+                    <button
+                      onClick={() => setShowCancelConfirm(true)}
+                      className="mt-4 py-2 px-4 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      Cancel Deletion Request
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
@@ -364,16 +483,29 @@ export default function MyDataPage() {
                   Download My Data
                 </button>
 
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Delete My Data
-                </button>
+                {pendingDeletion?.exists ? (
+                  <button
+                    onClick={() => setShowCancelConfirm(true)}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-2 py-3 px-4 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Cancel Deletion
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete My Data
+                  </button>
+                )}
               </div>
 
               <p className="mt-4 text-sm text-gray-500">
@@ -466,17 +598,17 @@ export default function MyDataPage() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <h3 className="text-xl font-bold text-red-600 mb-4">
-                Delete Your Data
+                Request Data Deletion
               </h3>
 
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                <p className="text-red-700 text-sm">
-                  <strong>Warning:</strong> This action cannot be undone. Your personal information will be permanently anonymized.
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                <p className="text-amber-800 text-sm">
+                  <strong>14-Day Window Period:</strong> Your data will not be deleted immediately. You will have 14 days to cancel this request if you change your mind.
                 </p>
               </div>
 
               <p className="text-gray-600 mb-4">
-                Order records will be retained for tax compliance but all identifying information (name, email, phone, address) will be removed.
+                After the waiting period, order records will be retained for tax compliance but all identifying information (name, email, phone, address) will be permanently removed.
               </p>
 
               <div className="mb-4">
@@ -507,9 +639,95 @@ export default function MyDataPage() {
                   disabled={loading || deletePhrase !== "DELETE MY DATA"}
                   className="flex-1 py-2 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Deleting..." : "Delete My Data"}
+                  {loading ? "Submitting..." : "Request Deletion"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Deletion Modal */}
+        {showCancelConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+              <h3 className="text-xl font-bold text-green-600 mb-4">
+                Cancel Deletion Request
+              </h3>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <p className="text-green-700 text-sm">
+                  Your data will be kept safe after cancellation. You can request deletion again at any time.
+                </p>
+              </div>
+
+              {!cancelOtpSent ? (
+                <>
+                  <p className="text-gray-600 mb-4">
+                    To cancel your deletion request, we need to verify your identity. Click below to receive a verification code.
+                  </p>
+
+                  <button
+                    onClick={handleSendCancelOtp}
+                    disabled={loading}
+                    className="w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    {loading ? "Sending..." : "Send Verification Code"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-600 mb-4">
+                    Enter the verification code sent to <strong>{email}</strong>
+                  </p>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      value={cancelOtp}
+                      onChange={(e) => setCancelOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                      maxLength={6}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-center text-2xl tracking-widest"
+                    />
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Type <strong>CANCEL DELETION</strong> to confirm:
+                    </label>
+                    <input
+                      type="text"
+                      value={cancelPhrase}
+                      onChange={(e) => setCancelPhrase(e.target.value)}
+                      placeholder="CANCEL DELETION"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleCancelDeletion}
+                    disabled={loading || cancelOtp.length !== 6 || cancelPhrase !== "CANCEL DELETION"}
+                    className="w-full py-3 px-4 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Cancelling..." : "Cancel Deletion Request"}
+                  </button>
+                </>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowCancelConfirm(false);
+                  setCancelOtp("");
+                  setCancelOtpSent(false);
+                  setCancelPhrase("");
+                }}
+                className="w-full mt-3 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Close
+              </button>
             </div>
           </div>
         )}

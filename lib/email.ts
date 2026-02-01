@@ -603,3 +603,232 @@ export async function sendDPBBreachNotification(
     `,
   });
 }
+
+// --- Data Deletion Request Emails (DPDP Compliance) ---
+
+/**
+ * Send deletion request confirmation email
+ * Sent when a user initiates a data deletion request
+ */
+export async function sendDeletionRequestConfirmation(params: {
+  email: string;
+  requestId: string;
+  scheduledDate: Date;
+  cancelUrl: string;
+}): Promise<boolean> {
+  const { email, requestId, scheduledDate, cancelUrl } = params;
+  const safeCancelUrl = sanitizeUrl(cancelUrl);
+  const formattedDate = scheduledDate.toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Your Data Deletion Request",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Data Deletion Request Received</h2>
+        <p>Dear Customer,</p>
+        <p>We have received your request to delete your personal data from Trishikha Organics.</p>
+
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="margin-top: 0; color: #92400e;">Important: 14-Day Window Period</h3>
+          <p style="margin-bottom: 0;">Your data is scheduled to be deleted on:</p>
+          <p style="font-size: 20px; font-weight: bold; color: #92400e; margin: 10px 0;">${escapeHtml(formattedDate)}</p>
+          <p style="margin-bottom: 0;">You can cancel this request anytime before this date.</p>
+        </div>
+
+        <h3>What Will Happen</h3>
+        <ul>
+          <li>All your order history will be anonymized</li>
+          <li>Your email, phone number, and address will be removed</li>
+          <li>Order records will be retained for tax compliance (without personal identifiers)</li>
+        </ul>
+
+        <h3>Changed Your Mind?</h3>
+        <p>If you want to cancel this deletion request, you can do so by:</p>
+        <ol>
+          <li>Visiting <a href="${escapeHtml(safeCancelUrl)}">${escapeHtml(safeCancelUrl)}</a></li>
+          <li>Verifying your email with OTP</li>
+          <li>Clicking "Cancel Deletion Request"</li>
+        </ol>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Reference ID:</strong> ${escapeHtml(requestId)}</p>
+        </div>
+
+        <p>If you did not make this request, please visit the link above to cancel it immediately.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message regarding your data protection rights under DPDP Act.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send deletion reminder email
+ * Sent on Day 1, 7, and 13 of the waiting period
+ */
+export async function sendDeletionReminder(params: {
+  email: string;
+  daysRemaining: number;
+  scheduledDate: Date;
+  cancelUrl: string;
+}): Promise<boolean> {
+  const { email, daysRemaining, scheduledDate, cancelUrl } = params;
+  const safeCancelUrl = sanitizeUrl(cancelUrl);
+  const formattedDate = scheduledDate.toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const urgencyColor = daysRemaining <= 1 ? "#dc2626" : daysRemaining <= 7 ? "#f59e0b" : "#166534";
+  const urgencyBg = daysRemaining <= 1 ? "#fef2f2" : daysRemaining <= 7 ? "#fef3c7" : "#f0fdf4";
+  const urgencyBorder = daysRemaining <= 1 ? "#fecaca" : daysRemaining <= 7 ? "#f59e0b" : "#22c55e";
+
+  return sendEmail({
+    to: email,
+    subject: `TrishikhaOrganics: ${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Until Your Data Is Deleted`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: ${urgencyColor};">Data Deletion Reminder</h2>
+        <p>Dear Customer,</p>
+        <p>This is a reminder that your data deletion request is still active.</p>
+
+        <div style="background-color: ${urgencyBg}; border: 1px solid ${urgencyBorder}; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+          <p style="margin: 0; font-size: 16px;">Your data will be permanently deleted in:</p>
+          <p style="font-size: 48px; font-weight: bold; color: ${urgencyColor}; margin: 15px 0;">${daysRemaining}</p>
+          <p style="margin: 0; font-size: 14px;">day${daysRemaining === 1 ? '' : 's'}</p>
+          <p style="margin: 15px 0 0 0; font-size: 14px;">Scheduled deletion date: <strong>${escapeHtml(formattedDate)}</strong></p>
+        </div>
+
+        ${daysRemaining <= 1 ? `
+        <div style="background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0; color: #dc2626; font-weight: bold;">⚠️ FINAL WARNING: This is your last chance to cancel the deletion request!</p>
+        </div>
+        ` : ''}
+
+        <h3>Want to Keep Your Data?</h3>
+        <p>If you've changed your mind, you can cancel this request:</p>
+        <p style="text-align: center; margin: 25px 0;">
+          <a href="${escapeHtml(safeCancelUrl)}" style="background-color: #22c55e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Cancel Deletion Request</a>
+        </p>
+
+        <p style="color: #666; font-size: 14px;">Once deleted, your order history and personal information cannot be recovered.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated reminder regarding your data deletion request.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send deletion completed email
+ * Sent after data has been successfully anonymized
+ */
+export async function sendDeletionCompleted(params: {
+  email: string;
+  ordersAnonymized: number;
+}): Promise<boolean> {
+  const { email, ordersAnonymized } = params;
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Your Data Has Been Deleted",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Data Deletion Complete</h2>
+        <p>Dear Customer,</p>
+        <p>As per your request, we have successfully deleted your personal data from our systems.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="margin-top: 0; color: #166534;">Summary</h3>
+          <ul style="margin-bottom: 0;">
+            <li>Orders anonymized: <strong>${ordersAnonymized}</strong></li>
+            <li>Personal information removed: Email, phone, address</li>
+            <li>Completed on: <strong>${new Date().toLocaleDateString("en-IN")}</strong></li>
+          </ul>
+        </div>
+
+        <h3>What We Retained</h3>
+        <p>For tax compliance purposes (GST Act), we retain anonymized order records without any personal identifiers. These records:</p>
+        <ul>
+          <li>Cannot be linked back to you</li>
+          <li>Do not contain your name, email, phone, or address</li>
+          <li>Will be permanently deleted after the 8-year retention period</li>
+        </ul>
+
+        <p>This email will be the last communication you receive from us at this email address.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Your data protection rights have been honored under the DPDP Act.<br>
+          Thank you for being a customer of Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send deletion cancelled confirmation email
+ * Sent when a user cancels their deletion request
+ */
+export async function sendDeletionCancelled(params: {
+  email: string;
+  cancelledAt: Date;
+}): Promise<boolean> {
+  const { email, cancelledAt } = params;
+  const formattedDate = cancelledAt.toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Data Deletion Request Cancelled",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Deletion Request Cancelled</h2>
+        <p>Dear Customer,</p>
+        <p>Your data deletion request has been successfully cancelled.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Cancelled on:</strong> ${escapeHtml(formattedDate)}</p>
+        </div>
+
+        <h3>Your Data Is Safe</h3>
+        <p>Your personal information and order history will continue to be stored securely. You can:</p>
+        <ul>
+          <li>View your order history at any time</li>
+          <li>Request data export for your records</li>
+          <li>Submit a new deletion request if you change your mind</li>
+        </ul>
+
+        <p>If you did not cancel this request, please contact us immediately.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Thank you for being a customer of Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}

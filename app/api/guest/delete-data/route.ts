@@ -4,7 +4,12 @@ import { z } from "zod";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
-import { logDataAccess } from "@/lib/audit";
+import {
+  createDeletionRequest,
+  DELETION_WINDOW_DAYS,
+  markReminderSent,
+} from "@/lib/deletion-request";
+import { sendDeletionRequestConfirmation } from "@/lib/email";
 
 const requestSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -17,10 +22,10 @@ const requestSchema = z.object({
 /**
  * POST /api/guest/delete-data
  *
- * Anonymizes all data for a verified guest email
- * DPDP Act - Right to Erasure
+ * Creates a pending deletion request with a 14-day window period
+ * DPDP Act - Right to Erasure with cooling-off period
  *
- * Note: Order data is retained for tax compliance but anonymized
+ * Note: Data is not immediately deleted - user has 14 days to cancel
  */
 export async function POST(req: Request) {
   try {
@@ -109,61 +114,53 @@ export async function POST(req: Request) {
 
     const orderCount = ordersToAnonymize?.length || 0;
 
-    // Anonymize all order data
-    const anonymizedEmail = `deleted-${Date.now()}@anonymized.local`;
-    const anonymizedPhone = "0000000000";
-    const anonymizedName = "Deleted User";
-    const anonymizedAddress = "Address Removed";
+    // Create a pending deletion request (not immediate deletion)
+    const userAgent = req.headers.get("user-agent") || undefined;
+    const result = await createDeletionRequest({
+      email: normalizedEmail,
+      ip,
+      userAgent,
+      ordersCount: orderCount,
+    });
 
-    const { error: anonymizeError } = await supabase
-      .from("orders")
-      .update({
-        guest_email: anonymizedEmail,
-        guest_phone: anonymizedPhone,
-        shipping_first_name: anonymizedName,
-        shipping_last_name: "",
-        shipping_address_line1: anonymizedAddress,
-        shipping_address_line2: null,
-        billing_first_name: anonymizedName,
-        billing_last_name: "",
-        billing_address_line1: anonymizedAddress,
-        billing_address_line2: null,
-        otp_code: null,
-        otp_expires_at: null,
-        otp_attempts: 0,
-        otp_locked_until: null,
-      })
-      .eq("guest_email", normalizedEmail);
+    // Send confirmation email (non-blocking)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
+    sendDeletionRequestConfirmation({
+      email: normalizedEmail,
+      requestId: result.requestId,
+      scheduledDate: result.scheduledAt,
+      cancelUrl: `${baseUrl}/my-data`,
+    })
+      .then(() => markReminderSent(result.requestId, "confirmation"))
+      .catch((err) => {
+        console.error("Failed to send deletion confirmation email:", err);
+      });
 
-    if (anonymizeError) {
-      throw new Error("Failed to anonymize data");
+    // Return appropriate response based on whether this is a new or existing request
+    if (result.alreadyPending) {
+      return NextResponse.json({
+        success: true,
+        message: "You already have a pending deletion request.",
+        details: {
+          requestId: result.requestId,
+          scheduledDeletionDate: result.scheduledAt.toISOString(),
+          windowPeriodDays: DELETION_WINDOW_DAYS,
+          ordersToBeAnonymized: orderCount,
+          cancelInstructions: "You can cancel this request anytime before the scheduled date by visiting /my-data",
+        },
+      });
     }
-
-    // Log the deletion for audit
-    await logDataAccess({
-      tableName: "orders",
-      operation: "UPDATE",
-      ip,
-      queryType: "bulk",
-      rowCount: orderCount,
-      endpoint: "/api/guest/delete-data",
-      reason: "DPDP right to erasure request - data anonymized",
-    });
-
-    logSecurityEvent("guest_data_deleted", {
-      originalEmail: normalizedEmail,
-      anonymizedEmail,
-      ip,
-      ordersAnonymized: orderCount,
-      deletedAt: new Date().toISOString(),
-    });
 
     return NextResponse.json({
       success: true,
-      message: "Your personal data has been successfully anonymized.",
+      message: "Your deletion request has been received.",
       details: {
-        ordersAnonymized: orderCount,
-        note: "Order records are retained for tax compliance but all identifying information has been removed.",
+        requestId: result.requestId,
+        scheduledDeletionDate: result.scheduledAt.toISOString(),
+        windowPeriodDays: DELETION_WINDOW_DAYS,
+        ordersToBeAnonymized: orderCount,
+        cancelInstructions: "You can cancel this request anytime before the scheduled date by visiting /my-data",
+        note: `Your data will be anonymized on ${result.scheduledAt.toLocaleDateString()}. A confirmation email has been sent.`,
       },
     });
   } catch (error) {
