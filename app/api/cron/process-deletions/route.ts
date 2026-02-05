@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import {
-  getRequestsDueForExecution,
   getRequestsNeedingReminders,
-  executeDeletionRequest,
+  markRequestsAsEligible,
   markReminderSent,
+  getDaysRemaining,
 } from "@/lib/deletion-request";
-import {
-  sendDeletionReminder,
-  sendDeletionCompleted,
-} from "@/lib/email";
-import { getDaysRemaining } from "@/lib/deletion-request";
+import { sendDeletionReminder } from "@/lib/email";
 
 /**
  * Verify QStash signature for cron job security
@@ -59,7 +55,12 @@ async function verifyQStashSignature(req: Request): Promise<boolean> {
 /**
  * POST /api/cron/process-deletions
  *
- * Processes scheduled deletion requests and sends reminder emails
+ * Processes scheduled deletion requests:
+ * 1. Marks requests as 'eligible' when 14-day window expires (does NOT execute)
+ * 2. Sends reminder emails (day 1, 7, 13)
+ *
+ * Actual deletion execution requires admin approval via admin dashboard.
+ *
  * Called daily by Upstash QStash
  */
 export async function POST(req: Request) {
@@ -74,50 +75,25 @@ export async function POST(req: Request) {
     }
 
     const results = {
-      deletionsProcessed: 0,
-      deletionsFailed: 0,
+      markedEligible: 0,
       remindersDay1Sent: 0,
       remindersDay7Sent: 0,
       remindersDay13Sent: 0,
       remindersFailed: 0,
     };
 
-    // Process due deletion requests
-    const dueRequests = await getRequestsDueForExecution();
-
-    for (const request of dueRequests) {
-      try {
-        // Send completion email before anonymizing
-        await sendDeletionCompleted({
-          email: request.guest_email,
-          ordersAnonymized: request.orders_count,
-        });
-        await markReminderSent(request.id, "completion");
-
-        // Execute the deletion
-        const result = await executeDeletionRequest(request.id);
-
-        if (result.success) {
-          results.deletionsProcessed++;
-        } else {
-          results.deletionsFailed++;
-        }
-      } catch (err) {
-        results.deletionsFailed++;
-        logError(err as Error, {
-          context: "cron_deletion_failed",
-          requestId: request.id,
-        });
-      }
-    }
+    // Mark requests as eligible when 14-day window expires
+    // NOTE: This does NOT execute deletions - admin must approve via dashboard
+    results.markedEligible = await markRequestsAsEligible();
 
     // Send reminder emails
     const reminders = await getRequestsNeedingReminders();
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
 
     // Day 1 reminders (13 days remaining)
     for (const request of reminders.day1) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
         await sendDeletionReminder({
           email: request.guest_email,
           daysRemaining: getDaysRemaining(request.scheduled_deletion_at),
@@ -138,7 +114,6 @@ export async function POST(req: Request) {
     // Day 7 reminders (7 days remaining)
     for (const request of reminders.day7) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
         await sendDeletionReminder({
           email: request.guest_email,
           daysRemaining: getDaysRemaining(request.scheduled_deletion_at),
@@ -159,7 +134,6 @@ export async function POST(req: Request) {
     // Day 13 reminders (1 day remaining)
     for (const request of reminders.day13) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
         await sendDeletionReminder({
           email: request.guest_email,
           daysRemaining: getDaysRemaining(request.scheduled_deletion_at),
@@ -184,7 +158,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Deletion processing completed",
+      message:
+        "Deletion processing completed. Eligible requests require admin approval.",
       results,
     });
   } catch (error) {

@@ -1,23 +1,39 @@
 /**
  * Deletion Request Service
- * Manages the 14-day window period for DPDP-compliant data deletion
+ * Manages DPDP-compliant data deletion with tax compliance (8-year retention for paid orders)
+ *
+ * Flow:
+ * 1. User requests deletion → 14-day cooling-off window (status: pending)
+ * 2. After 14 days → status changes to 'eligible' (cron job)
+ * 3. Admin reviews and executes deletion:
+ *    - If NO paid orders: delete all data (status: completed)
+ *    - If HAS paid orders: clear OTP only, defer deletion 8 years (status: deferred_legal)
  */
 
 import { createServiceClient } from "@/utils/supabase/service";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
-import { addDays, differenceInDays } from "date-fns";
+import { addDays, addYears, differenceInDays } from "date-fns";
 
 // Constants
 export const DELETION_WINDOW_DAYS = parseInt(
   process.env.DELETION_WINDOW_DAYS || "14"
 );
+export const TAX_RETENTION_YEARS = 8;
 
 // Types
+export type DeletionStatus =
+  | "pending"
+  | "eligible"
+  | "deferred_legal"
+  | "cancelled"
+  | "completed"
+  | "failed";
+
 export interface DeletionRequest {
   id: string;
   guest_email: string;
-  status: "pending" | "cancelled" | "completed" | "failed";
+  status: DeletionStatus;
   requested_at: string;
   scheduled_deletion_at: string;
   cancelled_at: string | null;
@@ -31,6 +47,15 @@ export interface DeletionRequest {
   ip_address: string | null;
   user_agent: string | null;
   orders_count: number;
+  // Tax compliance fields
+  has_paid_orders: boolean;
+  paid_orders_count: number;
+  unpaid_orders_count: number;
+  earliest_order_fy: string | null;
+  retention_end_date: string | null;
+  executed_by: string | null;
+  otp_cleared: boolean;
+  otp_cleared_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +73,52 @@ export interface CreateDeletionRequestResult {
   alreadyPending?: boolean;
 }
 
+export interface ExecuteDeletionResult {
+  success: boolean;
+  status: DeletionStatus;
+  ordersDeleted: number;
+  otpCleared: boolean;
+  hasPaidOrders: boolean;
+  paidOrdersCount: number;
+  retentionEndDate: Date | null;
+  message: string;
+}
+
+/**
+ * Calculate financial year from a date
+ * Indian FY runs from April 1 to March 31
+ * e.g., January 2026 → FY 2025-26
+ */
+export function getFinancialYear(date: Date): string {
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed
+
+  // April (month 3) to March (month 2) of next year
+  if (month >= 3) {
+    // April onwards: current year to next year
+    return `${year}-${(year + 1).toString().slice(-2)}`;
+  } else {
+    // January to March: previous year to current year
+    return `${year - 1}-${year.toString().slice(-2)}`;
+  }
+}
+
+/**
+ * Calculate retention end date (8 years from FY end)
+ * e.g., FY 2025-26 ends March 31, 2026 → Retention until March 31, 2034
+ */
+export function calculateRetentionEndDate(financialYear: string): Date {
+  // Parse FY string like "2025-26"
+  const startYear = parseInt(financialYear.split("-")[0]);
+  const fyEndYear = startYear + 1;
+
+  // FY ends on March 31
+  const fyEndDate = new Date(fyEndYear, 2, 31); // March 31 of end year
+
+  // Add 8 years for retention
+  return addYears(fyEndDate, TAX_RETENTION_YEARS);
+}
+
 /**
  * Create a new deletion request for a guest
  * Does NOT delete data - creates a pending request with 14-day window
@@ -58,12 +129,12 @@ export async function createDeletionRequest(
   const supabase = createServiceClient();
   const normalizedEmail = params.email.toLowerCase().trim();
 
-  // Check if there's already a pending request
+  // Check if there's already an active request (pending, eligible, or deferred_legal)
   const { data: existing } = await supabase
     .from("deletion_requests")
-    .select("id, scheduled_deletion_at")
+    .select("id, scheduled_deletion_at, status")
     .eq("guest_email", normalizedEmail)
-    .eq("status", "pending")
+    .in("status", ["pending", "eligible", "deferred_legal"])
     .single();
 
   if (existing) {
@@ -78,6 +149,32 @@ export async function createDeletionRequest(
   const now = new Date();
   const scheduledAt = addDays(now, DELETION_WINDOW_DAYS);
 
+  // Check for paid orders to pre-populate tax compliance fields
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("id, payment_status, created_at")
+    .eq("guest_email", normalizedEmail);
+
+  const paidOrders = orders?.filter((o) => o.payment_status === "paid") || [];
+  const unpaidOrders = orders?.filter((o) => o.payment_status !== "paid") || [];
+  const hasPaidOrders = paidOrders.length > 0;
+
+  let earliestOrderFy: string | null = null;
+  let retentionEndDate: Date | null = null;
+
+  if (hasPaidOrders) {
+    // Find earliest paid order date
+    const earliestPaidOrder = paidOrders.reduce((earliest, order) => {
+      const orderDate = new Date(order.created_at);
+      return !earliest || orderDate < earliest ? orderDate : earliest;
+    }, null as Date | null);
+
+    if (earliestPaidOrder) {
+      earliestOrderFy = getFinancialYear(earliestPaidOrder);
+      retentionEndDate = calculateRetentionEndDate(earliestOrderFy);
+    }
+  }
+
   // Create the deletion request
   const { data, error } = await supabase
     .from("deletion_requests")
@@ -87,6 +184,11 @@ export async function createDeletionRequest(
       ip_address: params.ip,
       user_agent: params.userAgent || null,
       orders_count: params.ordersCount,
+      has_paid_orders: hasPaidOrders,
+      paid_orders_count: paidOrders.length,
+      unpaid_orders_count: unpaidOrders.length,
+      earliest_order_fy: earliestOrderFy,
+      retention_end_date: retentionEndDate?.toISOString().split("T")[0] || null,
     })
     .select("id")
     .single();
@@ -103,6 +205,8 @@ export async function createDeletionRequest(
     requestId: data.id,
     email: normalizedEmail,
     scheduledAt: scheduledAt.toISOString(),
+    hasPaidOrders,
+    paidOrdersCount: paidOrders.length,
     ip: params.ip,
   });
 
@@ -114,7 +218,7 @@ export async function createDeletionRequest(
 }
 
 /**
- * Cancel a pending deletion request
+ * Cancel a pending or eligible deletion request
  */
 export async function cancelDeletionRequest(params: {
   email: string;
@@ -133,13 +237,12 @@ export async function cancelDeletionRequest(params: {
       updated_at: now.toISOString(),
     })
     .eq("guest_email", normalizedEmail)
-    .eq("status", "pending")
+    .in("status", ["pending", "eligible"])
     .select("id")
     .single();
 
   if (error) {
     if (error.code === "PGRST116") {
-      // No matching row found
       return { success: false, cancelledAt: null };
     }
     logError(error as Error, {
@@ -172,12 +275,11 @@ export async function getPendingDeletionRequest(
     .from("deletion_requests")
     .select("*")
     .eq("guest_email", normalizedEmail)
-    .eq("status", "pending")
+    .in("status", ["pending", "eligible", "deferred_legal"])
     .single();
 
   if (error) {
     if (error.code === "PGRST116") {
-      // No matching row found
       return null;
     }
     logError(error as Error, {
@@ -191,12 +293,79 @@ export async function getPendingDeletionRequest(
 }
 
 /**
- * Execute deletion for a specific request (anonymize order data)
- * Called by the cron job when the window period expires
+ * Get a deletion request by ID
+ */
+export async function getDeletionRequestById(
+  requestId: string
+): Promise<DeletionRequest | null> {
+  const supabase = createServiceClient();
+
+  const { data, error } = await supabase
+    .from("deletion_requests")
+    .select("*")
+    .eq("id", requestId)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+    logError(error as Error, {
+      context: "get_deletion_request_by_id_failed",
+      requestId,
+    });
+    return null;
+  }
+
+  return data as DeletionRequest;
+}
+
+/**
+ * Mark requests as eligible when 14-day window expires
+ * Called by cron job - does NOT execute deletion
+ */
+export async function markRequestsAsEligible(): Promise<number> {
+  const supabase = createServiceClient();
+  const now = new Date();
+
+  const { data, error } = await supabase
+    .from("deletion_requests")
+    .update({
+      status: "eligible",
+      updated_at: now.toISOString(),
+    })
+    .eq("status", "pending")
+    .lte("scheduled_deletion_at", now.toISOString())
+    .select("id");
+
+  if (error) {
+    logError(error as Error, { context: "mark_requests_as_eligible_failed" });
+    return 0;
+  }
+
+  const count = data?.length || 0;
+
+  if (count > 0) {
+    logSecurityEvent("deletion_requests_marked_eligible", {
+      count,
+      timestamp: now.toISOString(),
+    });
+  }
+
+  return count;
+}
+
+/**
+ * Execute deletion for a specific request
+ * Called by admin - handles tax compliance
+ *
+ * - If NO paid orders: delete all order data
+ * - If HAS paid orders: only clear OTP fields, defer deletion for 8 years
  */
 export async function executeDeletionRequest(
-  requestId: string
-): Promise<{ success: boolean; ordersAnonymized: number }> {
+  requestId: string,
+  adminId?: string
+): Promise<ExecuteDeletionResult> {
   const supabase = createServiceClient();
 
   // Get the deletion request
@@ -204,48 +373,158 @@ export async function executeDeletionRequest(
     .from("deletion_requests")
     .select("*")
     .eq("id", requestId)
-    .eq("status", "pending")
+    .in("status", ["eligible", "pending"]) // Allow both for flexibility
     .single();
 
   if (fetchError || !request) {
-    logError(new Error("Deletion request not found or not pending"), {
+    logError(new Error("Deletion request not found or not eligible"), {
       context: "execute_deletion_request_not_found",
       requestId,
     });
-    return { success: false, ordersAnonymized: 0 };
+    return {
+      success: false,
+      status: "failed",
+      ordersDeleted: 0,
+      otpCleared: false,
+      hasPaidOrders: false,
+      paidOrdersCount: 0,
+      retentionEndDate: null,
+      message: "Deletion request not found or not eligible for execution",
+    };
   }
 
   const email = request.guest_email;
   const now = new Date();
 
-  // Anonymize order data
-  const anonymizedEmail = `deleted-${Date.now()}@anonymized.local`;
-  const anonymizedPhone = "0000000000";
-  const anonymizedName = "Deleted User";
-  const anonymizedAddress = "Address Removed";
-
-  const { data: updatedOrders, error: anonymizeError } = await supabase
+  // Re-check for paid orders (data may have changed since request was created)
+  const { data: orders } = await supabase
     .from("orders")
-    .update({
-      guest_email: anonymizedEmail,
-      guest_phone: anonymizedPhone,
-      shipping_first_name: anonymizedName,
-      shipping_last_name: "",
-      shipping_address_line1: anonymizedAddress,
-      shipping_address_line2: null,
-      billing_first_name: anonymizedName,
-      billing_last_name: "",
-      billing_address_line1: anonymizedAddress,
-      billing_address_line2: null,
-      otp_code: null,
-      otp_expires_at: null,
-      otp_attempts: 0,
-      otp_locked_until: null,
-    })
+    .select("id, payment_status, created_at")
+    .eq("guest_email", email);
+
+  const paidOrders = orders?.filter((o) => o.payment_status === "paid") || [];
+  const unpaidOrders = orders?.filter((o) => o.payment_status !== "paid") || [];
+  const hasPaidOrders = paidOrders.length > 0;
+
+  // Calculate retention end date if there are paid orders
+  let earliestOrderFy: string | null = null;
+  let retentionEndDate: Date | null = null;
+
+  if (hasPaidOrders) {
+    const earliestPaidOrder = paidOrders.reduce((earliest, order) => {
+      const orderDate = new Date(order.created_at);
+      return !earliest || orderDate < earliest ? orderDate : earliest;
+    }, null as Date | null);
+
+    if (earliestPaidOrder) {
+      earliestOrderFy = getFinancialYear(earliestPaidOrder);
+      retentionEndDate = calculateRetentionEndDate(earliestOrderFy);
+    }
+  }
+
+  // CASE 1: Has paid orders - cannot delete, only clear OTP and defer
+  if (hasPaidOrders) {
+    // Clear OTP fields only (not tax-relevant)
+    const { error: otpError } = await supabase
+      .from("orders")
+      .update({
+        otp_code: null,
+        otp_expires_at: null,
+        otp_attempts: 0,
+        otp_locked_until: null,
+      })
+      .eq("guest_email", email);
+
+    if (otpError) {
+      logError(otpError as Error, {
+        context: "execute_deletion_clear_otp_failed",
+        requestId,
+        email,
+      });
+      return {
+        success: false,
+        status: "failed",
+        ordersDeleted: 0,
+        otpCleared: false,
+        hasPaidOrders: true,
+        paidOrdersCount: paidOrders.length,
+        retentionEndDate: null,
+        message: "Failed to clear OTP data",
+      };
+    }
+
+    // Delete unpaid orders (no tax obligation)
+    let unpaidDeleted = 0;
+    if (unpaidOrders.length > 0) {
+      const unpaidIds = unpaidOrders.map((o) => o.id);
+      const { error: deleteError } = await supabase
+        .from("orders")
+        .delete()
+        .in("id", unpaidIds);
+
+      if (!deleteError) {
+        unpaidDeleted = unpaidOrders.length;
+      }
+    }
+
+    // Mark request as deferred_legal
+    await supabase
+      .from("deletion_requests")
+      .update({
+        status: "deferred_legal",
+        has_paid_orders: true,
+        paid_orders_count: paidOrders.length,
+        unpaid_orders_count: 0,
+        earliest_order_fy: earliestOrderFy,
+        retention_end_date: retentionEndDate?.toISOString().split("T")[0],
+        otp_cleared: true,
+        otp_cleared_at: now.toISOString(),
+        executed_by: adminId || null,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", requestId);
+
+    // Log for audit
+    await logDataAccess({
+      tableName: "orders",
+      operation: "UPDATE",
+      queryType: "bulk",
+      rowCount: paidOrders.length,
+      userId: adminId,
+      endpoint: "/api/admin/deletion-requests/execute",
+      reason: `DPDP deletion deferred - OTP cleared for ${paidOrders.length} paid orders. Tax retention until ${retentionEndDate?.toISOString().split("T")[0]}`,
+    });
+
+    logSecurityEvent("deletion_request_deferred", {
+      requestId,
+      email,
+      paidOrdersCount: paidOrders.length,
+      unpaidOrdersDeleted: unpaidDeleted,
+      retentionEndDate: retentionEndDate?.toISOString(),
+      earliestOrderFy,
+      executedBy: adminId,
+    });
+
+    return {
+      success: true,
+      status: "deferred_legal",
+      ordersDeleted: unpaidDeleted,
+      otpCleared: true,
+      hasPaidOrders: true,
+      paidOrdersCount: paidOrders.length,
+      retentionEndDate,
+      message: `Deletion deferred due to tax compliance. ${paidOrders.length} paid order(s) retained until ${retentionEndDate?.toISOString().split("T")[0]}. OTP data cleared. ${unpaidDeleted} unpaid order(s) deleted.`,
+    };
+  }
+
+  // CASE 2: No paid orders - safe to delete all data
+  const { data: deletedOrders, error: deleteError } = await supabase
+    .from("orders")
+    .delete()
     .eq("guest_email", email)
     .select("id");
 
-  if (anonymizeError) {
+  if (deleteError) {
     // Mark request as failed
     await supabase
       .from("deletion_requests")
@@ -255,15 +534,25 @@ export async function executeDeletionRequest(
       })
       .eq("id", requestId);
 
-    logError(anonymizeError as Error, {
-      context: "execute_deletion_anonymize_failed",
+    logError(deleteError as Error, {
+      context: "execute_deletion_delete_failed",
       requestId,
       email,
     });
-    return { success: false, ordersAnonymized: 0 };
+
+    return {
+      success: false,
+      status: "failed",
+      ordersDeleted: 0,
+      otpCleared: false,
+      hasPaidOrders: false,
+      paidOrdersCount: 0,
+      retentionEndDate: null,
+      message: "Failed to delete order data",
+    };
   }
 
-  const ordersAnonymized = updatedOrders?.length || 0;
+  const ordersDeleted = deletedOrders?.length || 0;
 
   // Mark request as completed
   await supabase
@@ -271,6 +560,9 @@ export async function executeDeletionRequest(
     .update({
       status: "completed",
       completed_at: now.toISOString(),
+      has_paid_orders: false,
+      paid_orders_count: 0,
+      executed_by: adminId || null,
       updated_at: now.toISOString(),
     })
     .eq("id", requestId);
@@ -278,44 +570,100 @@ export async function executeDeletionRequest(
   // Log for audit
   await logDataAccess({
     tableName: "orders",
-    operation: "UPDATE",
+    operation: "DELETE",
     queryType: "bulk",
-    rowCount: ordersAnonymized,
-    endpoint: "/api/cron/process-deletions",
-    reason: `DPDP right to erasure - scheduled deletion executed for request ${requestId}`,
+    rowCount: ordersDeleted,
+    userId: adminId,
+    endpoint: "/api/admin/deletion-requests/execute",
+    reason: `DPDP right to erasure - ${ordersDeleted} orders deleted for request ${requestId}`,
   });
 
-  logSecurityEvent("deletion_request_executed", {
+  logSecurityEvent("deletion_request_completed", {
     requestId,
-    originalEmail: email,
-    anonymizedEmail,
-    ordersAnonymized,
+    email,
+    ordersDeleted,
+    executedBy: adminId,
     completedAt: now.toISOString(),
   });
 
-  return { success: true, ordersAnonymized };
+  return {
+    success: true,
+    status: "completed",
+    ordersDeleted,
+    otpCleared: false,
+    hasPaidOrders: false,
+    paidOrdersCount: 0,
+    retentionEndDate: null,
+    message: `Deletion completed. ${ordersDeleted} order(s) permanently deleted.`,
+  };
 }
 
 /**
- * Get all requests due for execution (window period expired)
+ * Get all requests with 'eligible' status (ready for admin execution)
  */
-export async function getRequestsDueForExecution(): Promise<DeletionRequest[]> {
+export async function getEligibleDeletionRequests(): Promise<DeletionRequest[]> {
   const supabase = createServiceClient();
-  const now = new Date();
 
   const { data, error } = await supabase
     .from("deletion_requests")
     .select("*")
-    .eq("status", "pending")
-    .lte("scheduled_deletion_at", now.toISOString())
+    .eq("status", "eligible")
     .order("scheduled_deletion_at", { ascending: true });
 
   if (error) {
-    logError(error as Error, { context: "get_requests_due_for_execution_failed" });
+    logError(error as Error, { context: "get_eligible_deletion_requests_failed" });
     return [];
   }
 
   return (data as DeletionRequest[]) || [];
+}
+
+/**
+ * Get all deletion requests with optional filters
+ */
+export async function getDeletionRequests(params?: {
+  status?: DeletionStatus | DeletionStatus[];
+  email?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ requests: DeletionRequest[]; total: number }> {
+  const supabase = createServiceClient();
+
+  let query = supabase.from("deletion_requests").select("*", { count: "exact" });
+
+  if (params?.status) {
+    if (Array.isArray(params.status)) {
+      query = query.in("status", params.status);
+    } else {
+      query = query.eq("status", params.status);
+    }
+  }
+
+  if (params?.email) {
+    query = query.ilike("guest_email", `%${params.email}%`);
+  }
+
+  query = query.order("created_at", { ascending: false });
+
+  if (params?.limit) {
+    query = query.limit(params.limit);
+  }
+
+  if (params?.offset) {
+    query = query.range(params.offset, params.offset + (params?.limit || 10) - 1);
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    logError(error as Error, { context: "get_deletion_requests_failed" });
+    return { requests: [], total: 0 };
+  }
+
+  return {
+    requests: (data as DeletionRequest[]) || [],
+    total: count || 0,
+  };
 }
 
 /**
@@ -352,17 +700,14 @@ export async function getRequestsNeedingReminders(): Promise<{
     const requestedAt = new Date(request.requested_at);
     const daysSinceRequest = differenceInDays(now, requestedAt);
 
-    // Day 1 reminder (sent on day 1, checking if >= 1 day has passed)
     if (daysSinceRequest >= 1 && !request.reminder_day1_sent) {
       result.day1.push(request);
     }
 
-    // Day 7 reminder
     if (daysSinceRequest >= 7 && !request.reminder_day7_sent) {
       result.day7.push(request);
     }
 
-    // Day 13 reminder (1 day before deletion)
     if (daysSinceRequest >= 13 && !request.reminder_day13_sent) {
       result.day13.push(request);
     }
@@ -416,4 +761,73 @@ export function getDaysRemaining(scheduledDeletionAt: string | Date): number {
   const now = new Date();
   const days = differenceInDays(scheduled, now);
   return Math.max(0, days);
+}
+
+/**
+ * Get summary statistics for deletion requests
+ */
+export async function getDeletionRequestStats(): Promise<{
+  pending: number;
+  eligible: number;
+  deferredLegal: number;
+  completed: number;
+  failed: number;
+  eligibleNext7Days: number;
+}> {
+  const supabase = createServiceClient();
+
+  const { data, error } = await supabase
+    .from("deletion_requests")
+    .select("status, scheduled_deletion_at");
+
+  if (error) {
+    logError(error as Error, { context: "get_deletion_request_stats_failed" });
+    return {
+      pending: 0,
+      eligible: 0,
+      deferredLegal: 0,
+      completed: 0,
+      failed: 0,
+      eligibleNext7Days: 0,
+    };
+  }
+
+  const now = new Date();
+  const in7Days = addDays(now, 7);
+
+  const stats = {
+    pending: 0,
+    eligible: 0,
+    deferredLegal: 0,
+    completed: 0,
+    failed: 0,
+    eligibleNext7Days: 0,
+  };
+
+  for (const req of data || []) {
+    switch (req.status) {
+      case "pending":
+        stats.pending++;
+        // Check if becoming eligible in next 7 days
+        const scheduledAt = new Date(req.scheduled_deletion_at);
+        if (scheduledAt <= in7Days) {
+          stats.eligibleNext7Days++;
+        }
+        break;
+      case "eligible":
+        stats.eligible++;
+        break;
+      case "deferred_legal":
+        stats.deferredLegal++;
+        break;
+      case "completed":
+        stats.completed++;
+        break;
+      case "failed":
+        stats.failed++;
+        break;
+    }
+  }
+
+  return stats;
 }

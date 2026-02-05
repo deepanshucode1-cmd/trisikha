@@ -583,8 +583,9 @@ export default function MyDataPage() {
               <ul className="text-sm text-blue-800 space-y-1">
                 <li>• <strong>Access:</strong> You can view all data we store about you</li>
                 <li>• <strong>Portability:</strong> Download your data in JSON format</li>
+                <li>• <strong>Correction:</strong> <Link href="/correct-data" className="underline">Request correction</Link> of inaccurate personal data on confirmed orders</li>
                 <li>• <strong>Erasure:</strong> Request deletion of your personal data</li>
-                <li>• <strong>Retention:</strong> Order records are kept for 7 years (tax compliance) but personal info can be anonymized</li>
+                <li>• <strong>Retention:</strong> Order records are kept for 8 years (tax compliance) but personal info can be anonymized</li>
               </ul>
               <p className="mt-2 text-sm text-blue-700">
                 For questions, contact us at <a href="mailto:trishikhaorganic@gmail.com" className="underline">trishikhaorganic@gmail.com</a>

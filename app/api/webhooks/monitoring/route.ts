@@ -84,6 +84,10 @@ export async function POST(request: NextRequest) {
   const secret = url.searchParams.get("secret");
   const expectedSecret = process.env.MONITORING_WEBHOOK_SECRET;
 
+  console.log("Full URL:", request.url);
+  console.log("Secret:", secret);
+  console.log("Expected:", expectedSecret);
+
   if (!expectedSecret) {
     logError(new Error("MONITORING_WEBHOOK_SECRET not configured"), {
       endpoint: "/api/webhooks/monitoring",

@@ -3,12 +3,15 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useCsrf } from "@/hooks/useCsrf";
+import DeletionRequestsTab from "./DeletionRequestsTab";
+import CorrectionRequestsTab from "./CorrectionRequestsTab";
+import AffectedUsersSection from "./AffectedUsersSection";
 
 // --- Types ---
 type IncidentSeverity = "low" | "medium" | "high" | "critical";
 type IncidentStatus = "open" | "investigating" | "resolved" | "false_positive";
 type RemediationStatus = "pending" | "in_progress" | "completed";
-type TabType = "incidents" | "vendor-breaches" | "compliance" | "ip-blocking";
+type TabType = "incidents" | "vendor-breaches" | "deletion-requests" | "corrections" | "compliance" | "ip-blocking";
 
 type VendorBreach = {
   id: string;
@@ -78,6 +81,23 @@ type Incident = {
   resolved_at?: string;
   resolved_by?: string;
   notes?: string;
+  is_personal_data_breach?: boolean | null;
+  dpb_breach_type?: string | null;
+  dpb_notified_at?: string | null;
+  dpb_report_generated_at?: string | null;
+};
+
+type DpbBreachType = "confidentiality" | "integrity" | "availability";
+
+type DpbReportForm = {
+  affectedDataPrincipals: string;
+  dataCategories: string;
+  breachDescription: string;
+  containmentMeasures: string;
+  riskMitigation: string;
+  likelyConsequences: string;
+  transferToThirdParty: boolean;
+  crossBorderTransfer: boolean;
 };
 
 type Stats = Record<IncidentSeverity, number>;
@@ -194,6 +214,20 @@ export default function SecurityDashboard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [newStatus, setNewStatus] = useState<IncidentStatus>("open");
   const [notes, setNotes] = useState("");
+
+  // DPB classification state
+  const [dpbBreachType, setDpbBreachType] = useState<DpbBreachType>("confidentiality");
+  const [showDpbReportForm, setShowDpbReportForm] = useState(false);
+  const [dpbReportForm, setDpbReportForm] = useState<DpbReportForm>({
+    affectedDataPrincipals: "",
+    dataCategories: "",
+    breachDescription: "",
+    containmentMeasures: "",
+    riskMitigation: "",
+    likelyConsequences: "",
+    transferToThirdParty: false,
+    crossBorderTransfer: false,
+  });
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>("incidents");
@@ -618,6 +652,18 @@ export default function SecurityDashboard() {
     setSelectedIncident(incident);
     setNewStatus(incident.status);
     setNotes(incident.notes || "");
+    setDpbBreachType((incident.dpb_breach_type as DpbBreachType) || "confidentiality");
+    setShowDpbReportForm(false);
+    setDpbReportForm({
+      affectedDataPrincipals: "",
+      dataCategories: "",
+      breachDescription: "",
+      containmentMeasures: "",
+      riskMitigation: "",
+      likelyConsequences: "",
+      transferToThirdParty: false,
+      crossBorderTransfer: false,
+    });
     setShowModal(true);
   };
 
@@ -626,6 +672,7 @@ export default function SecurityDashboard() {
     setShowModal(false);
     setNewStatus("open");
     setNotes("");
+    setShowDpbReportForm(false);
   };
 
   const handleUpdateIncident = async () => {
@@ -655,6 +702,120 @@ export default function SecurityDashboard() {
     }
   };
 
+  const handleClassifyBreach = async (isBreach: boolean) => {
+    if (!selectedIncident) return;
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch(`/api/admin/incidents/${selectedIncident.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ isPersonalDataBreach: isBreach }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to classify incident");
+      }
+      setSelectedIncident({ ...selectedIncident, is_personal_data_breach: isBreach });
+      fetchIncidents();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to classify incident");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpdateBreachType = async (type: DpbBreachType) => {
+    if (!selectedIncident) return;
+    setDpbBreachType(type);
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch(`/api/admin/incidents/${selectedIncident.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ dpbBreachType: type }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update breach type");
+      }
+      setSelectedIncident({ ...selectedIncident, dpb_breach_type: type });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update breach type");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleGenerateDpbReport = async () => {
+    if (!selectedIncident) return;
+    const count = parseInt(dpbReportForm.affectedDataPrincipals);
+    if (isNaN(count) || count < 0) {
+      alert("Please enter a valid number of affected data principals");
+      return;
+    }
+    if (!dpbReportForm.breachDescription.trim()) {
+      alert("Please provide a breach description");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res = await csrfFetch(`/api/admin/incidents/${selectedIncident.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({
+          generateDpbReportData: {
+            affectedDataPrincipals: count,
+            dataCategories: dpbReportForm.dataCategories.split(",").map((s: string) => s.trim()).filter(Boolean),
+            breachDescription: dpbReportForm.breachDescription,
+            containmentMeasures: dpbReportForm.containmentMeasures.split(",").map((s: string) => s.trim()).filter(Boolean),
+            riskMitigation: dpbReportForm.riskMitigation.split(",").map((s: string) => s.trim()).filter(Boolean),
+            likelyConsequences: dpbReportForm.likelyConsequences || undefined,
+            transferToThirdParty: dpbReportForm.transferToThirdParty,
+            crossBorderTransfer: dpbReportForm.crossBorderTransfer,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to generate DPB report");
+      }
+      alert("DPB breach report generated and sent successfully");
+      setSelectedIncident({
+        ...selectedIncident,
+        dpb_report_generated_at: new Date().toISOString(),
+      });
+      setShowDpbReportForm(false);
+      fetchIncidents();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to generate DPB report");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleMarkIncidentDpbNotified = async () => {
+    if (!selectedIncident) return;
+    setActionLoading(true);
+    try {
+      const now = new Date().toISOString();
+      const res = await csrfFetch(`/api/admin/incidents/${selectedIncident.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ dpbNotifiedAt: now }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to mark DPB notified");
+      }
+      setSelectedIncident({ ...selectedIncident, dpb_notified_at: now });
+      fetchIncidents();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to mark DPB notified");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // --- Render ---
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString("en-IN", {
@@ -674,9 +835,16 @@ export default function SecurityDashboard() {
       >
         {/* Header */}
         <div className="p-4 pb-2 flex justify-between items-start">
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${severityConfig.bgColor} ${severityConfig.color}`}>
-            {severityConfig.label}
-          </span>
+          <div className="flex gap-2 items-center">
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${severityConfig.bgColor} ${severityConfig.color}`}>
+              {severityConfig.label}
+            </span>
+            {incident.is_personal_data_breach === true && (
+              <span className={`px-2 py-0.5 rounded text-xs ${incident.dpb_notified_at ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                DPB {incident.dpb_notified_at ? "Notified" : "Pending"}
+              </span>
+            )}
+          </div>
           <span className={`px-2 py-0.5 rounded text-xs ${statusConfig.bgColor} ${statusConfig.color}`}>
             {statusConfig.label}
           </span>
@@ -816,6 +984,26 @@ export default function SecurityDashboard() {
                 {vendorBreaches.filter(b => b.remediation_status !== "completed").length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab("deletion-requests")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "deletion-requests"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            Deletion Requests
+          </button>
+          <button
+            onClick={() => setActiveTab("corrections")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "corrections"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            Corrections
           </button>
           <button
             onClick={() => setActiveTab("compliance")}
@@ -1019,6 +1207,239 @@ export default function SecurityDashboard() {
                 </div>
               )}
 
+              {/* Affected Users Section */}
+              {(selectedIncident.incident_type.includes("vendor") ||
+                selectedIncident.incident_type.includes("breach") ||
+                selectedIncident.incident_type === "bulk_data_export" ||
+                selectedIncident.severity === "critical" ||
+                selectedIncident.severity === "high") && (
+                <div className="border-t pt-4">
+                  <AffectedUsersSection
+                    incidentId={selectedIncident.id}
+                    incidentType={selectedIncident.incident_type}
+                  />
+                </div>
+              )}
+
+              {/* DPB Breach Classification */}
+              <div className="border-t pt-4">
+                <h3 className="font-medium text-gray-900 mb-3">DPB Breach Classification</h3>
+
+                {/* State: Not yet classified */}
+                {selectedIncident.is_personal_data_breach == null && (
+                  <div className="space-y-3">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                      <p className="text-sm font-medium text-yellow-800">Investigation Required</p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        Review the incident details and determine whether personal data was breached. Under DPDP Act 2023, all personal data breaches require zero-threshold reporting to the Data Protection Board.
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleClassifyBreach(true)}
+                        disabled={actionLoading}
+                        className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
+                      >
+                        Yes, Personal Data Breach
+                      </button>
+                      <button
+                        onClick={() => handleClassifyBreach(false)}
+                        disabled={actionLoading}
+                        className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md disabled:opacity-50"
+                      >
+                        Not a Data Breach
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* State: Classified as NOT a breach */}
+                {selectedIncident.is_personal_data_breach === false && (
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3 flex justify-between items-center">
+                    <p className="text-sm text-green-800">Classified as <strong>not a personal data breach</strong>.</p>
+                    <button
+                      onClick={() => handleClassifyBreach(true)}
+                      disabled={actionLoading}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      Reclassify
+                    </button>
+                  </div>
+                )}
+
+                {/* State: Classified as breach */}
+                {selectedIncident.is_personal_data_breach === true && (
+                  <div className="space-y-4">
+                    {/* Breach Type Dropdown */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Breach Type (CIA Triad)</label>
+                      <select
+                        value={dpbBreachType}
+                        onChange={(e) => handleUpdateBreachType(e.target.value as DpbBreachType)}
+                        disabled={actionLoading}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="confidentiality">Confidentiality (Unauthorized access/disclosure)</option>
+                        <option value="integrity">Integrity (Unauthorized modification/deletion)</option>
+                        <option value="availability">Availability (Loss of access to data)</option>
+                      </select>
+                    </div>
+
+                    {/* DPB Notification Timeline */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">DPB Notification Timeline</h4>
+                      <div className="space-y-2">
+                        {/* Step 1: Report Generated */}
+                        <div className="flex items-center gap-3">
+                          <span className={`w-3 h-3 rounded-full flex-shrink-0 ${selectedIncident.dpb_report_generated_at ? "bg-green-500" : "bg-gray-300"}`}></span>
+                          <span className="text-sm text-gray-700">
+                            Report Generated: {selectedIncident.dpb_report_generated_at ? formatDate(selectedIncident.dpb_report_generated_at) : "Pending"}
+                          </span>
+                          {!selectedIncident.dpb_report_generated_at && (
+                            <button
+                              onClick={() => setShowDpbReportForm(!showDpbReportForm)}
+                              className="ml-auto px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              {showDpbReportForm ? "Cancel" : "Generate Report"}
+                            </button>
+                          )}
+                        </div>
+                        {/* Step 2: DPB Notified */}
+                        <div className="flex items-center gap-3">
+                          <span className={`w-3 h-3 rounded-full flex-shrink-0 ${selectedIncident.dpb_notified_at ? "bg-green-500" : "bg-gray-300"}`}></span>
+                          <span className="text-sm text-gray-700">
+                            DPB Notified: {selectedIncident.dpb_notified_at ? formatDate(selectedIncident.dpb_notified_at) : "Pending"}
+                          </span>
+                          {selectedIncident.dpb_report_generated_at && !selectedIncident.dpb_notified_at && (
+                            <button
+                              onClick={handleMarkIncidentDpbNotified}
+                              disabled={actionLoading}
+                              className="ml-auto px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              Mark Notified
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Report Generation Form (expandable) */}
+                    {showDpbReportForm && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-md p-4 space-y-3">
+                        <h4 className="text-sm font-medium text-gray-900">DPB Breach Report Details</h4>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Affected Data Principals (count)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={dpbReportForm.affectedDataPrincipals}
+                            onChange={(e) => setDpbReportForm({ ...dpbReportForm, affectedDataPrincipals: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g., 150"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Data Categories (comma-separated)</label>
+                          <input
+                            type="text"
+                            value={dpbReportForm.dataCategories}
+                            onChange={(e) => setDpbReportForm({ ...dpbReportForm, dataCategories: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g., name, email, phone, address"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Breach Description</label>
+                          <textarea
+                            value={dpbReportForm.breachDescription}
+                            onChange={(e) => setDpbReportForm({ ...dpbReportForm, breachDescription: e.target.value })}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Describe what happened..."
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Containment Measures (comma-separated)</label>
+                          <input
+                            type="text"
+                            value={dpbReportForm.containmentMeasures}
+                            onChange={(e) => setDpbReportForm({ ...dpbReportForm, containmentMeasures: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g., IP blocked, access revoked, passwords reset"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Risk Mitigation Measures (comma-separated)</label>
+                          <input
+                            type="text"
+                            value={dpbReportForm.riskMitigation}
+                            onChange={(e) => setDpbReportForm({ ...dpbReportForm, riskMitigation: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g., security audit scheduled, monitoring enhanced"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Likely Consequences (optional)</label>
+                          <input
+                            type="text"
+                            value={dpbReportForm.likelyConsequences}
+                            onChange={(e) => setDpbReportForm({ ...dpbReportForm, likelyConsequences: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g., potential identity theft risk"
+                          />
+                        </div>
+
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={dpbReportForm.transferToThirdParty}
+                              onChange={(e) => setDpbReportForm({ ...dpbReportForm, transferToThirdParty: e.target.checked })}
+                              className="rounded border-gray-300"
+                            />
+                            Third-party transfer involved
+                          </label>
+                          <label className="flex items-center gap-2 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={dpbReportForm.crossBorderTransfer}
+                              onChange={(e) => setDpbReportForm({ ...dpbReportForm, crossBorderTransfer: e.target.checked })}
+                              className="rounded border-gray-300"
+                            />
+                            Cross-border transfer involved
+                          </label>
+                        </div>
+
+                        <button
+                          onClick={handleGenerateDpbReport}
+                          disabled={actionLoading}
+                          className="w-full px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
+                        >
+                          {actionLoading ? "Generating..." : "Generate & Send DPB Report"}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Reclassify link */}
+                    <div className="text-right">
+                      <button
+                        onClick={() => handleClassifyBreach(false)}
+                        disabled={actionLoading}
+                        className="text-sm text-gray-500 hover:underline"
+                      >
+                        Reclassify as not a breach
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Update Form */}
               <div className="border-t pt-4">
                 <h3 className="font-medium text-gray-900 mb-3">Update Incident</h3>
@@ -1114,6 +1535,16 @@ export default function SecurityDashboard() {
             </div>
           )}
         </>
+      )}
+
+      {/* Deletion Requests Tab Content */}
+      {activeTab === "deletion-requests" && (
+        <DeletionRequestsTab />
+      )}
+
+      {/* Correction Requests Tab Content */}
+      {activeTab === "corrections" && (
+        <CorrectionRequestsTab />
       )}
 
       {/* Compliance Tab Content */}
@@ -2002,6 +2433,16 @@ export default function SecurityDashboard() {
                       <li key={i}>{action}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* Affected Users Section - if linked to an incident */}
+              {selectedBreach.internal_incident_id && (
+                <div className="border-t pt-4">
+                  <AffectedUsersSection
+                    incidentId={selectedBreach.internal_incident_id}
+                    incidentType={`vendor_breach_${selectedBreach.vendor_name}`}
+                  />
                 </div>
               )}
 

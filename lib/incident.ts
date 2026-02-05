@@ -28,6 +28,8 @@ export type IncidentSeverity = "low" | "medium" | "high" | "critical";
 
 export type IncidentStatus = "open" | "investigating" | "resolved" | "false_positive";
 
+export type DpbBreachType = "confidentiality" | "integrity" | "availability";
+
 export interface Incident {
   id?: string;
   incident_type: IncidentType;
@@ -41,6 +43,10 @@ export interface Incident {
   details?: Record<string, unknown>;
   status?: IncidentStatus;
   created_at?: string;
+  is_personal_data_breach?: boolean | null;
+  dpb_breach_type?: string | null;
+  dpb_notified_at?: string | null;
+  dpb_report_generated_at?: string | null;
 }
 
 export interface IncidentConfig {
@@ -180,6 +186,10 @@ export async function updateIncident(
     status?: IncidentStatus;
     notes?: string;
     resolved_by?: string;
+    is_personal_data_breach?: boolean | null;
+    dpb_breach_type?: DpbBreachType | null;
+    dpb_notified_at?: string | null;
+    dpb_report_generated_at?: string | null;
   }
 ): Promise<void> {
   const supabase = createServiceClient();
@@ -200,6 +210,50 @@ export async function updateIncident(
   }
 
   logSecurityEvent("incident_updated", { incidentId, ...updates });
+}
+
+/**
+ * Generate a DPB breach report email and stamp the incident
+ */
+export async function generateDpbReport(
+  incidentId: string,
+  params: {
+    breachType: DpbBreachType;
+    affectedDataPrincipals: number;
+    dataCategories: string[];
+    breachDescription: string;
+    containmentMeasures: string[];
+    riskMitigation: string[];
+    likelyConsequences?: string;
+    transferToThirdParty?: boolean;
+    crossBorderTransfer?: boolean;
+  }
+): Promise<void> {
+  const { sendDPBBreachNotification } = await import("./email");
+
+  const sent = await sendDPBBreachNotification({
+    incidentId,
+    breachType: params.breachType,
+    discoveryDate: new Date(),
+    affectedDataPrincipals: params.affectedDataPrincipals,
+    dataCategories: params.dataCategories,
+    breachDescription: params.breachDescription,
+    containmentMeasures: params.containmentMeasures,
+    riskMitigation: params.riskMitigation,
+    likelyConsequences: params.likelyConsequences,
+    transferToThirdParty: params.transferToThirdParty,
+    crossBorderTransfer: params.crossBorderTransfer,
+  });
+
+  if (!sent) {
+    throw new Error("Failed to send DPB breach notification email");
+  }
+
+  await updateIncident(incidentId, {
+    dpb_report_generated_at: new Date().toISOString(),
+  });
+
+  logSecurityEvent("dpb_report_generated", { incidentId, breachType: params.breachType });
 }
 
 /**
