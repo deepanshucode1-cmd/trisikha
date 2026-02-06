@@ -127,7 +127,7 @@ export default function CorrectionRequestsTab() {
       {/* Info Banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-800">
-          Corrections are applied immediately when guests submit them. Only orders with <strong>CONFIRMED</strong> status are eligible. This tab is a read-only audit trail.
+          Corrections are applied immediately when guests submit them. Only orders with <strong>CONFIRMED</strong> status and <strong>NOT_SHIPPED</strong> shipping status are eligible. Orders that have entered the shipping pipeline are directed to the Grievance Officer. This tab is a read-only audit trail.
         </p>
       </div>
 

@@ -51,7 +51,7 @@ Cookies moved from 8 to 10, Changes to Policy from 9 to 11, Contact Us from 10 t
 
 ### Architecture Overview
 
-Corrections are **auto-applied immediately** when a guest submits them. No admin approval is required. The `correction_requests` table serves as an audit trail for compliance. Only orders with `order_status = CONFIRMED` are eligible.
+Corrections are **auto-applied immediately** when a guest submits them, provided the order has not entered the shipping pipeline. No admin approval is required. The `correction_requests` table serves as an audit trail for compliance. Only orders with `order_status = CONFIRMED` **and** `shiprocket_status = NOT_SHIPPED` are eligible for auto-correction. Orders that have entered the shipping pipeline (`AWB_ASSIGNED`, `PICKUP_SCHEDULED`, etc.) are rejected with a message directing the guest to the Grievance Officer for manual resolution (DPDP Rule 14 compliance via grievance mechanism).
 
 ```
 Guest (browser)                    Admin (dashboard)
@@ -154,9 +154,9 @@ The `FIELD_TO_COLUMNS` constant maps logical field names to actual `orders` tabl
 
 | Field | Orders Columns |
 |-------|---------------|
-| `name` | `guest_first_name`, `guest_last_name` |
+| `name` | `shipping_first_name`, `shipping_last_name` |
 | `phone` | `guest_phone` |
-| `address` | `shipping_address`, `shipping_city`, `shipping_state`, `shipping_pincode` |
+| `address` | `shipping_address_line1`, `shipping_city`, `shipping_state`, `shipping_pincode` |
 
 > **Security Note:** Email is intentionally NOT correctable. It serves as the identity anchor used for OTP verification. Allowing email correction would break the identity verification chain and create a security loophole.
 
@@ -182,6 +182,7 @@ The `FIELD_TO_COLUMNS` constant maps logical field names to actual `orders` tabl
 
 **`applyCorrectionToOrder(request)`** (private)
 - **Validates order status** — fetches order and checks `order_status === 'CONFIRMED'`. Rejects if not CONFIRMED.
+- **Validates shipping status** — checks `shiprocket_status === 'NOT_SHIPPED'`. Rejects if the order has entered the shipping pipeline (AWB assigned, pickup scheduled, etc.) with a message directing the guest to the Grievance Officer.
 - Builds update object based on field type (see format table above)
 - Always targets a single order via `.eq("id", request.order_id)`
 - Logs to `audit_log` via `logDataAccess()` with `queryType: "single"`, `userId: "system:guest_correction"`, `endpoint: "/api/guest/correct-data"`
@@ -260,12 +261,13 @@ Submit a correction and apply it immediately.
 3. Verify session token against `guest_data_sessions` table (401 on fail)
 4. Check session expiry (401 on expired)
 5. Verify order belongs to email **and has `order_status = CONFIRMED`** (404 on not found, 400 on wrong status)
-6. Call `createCorrectionRequest()` — inserts record and applies correction immediately
-7. Return 200 with `requestId`, `orderId`, and status `approved`
+6. **Check `shiprocket_status === 'NOT_SHIPPED'`** — if the order has entered the shipping pipeline, return 400 with a message directing the guest to the Grievance Officer (trishikhaorganic@gmail.com) for manual resolution
+7. Call `createCorrectionRequest()` — inserts record and applies correction immediately
+8. Return 200 with `requestId`, `orderId`, and status `approved`
 
 **Error responses:**
 - 429 - rate limited
-- 400 - validation failed or order status is not CONFIRMED
+- 400 - validation failed, order status is not CONFIRMED, or order has entered shipping pipeline (`shiprocket_status !== 'NOT_SHIPPED'`)
 - 401 - invalid/expired session
 - 404 - order not found or doesn't belong to email
 - 409 - duplicate correction for same field + order
@@ -325,7 +327,7 @@ Get all correction requests for a verified guest.
 
 Read-only audit trail tab in the SecurityDashboard.
 
-- **Info banner** explaining that corrections are auto-applied for CONFIRMED orders
+- **Info banner** explaining that corrections are auto-applied for CONFIRMED orders with `shiprocket_status = NOT_SHIPPED`
 - **Stats cards:** Applied count + Rejected count (no Pending card — corrections don't enter pending state)
 - **Filters:** status (All / Applied / Rejected), email search
 - **Table:** email + order ID, field, change (strikethrough old → new), status, date, view button
@@ -408,12 +410,14 @@ Security events logged:
 
 ### Eligible Order Statuses
 
-Only `CONFIRMED` orders are eligible for correction.
+Only `CONFIRMED` orders with `shiprocket_status = NOT_SHIPPED` are eligible for auto-correction.
 
-| Status | Eligible? | Reason |
+#### Order Status Gate
+
+| `order_status` | Eligible? | Reason |
 |--------|-----------|--------|
 | `CHECKED_OUT` | No | No resume flow — order is incomplete |
-| **`CONFIRMED`** | **Yes** | Order confirmed but not yet shipped — data can still be corrected before dispatch |
+| **`CONFIRMED`** | **Yes** (if shipping gate also passes) | Order confirmed — data may still be correctable before dispatch |
 | `PICKED_UP` | No | Order shipped — data used for shipping labels |
 | `DELIVERED` | No | Order delivered — data used for invoicing, tax records |
 | `CANCELLATION_REQUESTED` | No | Order being cancelled |
@@ -421,7 +425,22 @@ Only `CONFIRMED` orders are eligible for correction.
 | `RETURN_REQUESTED` | No | Return in progress |
 | `RETURNED` | No | Order closed |
 
-This restriction exists because modifying data on shipped/delivered orders would affect tax-compliant records (8-year CGST Act retention).
+#### Shipping Status Gate (for CONFIRMED orders)
+
+| `shiprocket_status` | Eligible? | Reason |
+|--------|-----------|--------|
+| **`NOT_SHIPPED`** | **Yes** | Order has not entered the shipping pipeline — data can be freely corrected |
+| `AWB_ASSIGNED` | No | AWB/shipping label generated — data already transmitted to courier partner |
+| `PICKUP_SCHEDULED` | No | Courier pickup scheduled — data in use by shipping partner |
+| `PICKED UP` | No | Courier has collected the package |
+| `SHIPPED` | No | Package in transit |
+| `Delivered` | No | Package delivered |
+| `SHIPPING_CANCELLED` | No | Shipping cancelled — edge case, contact support |
+| `SHIPPING_CANCELLATION_FAILED` | No | Shipping cancellation failed — contact support |
+
+Orders that fail the shipping status gate receive a 400 response directing the guest to the Grievance Officer (trishikhaorganic@gmail.com / +91 79841 30253) for manual resolution. This preserves the DPDP Right to Correction via the grievance mechanism (Rule 14, Privacy Policy Section 8) while acknowledging the operational constraint that data already transmitted to shipping partners cannot be auto-corrected.
+
+This restriction exists because modifying data on shipped/delivered orders would affect tax-compliant records (8-year CGST Act retention) and create mismatches with shipping labels already generated in Shiprocket.
 
 ---
 
@@ -433,7 +452,7 @@ This restriction exists because modifying data on shipped/delivered orders would
 
 3. **Order-scoped corrections only** - `order_id` is required (NOT NULL). Bulk correction of all orders for an email was removed to protect historical tax-compliant records. Each correction targets exactly one CONFIRMED order.
 
-4. **CONFIRMED status only** - orders that have been picked up, delivered, or cancelled cannot be corrected. The data on those orders has already been used for shipping, invoicing, or tax filings.
+4. **CONFIRMED + NOT_SHIPPED only** - two gates must pass: `order_status = CONFIRMED` and `shiprocket_status = NOT_SHIPPED`. Once an AWB is assigned or pickup is scheduled, the data has been transmitted to Shiprocket/courier partners and cannot be auto-corrected. Guests are directed to the Grievance Officer for manual resolution, preserving the DPDP Right to Correction via the grievance mechanism (Rule 14).
 
 5. **Rollback on failure** - if `applyCorrectionToOrder()` fails after inserting the request, the request row is deleted. This prevents orphaned audit records for corrections that weren't actually applied.
 

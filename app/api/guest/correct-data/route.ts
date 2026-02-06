@@ -86,10 +86,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verify order belongs to this email and has CONFIRMED status
+    // Verify order belongs to this email and has CONFIRMED status + NOT_SHIPPED
     const { data: order } = await supabase
       .from("orders")
-      .select("id, order_status")
+      .select("id, order_status, shiprocket_status")
       .eq("id", orderId)
       .eq("guest_email", normalizedEmail)
       .single();
@@ -107,6 +107,27 @@ export async function POST(req: Request) {
           error: "Corrections are only allowed for orders with status CONFIRMED.",
           currentStatus: order.order_status,
         },
+        { status: 400 }
+      );
+    }
+
+    if (order.shiprocket_status && order.shiprocket_status !== "NOT_SHIPPED") {
+      return NextResponse.json(
+        {
+          error:
+            "This order has entered the shipping pipeline and cannot be corrected online. " +
+            "Please contact our Grievance Officer at trishikhaorganic@gmail.com or +91 79841 30253 " +
+            "for manual correction (DPDP Act 2023, Rule 14).",
+          currentShippingStatus: order.shiprocket_status,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate that the values are actually different
+    if (currentValue === requestedValue) {
+      return NextResponse.json(
+        { error: "The corrected value must be different from the current value." },
         { status: 400 }
       );
     }
@@ -137,7 +158,8 @@ export async function POST(req: Request) {
     // Handle duplicate / validation errors gracefully
     if (error instanceof Error && (
       error.message.includes("already been submitted") ||
-      error.message.includes("only allowed for orders")
+      error.message.includes("only allowed for orders") ||
+      error.message.includes("must be different from")
     )) {
       return NextResponse.json(
         { error: error.message },

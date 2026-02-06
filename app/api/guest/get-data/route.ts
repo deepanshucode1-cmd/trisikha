@@ -84,6 +84,7 @@ export async function POST(req: Request) {
         payment_status,
         shipping_status,
         order_status,
+        shiprocket_status,
         shipping_first_name,
         shipping_last_name,
         shipping_address_line1,

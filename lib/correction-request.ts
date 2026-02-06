@@ -4,7 +4,7 @@
  *
  * Flow:
  * 1. Verified guest submits correction request scoped to a specific order
- * 2. System validates order belongs to guest and has status CONFIRMED
+ * 2. System validates order belongs to guest, has status CONFIRMED, and shiprocket_status NOT_SHIPPED
  * 3. Correction is applied immediately (no admin approval required)
  * 4. Request is recorded with status 'approved' for compliance audit trail
  * 5. All actions are audit-logged
@@ -56,10 +56,10 @@ export interface ProcessCorrectionParams {
 // Map field_name to the actual column(s) in the orders table
 // NOTE: Email is intentionally NOT correctable - it's the identity anchor used for OTP verification
 const FIELD_TO_COLUMNS: Record<CorrectionFieldName, string[]> = {
-  name: ["guest_first_name", "guest_last_name"],
+  name: ["shipping_first_name", "shipping_last_name"],
   phone: ["guest_phone"],
   address: [
-    "shipping_address",
+    "shipping_address_line1",
     "shipping_city",
     "shipping_state",
     "shipping_pincode",
@@ -68,7 +68,8 @@ const FIELD_TO_COLUMNS: Record<CorrectionFieldName, string[]> = {
 
 /**
  * Create a correction request and apply it immediately.
- * Corrections are scoped to a single CONFIRMED order — no admin approval needed.
+ * Corrections are scoped to a single CONFIRMED + NOT_SHIPPED order — no admin approval needed.
+ * Orders in the shipping pipeline are rejected with a grievance officer redirect.
  */
 export async function createCorrectionRequest(
   params: CreateCorrectionRequestParams
@@ -76,6 +77,13 @@ export async function createCorrectionRequest(
   const supabase = createServiceClient();
   const normalizedEmail = params.email.toLowerCase().trim();
   const now = new Date().toISOString();
+
+  // Validate that the values actually differ
+  if (params.currentValue === params.requestedValue) {
+    throw new Error(
+      "The corrected value must be different from the current value."
+    );
+  }
 
   // Check for duplicate correction for the same field + order
   const { data: existing } = await supabase
@@ -280,7 +288,8 @@ export async function processCorrectionRequest(
 
 /**
  * Apply a correction to a single order.
- * Validates that the order has status CONFIRMED before applying.
+ * Validates that the order has status CONFIRMED and shiprocket_status NOT_SHIPPED before applying.
+ * Orders that have entered the shipping pipeline are rejected with a grievance officer redirect.
  */
 async function applyCorrectionToOrder(
   request: Pick<CorrectionRequest, "id" | "email" | "order_id" | "field_name" | "current_value" | "requested_value">
@@ -292,10 +301,10 @@ async function applyCorrectionToOrder(
     return { success: false, message: `Unknown field: ${request.field_name}` };
   }
 
-  // Verify order exists and has CONFIRMED status
+  // Verify order exists, has CONFIRMED status, and has not entered shipping pipeline
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, order_status")
+    .select("id, order_status, shiprocket_status")
     .eq("id", request.order_id)
     .single();
 
@@ -310,6 +319,16 @@ async function applyCorrectionToOrder(
     };
   }
 
+  if (order.shiprocket_status && order.shiprocket_status !== "NOT_SHIPPED") {
+    return {
+      success: false,
+      message:
+        "This order has entered the shipping pipeline and cannot be corrected online. " +
+        "Please contact our Grievance Officer at trishikhaorganic@gmail.com or +91 79841 30253 " +
+        "for manual correction (DPDP Act 2023, Rule 14).",
+    };
+  }
+
   // Build the update object based on field type
   let updateData: Record<string, string> = {};
 
@@ -320,8 +339,8 @@ async function applyCorrectionToOrder(
       const firstName = parts[0] || "";
       const lastName = parts.slice(1).join(" ") || "";
       updateData = {
-        guest_first_name: firstName,
-        guest_last_name: lastName,
+        shipping_first_name: firstName,
+        shipping_last_name: lastName,
       };
       break;
     }
@@ -334,7 +353,7 @@ async function applyCorrectionToOrder(
       // requested_value expected as JSON: {"address":"...","city":"...","state":"...","pincode":"..."}
       try {
         const parsed = JSON.parse(request.requested_value);
-        if (parsed.address) updateData.shipping_address = parsed.address;
+        if (parsed.address) updateData.shipping_address_line1 = parsed.address;
         if (parsed.city) updateData.shipping_city = parsed.city;
         if (parsed.state) updateData.shipping_state = parsed.state;
         if (parsed.pincode) updateData.shipping_pincode = parsed.pincode;

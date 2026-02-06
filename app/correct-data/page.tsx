@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 type Order = {
   id: string;
@@ -10,6 +12,7 @@ type Order = {
   shipping_first_name: string;
   shipping_last_name: string;
   order_status: string;
+  shiprocket_status: string | null;
   shipping_address_line1: string;
   shipping_city: string;
   shipping_state: string;
@@ -45,8 +48,6 @@ export default function CorrectDataPage() {
   const [otp, setOtp] = useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [otpExpiry, setOtpExpiry] = useState<Date | null>(null);
   const [attemptsRemaining, setAttemptsRemaining] = useState(5);
 
@@ -66,8 +67,6 @@ export default function CorrectDataPage() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError("");
-    setSuccess("");
 
     try {
       const res = await fetch("/api/guest/send-data-otp", {
@@ -82,13 +81,13 @@ export default function CorrectDataPage() {
         throw new Error(data.error || "Failed to send OTP");
       }
 
-      setSuccess("If orders exist for this email, an OTP has been sent. Please check your inbox.");
+      toast.success("If orders exist for this email, an OTP has been sent. Please check your inbox.");
       if (data.expiresAt) {
         setOtpExpiry(new Date(data.expiresAt));
       }
       setStep("otp");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send OTP");
+      toast.error(err instanceof Error ? err.message : "Failed to send OTP");
     } finally {
       setLoading(false);
     }
@@ -98,7 +97,6 @@ export default function CorrectDataPage() {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError("");
 
     try {
       const res = await fetch("/api/guest/verify-data-otp", {
@@ -117,7 +115,6 @@ export default function CorrectDataPage() {
       }
 
       setSessionToken(data.sessionToken);
-      setSuccess("");
 
       // Fetch orders and existing corrections
       await Promise.all([
@@ -126,7 +123,7 @@ export default function CorrectDataPage() {
       ]);
       setStep("data");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to verify OTP");
+      toast.error(err instanceof Error ? err.message : "Failed to verify OTP");
     } finally {
       setLoading(false);
     }
@@ -148,9 +145,11 @@ export default function CorrectDataPage() {
       }
 
       const allOrders = (data.orders || []) as Order[];
-      setCorrectableOrders(allOrders.filter((o) => o.order_status === "CONFIRMED"));
+      setCorrectableOrders(allOrders.filter(
+        (o) => o.order_status === "CONFIRMED" && (!o.shiprocket_status || o.shiprocket_status === "NOT_SHIPPED")
+      ));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch orders");
+      toast.error(err instanceof Error ? err.message : "Failed to fetch orders");
     }
   };
 
@@ -193,8 +192,6 @@ export default function CorrectDataPage() {
     setSelectedOrderId(orderId);
     setCorrectionField("name");
     setCorrectionRequestedValue("");
-    setError("");
-    setSuccess("");
 
     const order = correctableOrders.find((o) => o.id === orderId);
     if (order) {
@@ -219,12 +216,16 @@ export default function CorrectDataPage() {
   const handleSubmitCorrection = async () => {
     if (!selectedOrderId) return;
     if (!correctionRequestedValue.trim()) {
-      setError("Please provide the correct value");
+      toast.error("Please provide the correct value");
+      return;
+    }
+
+    if (correctionCurrentValue === correctionRequestedValue) {
+      toast.error("The corrected value must be different from the current value.");
       return;
     }
 
     setLoading(true);
-    setError("");
 
     try {
       const res = await fetch("/api/guest/correct-data", {
@@ -246,7 +247,7 @@ export default function CorrectDataPage() {
         throw new Error(data.error || "Failed to submit correction");
       }
 
-      setSuccess(data.message || "Correction applied successfully.");
+      toast.success(data.message || "Correction applied successfully.");
       setSelectedOrderId(null);
       setCorrectionCurrentValue("");
       setCorrectionRequestedValue("");
@@ -257,7 +258,7 @@ export default function CorrectDataPage() {
         fetchCorrections(sessionToken),
       ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit correction");
+      toast.error(err instanceof Error ? err.message : "Failed to submit correction");
     } finally {
       setLoading(false);
     }
@@ -288,17 +289,17 @@ export default function CorrectDataPage() {
           </p>
         </div>
 
-        {/* Error/Success Messages */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700">{error}</p>
-          </div>
-        )}
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-700">{success}</p>
-          </div>
-        )}
+        <ToastContainer
+          position="top-center"
+          autoClose={4000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+        />
 
         {/* Step 1: Email Input */}
         {step === "email" && (
@@ -393,7 +394,6 @@ export default function CorrectDataPage() {
                 onClick={() => {
                   setStep("email");
                   setOtp("");
-                  setError("");
                 }}
                 className="w-full py-2 text-gray-600 hover:text-gray-800"
               >
@@ -409,7 +409,9 @@ export default function CorrectDataPage() {
             {/* Info Banner */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-blue-800">
-                Only orders with status <strong>CONFIRMED</strong> can be corrected. Orders that have been picked up, delivered, or cancelled cannot be modified as the data has already been used for shipping or invoicing.
+                Only orders with status <strong>CONFIRMED</strong> that have <strong>not yet entered the shipping pipeline</strong> can be corrected online. Once an AWB is assigned or pickup is scheduled, please contact our Grievance Officer at{" "}
+                <a href="mailto:trishikhaorganic@gmail.com" className="underline font-medium">trishikhaorganic@gmail.com</a>{" "}
+                or <a href="tel:+917984130253" className="underline font-medium">+91 79841 30253</a> for manual correction (DPDP Act 2023, Rule 14).
               </p>
             </div>
 
@@ -422,7 +424,7 @@ export default function CorrectDataPage() {
               {correctableOrders.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500">
-                    No orders with CONFIRMED status found. Only confirmed orders that have not yet been shipped can be corrected.
+                    No correctable orders found. Only confirmed orders that have not yet entered the shipping pipeline can be corrected online. For orders already in shipping, please contact our Grievance Officer at trishikhaorganic@gmail.com.
                   </p>
                   <Link
                     href="/my-data"
