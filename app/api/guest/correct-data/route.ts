@@ -12,8 +12,8 @@ import {
 const correctionSchema = z.object({
   email: z.string().email("Invalid email address"),
   sessionToken: z.string().min(1, "Session token required"),
-  fieldName: z.enum(["name", "email", "phone", "address"], {
-    message: "Field must be one of: name, email, phone, address",
+  fieldName: z.enum(["name", "phone", "address"], {
+    message: "Field must be one of: name, phone, address",
   }),
   currentValue: z.string().min(1, "Current value is required"),
   requestedValue: z.string().min(1, "Requested value is required"),

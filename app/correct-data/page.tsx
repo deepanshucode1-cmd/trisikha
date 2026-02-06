@@ -7,10 +7,10 @@ type Order = {
   id: string;
   guest_email: string;
   guest_phone: string;
-  guest_first_name: string;
-  guest_last_name: string;
+  shipping_first_name: string;
+  shipping_last_name: string;
   order_status: string;
-  shipping_address: string;
+  shipping_address_line1: string;
   shipping_city: string;
   shipping_state: string;
   shipping_pincode: string;
@@ -29,13 +29,12 @@ type CorrectionRequest = {
   processedAt: string | null;
 };
 
-type CorrectionFieldName = "name" | "email" | "phone" | "address";
+type CorrectionFieldName = "name" | "phone" | "address";
 
 type Step = "email" | "otp" | "data";
 
 const FIELD_LABELS: Record<CorrectionFieldName, string> = {
   name: "Name",
-  email: "Email",
   phone: "Phone",
   address: "Address",
 };
@@ -170,17 +169,16 @@ export default function CorrectDataPage() {
   };
 
   // Pre-fill current value based on field and order
+  // NOTE: Email is intentionally NOT correctable - it's the identity anchor used for OTP verification
   const getCurrentValue = (order: Order, field: CorrectionFieldName): string => {
     switch (field) {
       case "name":
-        return `${order.guest_first_name} ${order.guest_last_name}`.trim();
-      case "email":
-        return order.guest_email;
+        return `${order.shipping_first_name} ${order.shipping_last_name}`.trim();
       case "phone":
         return order.guest_phone;
       case "address":
         return JSON.stringify({
-          address: order.shipping_address,
+          address: order.shipping_address_line1,
           city: order.shipping_city,
           state: order.shipping_state,
           pincode: order.shipping_pincode,
@@ -458,7 +456,7 @@ export default function CorrectDataPage() {
                       <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
                         <div>
                           <span className="text-gray-400">Name:</span>{" "}
-                          {order.guest_first_name} {order.guest_last_name}
+                          {order.shipping_first_name} {order.shipping_last_name}
                         </div>
                         <div>
                           <span className="text-gray-400">Email:</span>{" "}
@@ -489,7 +487,6 @@ export default function CorrectDataPage() {
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                             >
                               <option value="name">Name</option>
-                              <option value="email">Email</option>
                               <option value="phone">Phone</option>
                               <option value="address">Address</option>
                             </select>
@@ -502,13 +499,13 @@ export default function CorrectDataPage() {
                             <div className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-600 break-all">
                               {correctionField === "address"
                                 ? (() => {
-                                    try {
-                                      const parsed = JSON.parse(correctionCurrentValue);
-                                      return `${parsed.address}, ${parsed.city}, ${parsed.state} - ${parsed.pincode}`;
-                                    } catch {
-                                      return correctionCurrentValue;
-                                    }
-                                  })()
+                                  try {
+                                    const parsed = JSON.parse(correctionCurrentValue);
+                                    return `${parsed.address}, ${parsed.city}, ${parsed.state} - ${parsed.pincode}`;
+                                  } catch {
+                                    return correctionCurrentValue;
+                                  }
+                                })()
                                 : correctionCurrentValue}
                             </div>
                           </div>
@@ -629,13 +626,12 @@ export default function CorrectDataPage() {
                             {cr.fieldName}
                           </span>
                           <span
-                            className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                              cr.status === "approved"
-                                ? "bg-green-100 text-green-700"
-                                : cr.status === "rejected"
+                            className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${cr.status === "approved"
+                              ? "bg-green-100 text-green-700"
+                              : cr.status === "rejected"
                                 ? "bg-red-100 text-red-700"
                                 : "bg-yellow-100 text-yellow-700"
-                            }`}
+                              }`}
                           >
                             {cr.status === "approved" ? "Applied" : cr.status}
                           </span>

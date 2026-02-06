@@ -17,7 +17,7 @@ import { logDataAccess } from "@/lib/audit";
 // Types
 export type CorrectionStatus = "pending" | "approved" | "rejected";
 
-export type CorrectionFieldName = "name" | "email" | "phone" | "address";
+export type CorrectionFieldName = "name" | "phone" | "address";
 
 export interface CorrectionRequest {
   id: string;
@@ -54,9 +54,9 @@ export interface ProcessCorrectionParams {
 }
 
 // Map field_name to the actual column(s) in the orders table
+// NOTE: Email is intentionally NOT correctable - it's the identity anchor used for OTP verification
 const FIELD_TO_COLUMNS: Record<CorrectionFieldName, string[]> = {
   name: ["guest_first_name", "guest_last_name"],
-  email: ["guest_email"],
   phone: ["guest_phone"],
   address: [
     "shipping_address",
@@ -325,11 +325,6 @@ async function applyCorrectionToOrder(
       };
       break;
     }
-    case "email":
-      updateData = {
-        guest_email: request.requested_value.toLowerCase().trim(),
-      };
-      break;
     case "phone":
       updateData = {
         guest_phone: request.requested_value.trim(),
