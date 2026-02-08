@@ -12,7 +12,7 @@ import {
 import { sendDeletionRequestConfirmation } from "@/lib/email";
 
 const requestSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.email({ message: "Invalid email address" }),
   sessionToken: z.string().min(1, "Session token required"),
   confirmPhrase: z.literal("DELETE MY DATA", {
     message: "Please type 'DELETE MY DATA' to confirm",

@@ -7,7 +7,7 @@ import { trackSecurityEvent, logSecurityEvent } from "@/lib/logger";
 import crypto from "crypto";
 
 const verifySchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.email({ message: "Invalid email address" }),
   otp: z.string().length(6, "OTP must be 6 digits"),
 });
 

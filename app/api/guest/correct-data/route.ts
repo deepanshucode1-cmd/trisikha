@@ -11,14 +11,14 @@ import {
 import { sanitizeObject } from "@/lib/xss";
 
 const correctionSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.email({ message: "Invalid email address" }),
   sessionToken: z.string().min(1, "Session token required"),
   fieldName: z.enum(["name", "phone", "address"], {
     message: "Field must be one of: name, phone, address",
   }),
   currentValue: z.string().min(1, "Current value is required"),
   requestedValue: z.string().min(1, "Requested value is required"),
-  orderId: z.string().uuid("Invalid order ID"),
+  orderId: z.uuid({ message: "Invalid order ID" }),
 });
 
 /**

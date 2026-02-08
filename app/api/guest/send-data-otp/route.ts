@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/errors";
 import { trackSecurityEvent, logSecurityEvent } from "@/lib/logger";
 
 const requestSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.email({ message: "Invalid email address" }),
 });
 
 /**

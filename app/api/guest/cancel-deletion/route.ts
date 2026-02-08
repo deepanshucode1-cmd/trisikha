@@ -11,7 +11,7 @@ import {
 import { sendDeletionCancelled } from "@/lib/email";
 
 const requestSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.email({ message: "Invalid email address" }),
   otp: z.string().length(6, "OTP must be 6 digits"),
   confirmPhrase: z.literal("CANCEL DELETION", {
     message: "Please type 'CANCEL DELETION' to confirm",

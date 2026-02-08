@@ -7,7 +7,7 @@ import { logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
 
 const requestSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: z.email({ message: "Invalid email address" }),
   sessionToken: z.string().min(1, "Session token required"),
 });
 
