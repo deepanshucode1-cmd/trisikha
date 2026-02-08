@@ -81,7 +81,7 @@ export default function CorrectDataPage() {
         throw new Error(data.error || "Failed to send OTP");
       }
 
-      toast.success("If orders exist for this email, an OTP has been sent. Please check your inbox.");
+      toast.success("An OTP has been sent to your email. Please check your inbox.");
       if (data.expiresAt) {
         setOtpExpiry(new Date(data.expiresAt));
       }

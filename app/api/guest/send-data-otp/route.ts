@@ -61,17 +61,20 @@ export async function POST(req: Request) {
     }
 
     if (!orders || orders.length === 0) {
-      // Don't reveal if email exists or not for security
-      // Still send a "success" response but don't actually send OTP
       logSecurityEvent("data_otp_no_orders", {
         email: normalizedEmail,
         ip,
       });
 
-      return NextResponse.json({
-        success: true,
-        message: "If orders exist for this email, an OTP has been sent.",
-      });
+      return NextResponse.json(
+        {
+          error:
+            "No orders found for this email address. " +
+            "Please check that you are using the same email you used to place your order. " +
+            "If you believe this is an error, contact our Grievance Officer at trishikhaorganic@gmail.com.",
+        },
+        { status: 404 }
+      );
     }
 
     // Generate secure OTP
@@ -148,7 +151,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "If orders exist for this email, an OTP has been sent.",
+      message: "An OTP has been sent to your email.",
       expiresAt: expiresAt.toISOString(),
     });
   } catch (error) {

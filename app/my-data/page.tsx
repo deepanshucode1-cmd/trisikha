@@ -75,7 +75,7 @@ export default function MyDataPage() {
         throw new Error(data.error || "Failed to send OTP");
       }
 
-      setSuccess("If orders exist for this email, an OTP has been sent. Please check your inbox.");
+      setSuccess("An OTP has been sent to your email. Please check your inbox.");
       if (data.expiresAt) {
         setOtpExpiry(new Date(data.expiresAt));
       }
