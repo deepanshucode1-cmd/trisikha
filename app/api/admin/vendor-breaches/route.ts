@@ -4,6 +4,7 @@ import { createServiceClient } from "@/utils/supabase/service";
 import { logVendorBreach } from "@/lib/audit";
 import { logError } from "@/lib/logger";
 import { z } from "zod";
+import { sanitizeObject } from "@/lib/xss";
 
 // Validation schema for creating a vendor breach
 const createBreachSchema = z.object({
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = validation.data;
+    const data = sanitizeObject(validation.data);
     const vendorName = data.vendorName === "other" && data.customVendorName
       ? data.customVendorName
       : data.vendorName;

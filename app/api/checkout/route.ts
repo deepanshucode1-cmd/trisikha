@@ -15,6 +15,7 @@ import {
   getStateCode,
   TAX_CONFIG,
 } from "@/lib/tax-config";
+import { sanitizeObject } from "@/lib/xss";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -50,7 +51,8 @@ export async function POST(req: Request) {
     // Parse and validate input
     const body = await req.json();
     const validatedData = checkoutSchema.parse(body);
-    const { guest_email, guest_phone, cart_items, shipping_address, billing_address, selected_courier } = validatedData;
+    const sanitizedData = sanitizeObject(validatedData);
+    const { guest_email, guest_phone, cart_items, shipping_address, billing_address, selected_courier } = sanitizedData;
 
     // Calculate total amount from cart items
     // Use service client to bypass RLS for guest checkout

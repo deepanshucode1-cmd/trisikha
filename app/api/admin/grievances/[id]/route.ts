@@ -1,20 +1,28 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { createServiceClient } from "@/utils/supabase/service";
 import { z } from "zod";
 import { logError } from "@/lib/logger";
-import { processCorrectionRequest } from "@/lib/correction-request";
+import { requireCsrf } from "@/lib/csrf";
+import { getGrievanceById, updateGrievance } from "@/lib/grievance";
 import { sanitizeObject } from "@/lib/xss";
+import {
+  sendGrievanceStatusUpdate,
+  sendGrievanceResolved,
+} from "@/lib/email";
 
-const processSchema = z.object({
-  action: z.enum(["approved", "rejected"]),
+const updateSchema = z.object({
+  status: z
+    .enum(["open", "in_progress", "resolved", "closed"])
+    .optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
   adminNotes: z.string().optional(),
+  resolutionNotes: z.string().optional(),
 });
 
 /**
- * GET /api/admin/corrections/[id]
+ * GET /api/admin/grievances/[id]
  *
- * Get a specific correction request by ID
+ * Get a specific grievance by ID (admin only)
  */
 export async function GET(
   req: Request,
@@ -43,27 +51,22 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const serviceSupabase = createServiceClient();
-    const { data: request, error } = await serviceSupabase
-      .from("correction_requests")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const grievance = await getGrievanceById(id);
 
-    if (error || !request) {
+    if (!grievance) {
       return NextResponse.json(
-        { error: "Correction request not found" },
+        { error: "Grievance not found" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      request,
+      grievance,
     });
   } catch (error) {
     logError(error as Error, {
-      context: "admin_get_correction_request_error",
+      context: "admin_get_grievance_error",
     });
 
     return NextResponse.json(
@@ -74,16 +77,22 @@ export async function GET(
 }
 
 /**
- * POST /api/admin/corrections/[id]
+ * PATCH /api/admin/grievances/[id]
  *
- * Process a correction request (approve or reject)
- * Body: { action: "approved" | "rejected", adminNotes?: string }
+ * Update a grievance (admin only)
+ * Body: { status?, priority?, adminNotes?, resolutionNotes? }
  */
-export async function POST(
+export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // CSRF protection
+    const csrfResult = await requireCsrf(req);
+    if (!csrfResult.valid) {
+      return NextResponse.json({ error: csrfResult.error }, { status: 403 });
+    }
+
     const { id } = await params;
     const supabase = await createClient();
 
@@ -108,7 +117,7 @@ export async function POST(
 
     // Parse and validate body
     const body = await req.json();
-    const parseResult = processSchema.safeParse(body);
+    const parseResult = updateSchema.safeParse(body);
 
     if (!parseResult.success) {
       return NextResponse.json(
@@ -117,13 +126,24 @@ export async function POST(
       );
     }
 
-    const { action, adminNotes } = sanitizeObject(parseResult.data);
+    const sanitizedData = sanitizeObject(parseResult.data);
 
-    const result = await processCorrectionRequest({
-      requestId: id,
-      action,
+    // Get current grievance for email notification
+    const currentGrievance = await getGrievanceById(id);
+    if (!currentGrievance) {
+      return NextResponse.json(
+        { error: "Grievance not found" },
+        { status: 404 }
+      );
+    }
+
+    const result = await updateGrievance({
+      grievanceId: id,
+      status: sanitizedData.status,
+      priority: sanitizedData.priority,
+      adminNotes: sanitizedData.adminNotes,
+      resolutionNotes: sanitizedData.resolutionNotes,
       adminId: user.id,
-      adminNotes,
     });
 
     if (!result.success) {
@@ -133,13 +153,34 @@ export async function POST(
       );
     }
 
+    // Send email notifications (non-blocking)
+    if (sanitizedData.status === "resolved" && sanitizedData.resolutionNotes) {
+      sendGrievanceResolved({
+        email: currentGrievance.email,
+        grievanceId: id,
+        subject: currentGrievance.subject,
+        resolutionNotes: sanitizedData.resolutionNotes,
+      }).catch(() => {});
+    } else if (
+      sanitizedData.status &&
+      sanitizedData.status !== currentGrievance.status
+    ) {
+      sendGrievanceStatusUpdate({
+        email: currentGrievance.email,
+        grievanceId: id,
+        subject: currentGrievance.subject,
+        newStatus: sanitizedData.status,
+        adminNotes: sanitizedData.adminNotes,
+      }).catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       message: result.message,
     });
   } catch (error) {
     logError(error as Error, {
-      context: "admin_process_correction_request_error",
+      context: "admin_update_grievance_error",
     });
 
     return NextResponse.json(

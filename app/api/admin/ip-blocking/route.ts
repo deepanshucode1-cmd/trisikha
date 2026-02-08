@@ -3,6 +3,7 @@ import { requireRole, handleAuthError } from "@/lib/auth";
 import { requireCsrf } from "@/lib/csrf";
 import { logAuth, logError } from "@/lib/logger";
 import { getBlockedIps, adminBlockIp, unblockIp } from "@/lib/ip-blocking";
+import { sanitizeObject } from "@/lib/xss";
 
 /**
  * GET /api/admin/ip-blocking
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
 
     const { user } = await requireRole("admin");
 
-    const body = await request.json();
+    const body = sanitizeObject(await request.json());
     const { ip, blockType, reason, durationMinutes } = body;
 
     if (!ip || !blockType || !reason) {

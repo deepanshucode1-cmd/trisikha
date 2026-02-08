@@ -4,6 +4,7 @@ import { requireCsrf } from "@/lib/csrf";
 import { productSchema } from "@/lib/validation";
 import { handleApiError } from "@/lib/errors";
 import { logAuth, logError } from "@/lib/logger";
+import { sanitizeObject } from "@/lib/xss";
 
 export async function GET() {
   try {
@@ -47,17 +48,18 @@ export async function POST(req: Request) {
 
     // Validate product data
     const validatedData = productSchema.parse(body);
+    const sanitizedData = sanitizeObject(validatedData);
 
     logAuth("admin_create_product", {
       userId: user.id,
-      productName: validatedData.name,
-      sku: validatedData.sku,
+      productName: sanitizedData.name,
+      sku: sanitizedData.sku,
     });
 
     // Create product
     const { data, error } = await supabase
       .from("products")
-      .insert([validatedData])
+      .insert([sanitizedData])
       .select()
       .single();
 

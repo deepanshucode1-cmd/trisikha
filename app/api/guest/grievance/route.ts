@@ -4,36 +4,40 @@ import { z } from "zod";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
-import {
-  createCorrectionRequest,
-  getCorrectionRequestsByEmail,
-} from "@/lib/correction-request";
+import { createGrievance, getGrievancesByEmail } from "@/lib/grievance";
 import { sanitizeObject } from "@/lib/xss";
+import { sendGrievanceReceived } from "@/lib/email";
 
-const correctionSchema = z.object({
-  email: z.string().email("Invalid email address"),
+const grievanceSchema = z.object({
+  email: z.email({ message: "Invalid email address" }),
   sessionToken: z.string().min(1, "Session token required"),
-  fieldName: z.enum(["name", "phone", "address"], {
-    message: "Field must be one of: name, phone, address",
-  }),
-  currentValue: z.string().min(1, "Current value is required"),
-  requestedValue: z.string().min(1, "Requested value is required"),
-  orderId: z.string().uuid("Invalid order ID"),
+  subject: z
+    .string()
+    .min(5, "Subject must be at least 5 characters")
+    .max(200, "Subject must be at most 200 characters"),
+  description: z
+    .string()
+    .min(20, "Description must be at least 20 characters")
+    .max(2000, "Description must be at most 2000 characters"),
+  category: z.enum(
+    ["data_processing", "correction", "deletion", "consent", "breach", "other"],
+    { message: "Invalid grievance category" }
+  ),
 });
 
 /**
- * POST /api/guest/correct-data
+ * POST /api/guest/grievance
  *
- * Submit a data correction request
- * DPDP Rule 14 - Right to Correction
+ * Submit a grievance
+ * DPDP Rules 2025 Rule 14(3) - Grievance Redressal
  *
- * Requires email verification via session token
+ * Requires email verification via session token + confirmed orders
  */
 export async function POST(req: Request) {
   try {
-    // Rate limiting - 5 correction requests per hour
+    // Rate limiting - 3 grievances per hour
     const ip = getClientIp(req);
-    const { success } = await apiRateLimit.limit(`guest-correct:${ip}`);
+    const { success } = await apiRateLimit.limit(`guest-grievance:${ip}`);
 
     if (!success) {
       return NextResponse.json(
@@ -44,17 +48,17 @@ export async function POST(req: Request) {
 
     // Parse and validate input
     const body = await req.json();
-    const parseResult = correctionSchema.safeParse(body);
+    const parseResult = grievanceSchema.safeParse(body);
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: "Invalid request", details: z.flattenError(parseResult.error) },
         { status: 400 }
       );
     }
 
     const sanitizedData = sanitizeObject(parseResult.data);
-    const { email, sessionToken, fieldName, currentValue, requestedValue, orderId } =
+    const { email, sessionToken, subject, description, category } =
       sanitizedData;
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -69,7 +73,7 @@ export async function POST(req: Request) {
       .single();
 
     if (sessionError || !session) {
-      logSecurityEvent("guest_correct_invalid_session", {
+      logSecurityEvent("guest_grievance_invalid_session", {
         email: normalizedEmail,
         ip,
       });
@@ -88,102 +92,70 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verify order belongs to this email and has CONFIRMED status + NOT_SHIPPED
-    const { data: order } = await supabase
+    // Verify email has confirmed/paid orders (prevents abuse from non-customers)
+    const { count, error: orderError } = await supabase
       .from("orders")
-      .select("id, order_status, shiprocket_status")
-      .eq("id", orderId)
+      .select("id", { count: "exact", head: true })
       .eq("guest_email", normalizedEmail)
-      .single();
+      .neq("order_status", "CHECKED_OUT");
 
-    if (!order) {
+    if (orderError) {
       return NextResponse.json(
-        { error: "Order not found or does not belong to this email." },
-        { status: 404 }
+        { error: "Failed to verify order history." },
+        { status: 500 }
       );
     }
 
-    if (order.order_status !== "CONFIRMED") {
-      return NextResponse.json(
-        {
-          error: "Corrections are only allowed for orders with status CONFIRMED.",
-          currentStatus: order.order_status,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (order.shiprocket_status !== "NOT_SHIPPED") {
+    if (!count || count === 0) {
       return NextResponse.json(
         {
           error:
-            "This order has entered the shipping pipeline and cannot be corrected online. " +
-            "Please contact our Grievance Officer at trishikhaorganic@gmail.com or +91 79841 30253 " +
-            "for manual correction (DPDP Act 2023, Rule 14).",
-          currentShippingStatus: order.shiprocket_status,
+            "Grievances can only be filed by customers with confirmed orders.",
         },
-        { status: 400 }
+        { status: 403 }
       );
     }
 
-    // Validate that the values are actually different
-    if (currentValue === requestedValue) {
-      return NextResponse.json(
-        { error: "The corrected value must be different from the current value." },
-        { status: 400 }
-      );
-    }
-
-    // Create the correction request
+    // Create the grievance
     const userAgent = req.headers.get("user-agent") || undefined;
-    const result = await createCorrectionRequest({
+    const result = await createGrievance({
       email: normalizedEmail,
-      orderId,
-      fieldName,
-      currentValue,
-      requestedValue,
+      subject,
+      description,
+      category,
       ip,
       userAgent,
     });
 
+    // Send confirmation email (non-blocking)
+    sendGrievanceReceived({
+      email: normalizedEmail,
+      grievanceId: result.grievanceId,
+      subject,
+      slaDeadline: new Date(result.slaDeadline),
+    }).catch(() => { });
+
     return NextResponse.json({
       success: true,
-      message: "Your correction has been applied successfully.",
-      details: {
-        requestId: result.requestId,
-        fieldName,
-        orderId,
-        status: "approved",
-      },
+      grievanceId: result.grievanceId,
+      slaDeadline: result.slaDeadline,
     });
   } catch (error) {
-    // Handle duplicate / validation errors gracefully
-    if (error instanceof Error && (
-      error.message.includes("already been submitted") ||
-      error.message.includes("only allowed for orders") ||
-      error.message.includes("must be different from")
-    )) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 409 }
-      );
-    }
-
     return handleApiError(error, {
-      endpoint: "/api/guest/correct-data",
+      endpoint: "/api/guest/grievance",
     });
   }
 }
 
 /**
- * GET /api/guest/correct-data?email=...&sessionToken=...
+ * GET /api/guest/grievance?email=...&sessionToken=...
  *
- * Get correction request status for a verified guest
+ * Get grievance status for a verified guest
  */
 export async function GET(req: Request) {
   try {
     const ip = getClientIp(req);
-    const { success } = await apiRateLimit.limit(`guest-correct-status:${ip}`);
+    const { success } = await apiRateLimit.limit(`guest-grievance-status:${ip}`);
 
     if (!success) {
       return NextResponse.json(
@@ -228,25 +200,26 @@ export async function GET(req: Request) {
       );
     }
 
-    const requests = await getCorrectionRequestsByEmail(normalizedEmail);
+    const grievances = await getGrievancesByEmail(normalizedEmail);
 
     return NextResponse.json({
       success: true,
-      requests: requests.map((r) => ({
-        id: r.id,
-        orderId: r.order_id,
-        fieldName: r.field_name,
-        currentValue: r.current_value,
-        requestedValue: r.requested_value,
-        status: r.status,
-        adminNotes: r.admin_notes,
-        createdAt: r.created_at,
-        processedAt: r.processed_at,
+      grievances: grievances.map((g) => ({
+        id: g.id,
+        subject: g.subject,
+        description: g.description,
+        category: g.category,
+        status: g.status,
+        priority: g.priority,
+        slaDeadline: g.sla_deadline,
+        resolutionNotes: g.resolution_notes,
+        createdAt: g.created_at,
+        resolvedAt: g.resolved_at,
       })),
     });
   } catch (error) {
     return handleApiError(error, {
-      endpoint: "/api/guest/correct-data",
+      endpoint: "/api/guest/grievance",
     });
   }
 }

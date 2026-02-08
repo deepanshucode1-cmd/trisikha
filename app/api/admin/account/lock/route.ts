@@ -4,6 +4,7 @@ import { lockAccount } from "@/lib/incident";
 import { requireCsrf } from "@/lib/csrf";
 import { adminShippingRateLimit, getClientIp } from "@/lib/rate-limit";
 import { logAuth, logError } from "@/lib/logger";
+import { sanitizeObject } from "@/lib/xss";
 
 /**
  * POST /api/admin/account/lock
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
 
     const { user } = await requireRole("admin");
 
-    const body = await request.json();
+    const body = sanitizeObject(await request.json());
     const { userId, reason, durationHours } = body as {
       userId: string;
       reason: string;

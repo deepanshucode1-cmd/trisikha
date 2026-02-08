@@ -3,6 +3,7 @@ import { requireRole, handleAuthError } from "@/lib/auth";
 import { requireCsrf } from "@/lib/csrf";
 import { logAuth, logError } from "@/lib/logger";
 import { getWhitelist, addToWhitelist, removeFromWhitelist } from "@/lib/ip-blocking";
+import { sanitizeObject } from "@/lib/xss";
 
 const VALID_CATEGORIES = [
   "payment_gateway",
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
 
     const { user } = await requireRole("admin");
 
-    const body = await request.json();
+    const body = sanitizeObject(await request.json());
     const { ip, cidrRange, label, category, notes } = body;
 
     if (!ip || !label || !category) {

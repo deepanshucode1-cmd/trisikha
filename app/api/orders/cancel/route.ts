@@ -12,6 +12,7 @@ import { logOrder, logSecurityEvent, logPayment, logError } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
 import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
 import { sendCreditNote, sendReturnRequestConfirmation } from "@/lib/email";
+import { sanitizeObject } from "@/lib/xss";
 
 const RETURN_WINDOW_HOURS = 48;
 
@@ -49,7 +50,8 @@ export async function POST(req: Request) {
     // Parse and validate input
     const body = await req.json();
     const validatedData = cancelOrderSchema.parse(body);
-    const { orderId, otp, reason } = validatedData;
+    const sanitizedData = sanitizeObject(validatedData);
+    const { orderId, otp, reason } = sanitizedData;
 
     // Use service client to bypass RLS for guest cancellation
     const supabase = createServiceClient();

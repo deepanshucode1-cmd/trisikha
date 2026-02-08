@@ -34,7 +34,7 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 | HIGH | ~~Admin Dashboard for Deletion Requests~~ | Operational need | ✅ Done |
 | HIGH | ~~Privacy Policy Update (7yr → 8yr)~~ | Rule 8 | ✅ Done |
 | HIGH | ~~Right to Correction API~~ | Rule 14 | ✅ Done |
-| HIGH | Grievance Redressal (90-day SLA) | Rule 14 | |
+| HIGH | ~~Grievance Redressal (90-day SLA)~~ | Rule 14 | ✅ Done |
 | MEDIUM | Enhanced Consent Management | Rule 3, 4 | |
 | MEDIUM | 48-hour Pre-Erasure Notification | Rule 8 | |
 | MEDIUM | Nominee Appointment System | Rule 14 | |
@@ -95,22 +95,31 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 - Session token verification (same pattern as delete-data)
 - Rate limiting on guest endpoints
 
-#### 1.4 Grievance Redressal System
-**Files to create:**
-- `app/api/guest/grievance/route.ts`
-- `app/api/admin/grievances/route.ts`
-- `app/grievance/page.tsx`
+#### 1.4 Grievance Redressal System ✅ COMPLETED
+**Files created:**
+- `app/api/guest/grievance/route.ts` - Guest POST (submit) + GET (check status)
+- `app/api/admin/grievances/route.ts` - Admin list with filters & stats
+- `app/api/admin/grievances/[id]/route.ts` - Admin GET detail + PATCH update
+- `lib/grievance.ts` - Service layer with CRUD, stats, audit logging
+- `app/grievance/page.tsx` - Guest-facing multi-step form (email → OTP → submit/view)
+- `components/GrievancesTab.tsx` - Admin dashboard tab
+- `supabase/migrations/20260208_grievances.sql` - Database migration
 
-**Features:**
-- Submit grievances related to data processing
-- Track grievance status
-- 90-day resolution SLA tracking
-- Admin dashboard for grievance management
-- Email notifications on status updates
+**Features delivered:**
+- OTP-verified guests with confirmed orders can file grievances
+- Category-based grievances (data processing, correction, deletion, consent, breach, other)
+- 90-day SLA deadline auto-set on creation (DPDP Rule 14(3))
+- SLA countdown with overdue tracking in both guest and admin views
+- Admin triage: status (open/in_progress/resolved/closed), priority (low/medium/high)
+- Email notifications: received confirmation, status update, resolution
+- Anti-abuse: requires confirmed orders (order_status != 'CHECKED_OUT')
+- Rate limiting (3/hour), sanitizeObject on all inputs, CSRF on admin PATCH
+- Full audit logging via logDataAccess + logSecurityEvent
+- Integrated as "Grievances" tab in SecurityDashboard with stats cards, filters, table, detail modal
 
-**Database changes:**
-- `supabase/migrations/YYYYMMDD_grievances.sql`
-  - `grievances` table: id, email, subject, description, status, priority, created_at, resolved_at, resolution_notes, sla_deadline
+**Files modified:**
+- `lib/email.ts` - Added sendGrievanceReceived, sendGrievanceStatusUpdate, sendGrievanceResolved
+- `components/SecurityDashboard.tsx` - Added Grievances tab + updated DPDP compliance checklist
 
 ---
 
@@ -234,7 +243,7 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 | POST | `/api/guest/correct-data` | Request data correction |
 | GET | `/api/guest/correction-status` | Check correction request status |
 | POST | `/api/guest/grievance` | Submit grievance |
-| GET | `/api/guest/grievance-status` | Check grievance status |
+| GET | `/api/guest/grievance` | Check grievance status |
 | POST | `/api/guest/nominee` | Appoint nominee |
 | DELETE | `/api/guest/nominee` | Remove nominee |
 
@@ -243,8 +252,9 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 |--------|----------|---------|
 | GET | `/api/admin/corrections` | List correction requests |
 | POST | `/api/admin/corrections/[id]` | Process correction |
-| GET | `/api/admin/grievances` | List grievances |
-| POST | `/api/admin/grievances/[id]` | Update grievance status |
+| GET | `/api/admin/grievances` | List grievances with stats |
+| GET | `/api/admin/grievances/[id]` | Get grievance detail |
+| PATCH | `/api/admin/grievances/[id]` | Update grievance status/priority |
 
 ---
 

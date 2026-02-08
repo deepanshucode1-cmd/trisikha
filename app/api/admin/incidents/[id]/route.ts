@@ -5,6 +5,7 @@ import { createServiceClient } from "@/utils/supabase/service";
 import { requireCsrf } from "@/lib/csrf";
 import { logAuth, logError } from "@/lib/logger";
 import type { IncidentStatus, DpbBreachType } from "@/lib/incident";
+import { sanitizeObject } from "@/lib/xss";
 
 /**
  * GET /api/admin/incidents/[id]
@@ -64,7 +65,8 @@ export async function PATCH(
     const { user } = await requireRole("admin");
     const { id } = await params;
 
-    const body = await request.json();
+    const rawBody = await request.json();
+    const body = sanitizeObject(rawBody);
     const {
       status,
       notes,

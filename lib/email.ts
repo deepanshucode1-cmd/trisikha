@@ -783,6 +783,166 @@ export async function sendDeletionCompleted(params: {
   });
 }
 
+// --- Grievance Redressal Emails (DPDP Rule 14(3)) ---
+
+/**
+ * Send grievance received confirmation email
+ * Sent when a guest submits a new grievance
+ */
+export async function sendGrievanceReceived(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  slaDeadline: Date;
+}): Promise<boolean> {
+  const { email, grievanceId, subject, slaDeadline } = params;
+  const formattedDeadline = slaDeadline.toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Grievance Received",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Grievance Received</h2>
+        <p>Dear Customer,</p>
+        <p>Your grievance has been received and registered in our system.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0;"><strong>Reference ID:</strong> ${escapeHtml(grievanceId)}</p>
+          <p style="margin: 0 0 10px 0;"><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+          <p style="margin: 0;"><strong>Response Deadline:</strong> ${escapeHtml(formattedDeadline)}</p>
+        </div>
+
+        <p>As per DPDP Rules 2025, we will address your grievance within <strong>90 days</strong> from the date of receipt.</p>
+
+        <p>You can check the status of your grievance at any time by visiting our grievance page and verifying your email.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated acknowledgment under DPDP Rules 2025 Rule 14(3).<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send grievance status update email
+ * Sent when an admin changes the grievance status
+ */
+export async function sendGrievanceStatusUpdate(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  newStatus: string;
+  adminNotes?: string;
+}): Promise<boolean> {
+  const { email, grievanceId, subject, newStatus, adminNotes } = params;
+
+  const statusLabels: Record<string, string> = {
+    open: "Open",
+    in_progress: "In Progress",
+    resolved: "Resolved",
+    closed: "Closed",
+  };
+
+  const statusColors: Record<string, string> = {
+    open: "#f59e0b",
+    in_progress: "#3b82f6",
+    resolved: "#22c55e",
+    closed: "#6b7280",
+  };
+
+  const label = statusLabels[newStatus] || newStatus;
+  const color = statusColors[newStatus] || "#6b7280";
+
+  return sendEmail({
+    to: email,
+    subject: `TrishikhaOrganics: Grievance Status Updated - ${label}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a365d;">Grievance Status Update</h2>
+        <p>Dear Customer,</p>
+        <p>Your grievance status has been updated.</p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0;"><strong>Reference ID:</strong> ${escapeHtml(grievanceId)}</p>
+          <p style="margin: 0 0 10px 0;"><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+          <p style="margin: 0;">
+            <strong>New Status:</strong>
+            <span style="display: inline-block; padding: 4px 12px; border-radius: 20px; background-color: ${color}; color: white; font-size: 14px;">${escapeHtml(label)}</span>
+          </p>
+        </div>
+
+        ${adminNotes ? `
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0; font-weight: bold; color: #92400e;">Notes from our team:</p>
+          <p style="margin: 0; color: #78350f;">${escapeHtml(adminNotes)}</p>
+        </div>
+        ` : ""}
+
+        <p>You can check the full details of your grievance by visiting our grievance page.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Thank you for your patience.<br>
+          Trishikha Organics
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Send grievance resolved email
+ * Sent when a grievance is resolved with resolution notes
+ */
+export async function sendGrievanceResolved(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  resolutionNotes: string;
+}): Promise<boolean> {
+  const { email, grievanceId, subject, resolutionNotes } = params;
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Grievance Resolved",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Grievance Resolved</h2>
+        <p>Dear Customer,</p>
+        <p>We are pleased to inform you that your grievance has been resolved.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0;"><strong>Reference ID:</strong> ${escapeHtml(grievanceId)}</p>
+          <p style="margin: 0 0 10px 0;"><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+          <p style="margin: 0;"><strong>Resolved on:</strong> ${new Date().toLocaleDateString("en-IN")}</p>
+        </div>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0; font-weight: bold;">Resolution:</p>
+          <p style="margin: 0;">${escapeHtml(resolutionNotes)}</p>
+        </div>
+
+        <p>If you are not satisfied with the resolution, you may file a new grievance or contact our Grievance Officer at <a href="mailto:trishikhaorganic@gmail.com">trishikhaorganic@gmail.com</a>.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Your rights under the DPDP Act 2023 are important to us.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
 /**
  * Send deletion cancelled confirmation email
  * Sent when a user cancels their deletion request

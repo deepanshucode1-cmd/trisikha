@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { updateVendorBreachStatus } from "@/lib/audit";
 import { logError } from "@/lib/logger";
 import { z } from "zod";
+import { sanitizeObject } from "@/lib/xss";
 
 // Validation schema for updating a vendor breach
 const updateBreachSchema = z.object({
@@ -48,7 +49,7 @@ export async function PATCH(
       );
     }
 
-    const data = validation.data;
+    const data = sanitizeObject(validation.data);
     const success = await updateVendorBreachStatus(breachId, {
       remediationStatus: data.remediationStatus,
       weNotifiedDpbAt: data.weNotifiedDpbAt ? new Date(data.weNotifiedDpbAt) : undefined,

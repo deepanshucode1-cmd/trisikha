@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useCsrf } from "@/hooks/useCsrf";
 import DeletionRequestsTab from "./DeletionRequestsTab";
 import CorrectionRequestsTab from "./CorrectionRequestsTab";
+import GrievancesTab from "./GrievancesTab";
 import AffectedUsersSection from "./AffectedUsersSection";
 
 // --- Types ---
 type IncidentSeverity = "low" | "medium" | "high" | "critical";
 type IncidentStatus = "open" | "investigating" | "resolved" | "false_positive";
 type RemediationStatus = "pending" | "in_progress" | "completed";
-type TabType = "incidents" | "vendor-breaches" | "deletion-requests" | "corrections" | "compliance" | "ip-blocking";
+type TabType = "incidents" | "vendor-breaches" | "deletion-requests" | "corrections" | "grievances" | "compliance" | "ip-blocking";
 
 type VendorBreach = {
   id: string;
@@ -1006,6 +1007,16 @@ export default function SecurityDashboard() {
             Corrections
           </button>
           <button
+            onClick={() => setActiveTab("grievances")}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "grievances"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            Grievances
+          </button>
+          <button
             onClick={() => setActiveTab("compliance")}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === "compliance"
@@ -1547,6 +1558,11 @@ export default function SecurityDashboard() {
         <CorrectionRequestsTab />
       )}
 
+      {/* Grievances Tab Content */}
+      {activeTab === "grievances" && (
+        <GrievancesTab />
+      )}
+
       {/* Compliance Tab Content */}
       {activeTab === "compliance" && (
         <div className="space-y-6">
@@ -1571,6 +1587,7 @@ export default function SecurityDashboard() {
                     { item: "Security Incident Monitoring", desc: "CIA triad monitoring" },
                     { item: "Rate Limiting", desc: "Protection against brute force" },
                     { item: "Data Encryption", desc: "TLS/SSL, HTTPS enforced" },
+                    { item: "Grievance Redressal", desc: "90-day SLA system at /grievance (Rule 14(3))" },
                   ].map((check, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1590,7 +1607,6 @@ export default function SecurityDashboard() {
                 <h3 className="font-semibold text-yellow-700 mb-2">Requires Action</h3>
                 <ul className="space-y-2">
                   {[
-                    { item: "Grievance Officer", desc: "Designate and publish contact details", priority: "high" },
                     { item: "Data Processing Agreements", desc: "Sign DPAs with Supabase, Razorpay, Shiprocket", priority: "high" },
                     { item: "Data Localization Verification", desc: "Confirm Supabase stores data in India", priority: "medium" },
                     { item: "VAPT Report", desc: "Schedule penetration testing", priority: "medium" },
