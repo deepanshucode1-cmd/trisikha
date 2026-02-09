@@ -992,3 +992,83 @@ export async function sendDeletionCancelled(params: {
     `,
   });
 }
+
+/**
+ * Send 48-hour pre-erasure notification
+ * DPDP Act: notify before automatic data deletion
+ * Used for: abandoned checkouts (7-day cleanup) and deferred legal expiry
+ */
+export async function sendPreErasureNotification(params: {
+  email: string;
+  reason: "abandoned_checkout" | "retention_expired";
+  deletionDate: Date;
+  orderCount: number;
+}): Promise<boolean> {
+  const { email, reason, deletionDate, orderCount } = params;
+  const formattedDate = deletionDate.toLocaleDateString("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const isAbandoned = reason === "abandoned_checkout";
+  const subject = isAbandoned
+    ? "TrishikhaOrganics: Your checkout data will be deleted in 48 hours"
+    : "TrishikhaOrganics: Your data retention period has expired";
+
+  const reasonText = isAbandoned
+    ? `Your checkout was not completed and your personal data from ${orderCount} abandoned checkout${orderCount === 1 ? "" : "s"} is no longer needed.`
+    : `The legal retention period (8 years for tax compliance) for your data has expired. Your personal data from ${orderCount} order${orderCount === 1 ? "" : "s"} will be permanently deleted.`;
+
+  return sendEmail({
+    to: email,
+    subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #f59e0b;">Data Deletion Notice</h2>
+        <p>Dear Customer,</p>
+        <p>${escapeHtml(reasonText)}</p>
+
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
+          <p style="margin: 0; font-size: 16px;">Your data will be permanently deleted on:</p>
+          <p style="font-size: 20px; font-weight: bold; color: #b45309; margin: 15px 0;">${escapeHtml(formattedDate)}</p>
+          <p style="margin: 0; font-size: 14px; color: #92400e;">(approximately 48 hours from now)</p>
+        </div>
+
+        <p style="color: #666; font-size: 14px;">
+          This includes your name, email, phone number, and address associated with ${isAbandoned ? "the incomplete checkout" : "these orders"}.
+          Once deleted, this data cannot be recovered.
+        </p>
+
+        ${isAbandoned ? `
+        <h3>Want to place an order?</h3>
+        <p>You can visit our store anytime to browse and purchase:</p>
+        <p style="text-align: center; margin: 25px 0;">
+          <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/products" style="background-color: #3d3c30; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">Visit Store</a>
+        </p>
+        ` : ""}
+
+        <h3>Your Rights</h3>
+        <p style="font-size: 14px; color: #666;">
+          Under the DPDP Act 2023, you have the right to access, correct, or manage your data.
+          Visit <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/my-data" style="color: #3d3c30;">/my-data</a> to exercise your rights.
+        </p>
+
+        <div style="background-color: #f9fafb; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0; font-size: 13px; color: #666;">
+            <strong>Grievance Officer:</strong> Trishikha Organics<br>
+            Email: trishikhaorganic@gmail.com | Phone: +91 79841 30253<br>
+            Response within 90 days (DPDP Rule 14(3))
+          </p>
+        </div>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated notification in compliance with the Digital Personal Data Protection Act, 2023.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}

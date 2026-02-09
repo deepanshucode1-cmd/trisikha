@@ -56,6 +56,8 @@ export interface DeletionRequest {
   executed_by: string | null;
   otp_cleared: boolean;
   otp_cleared_at: string | null;
+  deferred_erasure_notified: boolean;
+  deferred_erasure_notified_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -41,34 +41,35 @@ export default function PrivacyPolicy() {
               </p>
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 <li>Place an order on our website</li>
-                <li>Create an account or sign up for our newsletter</li>
                 <li>Contact us with inquiries or feedback</li>
-                <li>Participate in surveys or promotions</li>
+                <li>Submit a grievance, correction, or deletion request via <Link href="/my-data" className="text-[#3d3c30] font-medium hover:underline">/my-data</Link></li>
               </ul>
               <p className="text-gray-700 leading-relaxed mt-4">
                 <strong>Personal information we collect includes:</strong>
               </p>
               <ul className="list-disc pl-6 space-y-2 text-gray-700 mt-2">
-                <li>Name (first and last name)</li>
-                <li>Email address</li>
-                <li>Phone number</li>
-                <li>Shipping and billing address</li>
-                <li>Payment information (processed securely via Razorpay)</li>
+                <li>Name (first and last name) — for order processing and communication</li>
+                <li>Email address — for order confirmations, shipping updates, and data access</li>
+                <li>Phone number — for delivery coordination</li>
+                <li>Shipping and billing address — for delivery and invoicing</li>
+                <li>Payment information — processed securely via Razorpay (we do not store card details)</li>
               </ul>
             </section>
 
             {/* How We Use Your Information */}
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
-              <h2 className="text-2xl font-bold mb-4">3. How We Use Your Information</h2>
+              <h2 className="text-2xl font-bold mb-4">3. Legal Basis &amp; How We Use Your Information</h2>
+              <p className="text-gray-700 leading-relaxed mb-4">
+                Your personal data is processed under <strong>Section 7 of the DPDP Act, 2023 (Legitimate Uses)</strong> — processing is necessary to fulfill orders you voluntarily place. No separate consent is required for order processing.
+              </p>
               <p className="text-gray-700 leading-relaxed mb-4">
                 We use the information we collect for the following purposes:
               </p>
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
-                <li><strong>Order Processing:</strong> To process and fulfill your orders, including shipping and delivery</li>
+                <li><strong>Order Fulfillment:</strong> To process, ship, and deliver your orders (Section 7 legitimate use)</li>
                 <li><strong>Communication:</strong> To send order confirmations, shipping updates, and respond to your inquiries</li>
                 <li><strong>Customer Service:</strong> To provide customer support and handle returns or refunds</li>
-                <li><strong>Marketing:</strong> To send promotional emails (only with your consent)</li>
-                <li><strong>Legal Compliance:</strong> To comply with applicable laws and regulations</li>
+                <li><strong>Legal Compliance:</strong> To comply with applicable laws including the Income Tax Act and CGST Act</li>
               </ul>
             </section>
 
@@ -81,7 +82,7 @@ export default function PrivacyPolicy() {
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 <li><strong>Razorpay:</strong> For secure payment processing. Your payment information is handled directly by Razorpay and is subject to their privacy policy.</li>
                 <li><strong>Shiprocket:</strong> For order fulfillment and shipping. We share your shipping address with our logistics partners to deliver your orders.</li>
-                <li><strong>Supabase:</strong> For secure data storage and authentication.</li>
+                <li><strong>Supabase:</strong> For secure storage of order data, customer information, and authentication (database hosting).</li>
               </ul>
             </section>
 
@@ -120,14 +121,15 @@ export default function PrivacyPolicy() {
               </p>
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 <li><strong>Right to Access (Rule 14):</strong> Request a summary of your personal data we hold and the processing activities performed on it.</li>
-                <li><strong>Right to Correction (Rule 14):</strong> Request correction of inaccurate or incomplete personal data, including your name, email, phone number, and address. Correction requests are reviewed and processed by our team.</li>
+                <li><strong>Right to Correction (Rule 14):</strong> Request correction of inaccurate or incomplete personal data, including your name, phone number, and address. Correction requests are reviewed and processed by our team.</li>
                 <li><strong>Right to Erasure (Rule 8):</strong> Request deletion of your personal data. Deletion requests are subject to a 14-day cooling-off period during which you may cancel. Data associated with paid orders is retained for 8 years as required by tax law.</li>
                 <li><strong>Right to Data Portability:</strong> Request your personal data in a commonly used, machine-readable format (JSON).</li>
                 <li><strong>Right to Nominate (Rule 14):</strong> Appoint a nominee who may exercise your rights on your behalf in the event of your death or incapacity.</li>
-                <li><strong>Opt-out:</strong> Unsubscribe from marketing communications at any time.</li>
+                <li><strong>Right to File a Grievance:</strong> Submit a grievance to our Grievance Officer regarding the processing of your personal data via <Link href="/grievance" className="text-[#3d3c30] font-medium hover:underline">/grievance</Link>.</li>
+                <li><strong>Right to Complain to the Data Protection Board:</strong> If your grievance is not resolved within 90 days, or you are unsatisfied with our response, you may file a complaint with the Data Protection Board of India.</li>
               </ul>
               <p className="text-gray-700 leading-relaxed mt-4">
-                To exercise any of these rights, visit your data management page at <a href="/my-data" className="text-blue-600 hover:underline">/my-data</a> or contact us at <a href="mailto:trishikhaorganic@gmail.com" className="text-blue-600 hover:underline">trishikhaorganic@gmail.com</a>.
+                To exercise any of these rights, visit your data management page at <Link href="/my-data" className="text-[#3d3c30] font-medium hover:underline">/my-data</Link> or contact us at <a href="mailto:trishikhaorganic@gmail.com" className="text-[#3d3c30] font-medium hover:underline">trishikhaorganic@gmail.com</a>.
               </p>
             </section>
 
@@ -135,16 +137,19 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">8. Grievance Redressal</h2>
               <p className="text-gray-700 leading-relaxed mb-4">
-                In accordance with Rule 14 of the DPDP Rules, 2025, if you have any concerns or complaints regarding the processing of your personal data, you may submit a grievance to us. We are committed to resolving all grievances within <strong>90 days</strong> of receipt.
+                In accordance with Rule 14(3) of the DPDP Rules, 2025, if you have any concerns or complaints regarding the processing of your personal data, you may submit a grievance. We are committed to resolving all grievances within <strong>90 days</strong> of receipt.
               </p>
               <div className="text-gray-700 space-y-2 mb-4">
                 <p><strong>Grievance Officer:</strong></p>
-                <p>Name: Trishikha Organics Grievance Cell</p>
-                <p>Email: <a href="mailto:trishikhaorganic@gmail.com" className="text-blue-600 hover:underline">trishikhaorganic@gmail.com</a></p>
-                <p>Phone: <a href="tel:+917984130253" className="text-blue-600 hover:underline">+91 79841 30253</a></p>
+                <p>Name: Trishikha Organics</p>
+                <p>Email: <a href="mailto:trishikhaorganic@gmail.com" className="text-[#3d3c30] font-medium hover:underline">trishikhaorganic@gmail.com</a></p>
+                <p>Phone: <a href="tel:+917984130253" className="text-[#3d3c30] font-medium hover:underline">+91 79841 30253</a></p>
               </div>
+              <p className="text-gray-700 leading-relaxed mb-4">
+                You can file a grievance online at <Link href="/grievance" className="text-[#3d3c30] font-medium hover:underline">/grievance</Link> or via email.
+              </p>
               <p className="text-gray-700 leading-relaxed">
-                If your grievance is not resolved within the stipulated time, or if you are not satisfied with our response, you may file a complaint with the Data Protection Board of India as established under the DPDP Act, 2023.
+                If your grievance is not resolved within 90 days, or if you are not satisfied with our response, you may file a complaint with the Data Protection Board of India as established under the DPDP Act, 2023.
               </p>
             </section>
 
@@ -152,7 +157,7 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">9. Nominee Appointment</h2>
               <p className="text-gray-700 leading-relaxed">
-                Under Rule 14 of the DPDP Rules, 2025, you have the right to appoint a nominee who may exercise your data principal rights on your behalf in the event of your death or incapacity. To appoint or update a nominee, please contact us at <a href="mailto:trishikhaorganic@gmail.com" className="text-blue-600 hover:underline">trishikhaorganic@gmail.com</a>.
+                Under Rule 14 of the DPDP Rules, 2025, you have the right to appoint a nominee who may exercise your data principal rights on your behalf in the event of your death or incapacity. To appoint or update a nominee, please contact us at <a href="mailto:trishikhaorganic@gmail.com" className="text-[#3d3c30] font-medium hover:underline">trishikhaorganic@gmail.com</a>.
               </p>
             </section>
 
@@ -180,8 +185,8 @@ export default function PrivacyPolicy() {
               </p>
               <div className="text-gray-700 space-y-2">
                 <p><strong>Trishikha Organics</strong></p>
-                <p>Email: <a href="mailto:trishikhaorganic@gmail.com" className="text-blue-600 hover:underline">trishikhaorganic@gmail.com</a></p>
-                <p>Phone: <a href="tel:+917984130253" className="text-blue-600 hover:underline">+91 79841 30253</a></p>
+                <p>Email: <a href="mailto:trishikhaorganic@gmail.com" className="text-[#3d3c30] font-medium hover:underline">trishikhaorganic@gmail.com</a></p>
+                <p>Phone: <a href="tel:+917984130253" className="text-[#3d3c30] font-medium hover:underline">+91 79841 30253</a></p>
                 <p>Address: Plot No 27, Swagat Industrial Area Park, Vill. Dhanot, Kadi Chatral Road, Ta. Kalol, Distt: Gandhi Nagar, Gujarat</p>
               </div>
             </section>

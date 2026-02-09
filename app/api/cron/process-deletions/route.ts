@@ -7,6 +7,12 @@ import {
   getDaysRemaining,
 } from "@/lib/deletion-request";
 import { sendDeletionReminder } from "@/lib/email";
+import {
+  notifyAbandonedCheckouts,
+  deleteAbandonedCheckouts,
+  notifyDeferredExpiry,
+  executeDeferredDeletions,
+} from "@/lib/auto-cleanup";
 
 /**
  * Verify QStash signature for cron job security
@@ -151,8 +157,56 @@ export async function POST(req: Request) {
       }
     }
 
+    // ─── Auto-Cleanup: Abandoned Checkouts ──────────────────────────────────
+    const autoCleanup = {
+      abandonedNotified: 0,
+      abandonedDeleted: 0,
+      deferredNotified: 0,
+      deferredExecuted: 0,
+      autoCleanupErrors: 0,
+    };
+
+    try {
+      const notifyResult = await notifyAbandonedCheckouts();
+      autoCleanup.abandonedNotified = notifyResult.notified;
+      autoCleanup.autoCleanupErrors += notifyResult.errors;
+    } catch (err) {
+      autoCleanup.autoCleanupErrors++;
+      logError(err as Error, { context: "cron_notify_abandoned_checkouts" });
+    }
+
+    try {
+      const deleteResult = await deleteAbandonedCheckouts();
+      autoCleanup.abandonedDeleted = deleteResult.deleted;
+      autoCleanup.autoCleanupErrors += deleteResult.errors;
+    } catch (err) {
+      autoCleanup.autoCleanupErrors++;
+      logError(err as Error, { context: "cron_delete_abandoned_checkouts" });
+    }
+
+    // ─── Auto-Cleanup: Deferred Legal Expiry ─────────────────────────────────
+
+    try {
+      const notifyResult = await notifyDeferredExpiry();
+      autoCleanup.deferredNotified = notifyResult.notified;
+      autoCleanup.autoCleanupErrors += notifyResult.errors;
+    } catch (err) {
+      autoCleanup.autoCleanupErrors++;
+      logError(err as Error, { context: "cron_notify_deferred_expiry" });
+    }
+
+    try {
+      const execResult = await executeDeferredDeletions();
+      autoCleanup.deferredExecuted = execResult.deleted;
+      autoCleanup.autoCleanupErrors += execResult.errors;
+    } catch (err) {
+      autoCleanup.autoCleanupErrors++;
+      logError(err as Error, { context: "cron_execute_deferred_deletions" });
+    }
+
     logSecurityEvent("cron_process_deletions_completed", {
       ...results,
+      ...autoCleanup,
       timestamp: new Date().toISOString(),
     });
 
@@ -160,7 +214,7 @@ export async function POST(req: Request) {
       success: true,
       message:
         "Deletion processing completed. Eligible requests require admin approval.",
-      results,
+      results: { ...results, ...autoCleanup },
     });
   } catch (error) {
     logError(error as Error, {
