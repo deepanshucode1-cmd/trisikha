@@ -7,6 +7,7 @@ import { useCartStore } from "@/utils/store/cartStore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import DataCollectionNotice from "./DataCollectionNotice";
 
 // Validation rules based on backend schema
 interface ValidationRule {
@@ -938,6 +939,9 @@ function OrderSummary({
           Estimated delivery: {selectedCourier.etd}
         </p>
       )}
+
+      {/* Data Collection Notice — DPDP Rule 3 */}
+      <DataCollectionNotice />
 
       {/* Actions */}
       <div className="mt-6 space-y-3">

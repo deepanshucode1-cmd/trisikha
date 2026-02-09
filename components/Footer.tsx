@@ -85,6 +85,21 @@ const Footer = () => {
                 Cancel Order
               </Link>
             </li>
+            <li>
+              <Link href="/return-policy" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Return Policy
+              </Link>
+            </li>
+            <li>
+              <Link href="/my-data" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                My Data
+              </Link>
+            </li>
+            <li>
+              <Link href="/grievance" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Grievance Redressal
+              </Link>
+            </li>
           </ul>
         </div>
 

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import React from "react";
 import { createClient } from "@/utils/supabase/client";
+import DataCollectionNotice from "@/components/checkout/DataCollectionNotice";
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1011,6 +1012,9 @@ function OrderSummary({
           Estimated delivery: {selectedCourier.etd}
         </p>
       )}
+
+      {/* Data Collection Notice — DPDP Rule 3 */}
+      <DataCollectionNotice />
 
       {/* Actions */}
       <div className="mt-6 space-y-3">
