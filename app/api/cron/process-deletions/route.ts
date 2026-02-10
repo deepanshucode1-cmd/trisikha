@@ -13,6 +13,8 @@ import {
   notifyDeferredExpiry,
   executeDeferredDeletions,
 } from "@/lib/auto-cleanup";
+import { getExpiredClaimDocuments, markDocumentDeleted } from "@/lib/nominee";
+import { deleteClaimDocument } from "@/lib/nominee-storage";
 
 /**
  * Verify QStash signature for cron job security
@@ -204,9 +206,36 @@ export async function POST(req: Request) {
       logError(err as Error, { context: "cron_execute_deferred_deletions" });
     }
 
+    // ─── Auto-Cleanup: Expired Nominee Claim Documents ─────────────────────
+    const nomineeCleanup = {
+      nomineeDocsDeleted: 0,
+      nomineeDocErrors: 0,
+    };
+
+    try {
+      const expiredClaims = await getExpiredClaimDocuments();
+      for (const claim of expiredClaims) {
+        try {
+          await deleteClaimDocument(claim.document_path);
+          await markDocumentDeleted(claim.id);
+          nomineeCleanup.nomineeDocsDeleted++;
+        } catch (err) {
+          nomineeCleanup.nomineeDocErrors++;
+          logError(err as Error, {
+            context: "cron_nominee_doc_cleanup_failed",
+            claimId: claim.id,
+          });
+        }
+      }
+    } catch (err) {
+      nomineeCleanup.nomineeDocErrors++;
+      logError(err as Error, { context: "cron_nominee_doc_cleanup_query_failed" });
+    }
+
     logSecurityEvent("cron_process_deletions_completed", {
       ...results,
       ...autoCleanup,
+      ...nomineeCleanup,
       timestamp: new Date().toISOString(),
     });
 
@@ -214,7 +243,7 @@ export async function POST(req: Request) {
       success: true,
       message:
         "Deletion processing completed. Eligible requests require admin approval.",
-      results: { ...results, ...autoCleanup },
+      results: { ...results, ...autoCleanup, ...nomineeCleanup },
     });
   } catch (error) {
     logError(error as Error, {

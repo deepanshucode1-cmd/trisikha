@@ -100,6 +100,16 @@ const Footer = () => {
                 Grievance Redressal
               </Link>
             </li>
+            <li>
+              <Link href="/nominee" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Appoint Nominee
+              </Link>
+            </li>
+            <li>
+              <Link href="/nominee-claim" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Nominee Claim
+              </Link>
+            </li>
           </ul>
         </div>
 

@@ -1588,6 +1588,7 @@ export default function SecurityDashboard() {
                     { item: "Rate Limiting", desc: "Protection against brute force" },
                     { item: "Data Encryption", desc: "TLS/SSL, HTTPS enforced" },
                     { item: "Grievance Redressal", desc: "90-day SLA system at /grievance (Rule 14(3))" },
+                    { item: "Nominee Appointment & Claims", desc: "Rule 14 — manage at /admin/nominee-claims" },
                   ].map((check, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1725,6 +1726,9 @@ export default function SecurityDashboard() {
               </Link>
               <Link href="/my-data" target="_blank" className="text-blue-700 hover:underline text-sm">
                 Data Request Page
+              </Link>
+              <Link href="/admin/nominee-claims" className="text-blue-700 hover:underline text-sm">
+                Nominee Claims
               </Link>
               <a href="mailto:trishikhaorganic@gmail.com" className="text-blue-700 hover:underline text-sm">
                 Support Email

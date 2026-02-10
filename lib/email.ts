@@ -1072,3 +1072,236 @@ export async function sendPreErasureNotification(params: {
     `,
   });
 }
+
+// ============================================================
+// Nominee Appointment Emails (DPDP Rule 14)
+// ============================================================
+
+/**
+ * Sent to principal when they appoint a nominee.
+ */
+export async function sendNomineeAppointed(params: {
+  principalEmail: string;
+  nomineeName: string;
+  nomineeEmail: string;
+  relationship: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: params.principalEmail,
+    subject: "TrishikhaOrganics: Nominee Appointed Successfully",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Nominee Appointed</h2>
+        <p>Hi,</p>
+        <p>You have successfully appointed a nominee for your data at Trishikha Organics.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0;"><strong>Nominee Name:</strong> ${escapeHtml(params.nomineeName)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Nominee Email:</strong> ${escapeHtml(params.nomineeEmail)}</p>
+          <p style="margin: 0;"><strong>Relationship:</strong> ${escapeHtml(params.relationship)}</p>
+        </div>
+
+        <p>Your nominee can request export or deletion of your data in the event of your death or incapacity, as per DPDP Act 2023, Rule 14.</p>
+        <p>You can revoke or update your nominee at any time by visiting <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/nominee" style="color: #3d3c30; font-weight: bold;">/nominee</a>.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi,\n\nYou have successfully appointed a nominee for your data at Trishikha Organics.\n\nNominee Name: ${params.nomineeName}\nNominee Email: ${params.nomineeEmail}\nRelationship: ${params.relationship}\n\nYour nominee can request export or deletion of your data in the event of your death or incapacity (DPDP Act 2023, Rule 14).\n\nYou can revoke or update your nominee at: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to nominee when they are appointed.
+ */
+export async function sendNomineeNotification(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  principalEmail: string;
+  relationship: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: "TrishikhaOrganics: You Have Been Appointed as a Data Nominee",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a365d;">Nominee Appointment Confirmation</h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+        <p>You have been appointed as a <strong>data nominee</strong> by <strong>${escapeHtml(params.principalEmail)}</strong> at Trishikha Organics.</p>
+
+        <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="margin: 0 0 10px 0; color: #1a365d;">What does this mean?</h3>
+          <p style="margin: 0;">In the event of the data principal's death or incapacity, you may exercise the following rights on their behalf under the DPDP Act 2023, Rule 14:</p>
+          <ul style="margin: 10px 0 0 0;">
+            <li>Request export of their order data</li>
+            <li>Request deletion of their personal data</li>
+          </ul>
+        </div>
+
+        <p>To submit a claim, visit <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/nominee-claim" style="color: #3d3c30; font-weight: bold;">/nominee-claim</a> and provide the required proof documentation.</p>
+        <p>The data principal can revoke this nomination at any time.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi ${params.nomineeName},\n\nYou have been appointed as a data nominee by ${params.principalEmail} at Trishikha Organics.\n\nIn the event of the data principal's death or incapacity, you may request export or deletion of their data under the DPDP Act 2023, Rule 14.\n\nTo submit a claim, visit: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee-claim\n\nThe data principal can revoke this nomination at any time.\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to principal when nominee is revoked.
+ */
+export async function sendNomineeRevoked(params: {
+  principalEmail: string;
+  nomineeName: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: params.principalEmail,
+    subject: "TrishikhaOrganics: Nominee Revoked",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #92400e;">Nominee Revoked</h2>
+        <p>Hi,</p>
+        <p>Your nominee <strong>${escapeHtml(params.nomineeName)}</strong> has been revoked at Trishikha Organics.</p>
+        <p>They will no longer be able to exercise data rights on your behalf.</p>
+        <p>You can appoint a new nominee at any time by visiting <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/nominee" style="color: #3d3c30; font-weight: bold;">/nominee</a>.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi,\n\nYour nominee ${params.nomineeName} has been revoked at Trishikha Organics.\n\nThey will no longer be able to exercise data rights on your behalf.\n\nYou can appoint a new nominee at: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to former nominee when revoked.
+ */
+export async function sendNomineeRevocationNotice(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  principalEmail: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: "TrishikhaOrganics: Your Nominee Status Has Been Revoked",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #92400e;">Nominee Status Revoked</h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+        <p>Your nomination as a data nominee for <strong>${escapeHtml(params.principalEmail)}</strong> at Trishikha Organics has been revoked by the data principal.</p>
+        <p>You will no longer be able to submit claims on their behalf.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi ${params.nomineeName},\n\nYour nomination as a data nominee for ${params.principalEmail} at Trishikha Organics has been revoked by the data principal.\n\nYou will no longer be able to submit claims on their behalf.\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to nominee when claim is received.
+ */
+export async function sendNomineeClaimReceived(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  claimId: string;
+  principalEmail: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: "TrishikhaOrganics: Nominee Claim Received",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a365d;">Nominee Claim Received</h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+        <p>Your nominee claim has been received and is under review.</p>
+
+        <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0;"><strong>Claim ID:</strong> ${escapeHtml(params.claimId)}</p>
+          <p style="margin: 0;"><strong>Principal Email:</strong> ${escapeHtml(params.principalEmail)}</p>
+        </div>
+
+        <p>Our team will review the submitted documents and notify you at this email address once a decision is made.</p>
+        <p>If you have questions, contact our Grievance Officer at <a href="mailto:trishikhaorganic@gmail.com" style="color: #3d3c30;">trishikhaorganic@gmail.com</a> or +91 79841 30253.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi ${params.nomineeName},\n\nYour nominee claim has been received and is under review.\n\nClaim ID: ${params.claimId}\nPrincipal Email: ${params.principalEmail}\n\nOur team will review the submitted documents and notify you once a decision is made.\n\nContact: trishikhaorganic@gmail.com | +91 79841 30253\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to nominee when claim is processed (completed or rejected).
+ */
+export async function sendNomineeClaimProcessed(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  claimId: string;
+  status: "completed" | "rejected";
+  actionTaken?: string;
+  rejectionReason?: string;
+}): Promise<boolean> {
+  const isCompleted = params.status === "completed";
+
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: isCompleted
+      ? "TrishikhaOrganics: Nominee Claim Processed"
+      : "TrishikhaOrganics: Nominee Claim Update",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: ${isCompleted ? "#166534" : "#92400e"};">
+          Nominee Claim ${isCompleted ? "Processed" : "Update"}
+        </h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+
+        ${isCompleted ? `
+          <p>Your nominee claim <strong>${escapeHtml(params.claimId)}</strong> has been <strong style="color: #166534;">processed successfully</strong>.</p>
+          ${params.actionTaken ? `
+            <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0;"><strong>Action Taken:</strong> ${escapeHtml(params.actionTaken)}</p>
+            </div>
+          ` : ""}
+        ` : `
+          <p>Your nominee claim <strong>${escapeHtml(params.claimId)}</strong> could not be verified.</p>
+          ${params.rejectionReason ? `
+            <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0;"><strong>Reason:</strong> ${escapeHtml(params.rejectionReason)}</p>
+            </div>
+          ` : ""}
+          <p>You may contact our Grievance Officer for further assistance at <a href="mailto:trishikhaorganic@gmail.com" style="color: #3d3c30;">trishikhaorganic@gmail.com</a> or +91 79841 30253.</p>
+        `}
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: isCompleted
+      ? `Hi ${params.nomineeName},\n\nYour nominee claim ${params.claimId} has been processed successfully.\n\n${params.actionTaken ? `Action Taken: ${params.actionTaken}\n\n` : ""}Trishikha Organics`
+      : `Hi ${params.nomineeName},\n\nYour nominee claim ${params.claimId} could not be verified.\n\n${params.rejectionReason ? `Reason: ${params.rejectionReason}\n\n` : ""}Contact: trishikhaorganic@gmail.com | +91 79841 30253\n\nTrishikha Organics`,
+  });
+}

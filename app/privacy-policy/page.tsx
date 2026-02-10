@@ -124,7 +124,7 @@ export default function PrivacyPolicy() {
                 <li><strong>Right to Correction (Rule 14):</strong> Request correction of inaccurate or incomplete personal data, including your name, phone number, and address. Correction requests are reviewed and processed by our team.</li>
                 <li><strong>Right to Erasure (Rule 8):</strong> Request deletion of your personal data. Deletion requests are subject to a 14-day cooling-off period during which you may cancel. Data associated with paid orders is retained for 8 years as required by tax law.</li>
                 <li><strong>Right to Data Portability:</strong> Request your personal data in a commonly used, machine-readable format (JSON).</li>
-                <li><strong>Right to Nominate (Rule 14):</strong> Appoint a nominee who may exercise your rights on your behalf in the event of your death or incapacity.</li>
+                <li><strong>Right to Nominate (Rule 14):</strong> Appoint a nominee who may exercise your rights on your behalf in the event of your death or incapacity via <Link href="/nominee" className="text-[#3d3c30] font-medium hover:underline">/nominee</Link>.</li>
                 <li><strong>Right to File a Grievance:</strong> Submit a grievance to our Grievance Officer regarding the processing of your personal data via <Link href="/grievance" className="text-[#3d3c30] font-medium hover:underline">/grievance</Link>.</li>
                 <li><strong>Right to Complain to the Data Protection Board:</strong> If your grievance is not resolved within 90 days, or you are unsatisfied with our response, you may file a complaint with the Data Protection Board of India.</li>
               </ul>
@@ -157,7 +157,7 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">9. Nominee Appointment</h2>
               <p className="text-gray-700 leading-relaxed">
-                Under Rule 14 of the DPDP Rules, 2025, you have the right to appoint a nominee who may exercise your data principal rights on your behalf in the event of your death or incapacity. To appoint or update a nominee, please contact us at <a href="mailto:trishikhaorganic@gmail.com" className="text-[#3d3c30] font-medium hover:underline">trishikhaorganic@gmail.com</a>.
+                Under Rule 14 of the DPDP Rules, 2025, you have the right to appoint a nominee who may exercise your data principal rights on your behalf in the event of your death or incapacity. You can appoint or manage your nominee at <Link href="/nominee" className="text-[#3d3c30] font-medium hover:underline">/nominee</Link>. If you are a nominee and need to submit a claim, visit <Link href="/nominee-claim" className="text-[#3d3c30] font-medium hover:underline">/nominee-claim</Link>.
               </p>
             </section>
 
