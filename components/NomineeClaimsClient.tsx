@@ -119,7 +119,10 @@ export default function NomineeClaimsClient() {
       params.set("offset", String(page * limit));
 
       const res = await fetch(`/api/admin/nominee-claims?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch nominee claims");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load nominee claims");
+      }
 
       const data = await res.json();
       setClaims(data.claims || []);
@@ -127,7 +130,7 @@ export default function NomineeClaimsClient() {
       setStats(data.stats || null);
     } catch (err) {
       console.error("Fetch nominee claims error:", err);
-      setError("Failed to load nominee claims");
+      setError((err as Error).message || "Failed to load nominee claims");
     } finally {
       setLoading(false);
     }
@@ -141,13 +144,17 @@ export default function NomineeClaimsClient() {
   const openDetail = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/nominee-claims/${id}`);
-      if (!res.ok) throw new Error("Failed to fetch claim details");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load claim details");
+      }
       const data = await res.json();
       setSelectedClaim(data.claim as NomineeClaim);
       setActionNotes("");
       setShowModal(true);
     } catch (err) {
       console.error("Fetch claim details error:", err);
+      alert((err as Error).message || "Failed to load claim details");
     }
   };
 

@@ -12,13 +12,20 @@ type Product = {
 
 const DashboardClient = () => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [editStock, setEditStock] = useState<number>(0);
   const [editPrice, setEditPrice] = useState<number>(0);
 
   useEffect(() => {
     fetch("/api/seller/products")
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to load products");
+        }
+        return res.json();
+      })
       .then((data) => {
         if (Array.isArray(data.products)) {
           setProducts(data.products);
@@ -27,7 +34,10 @@ const DashboardClient = () => {
           setProducts([]);
         }
       })
-      .catch(() => setProducts([]));
+      .catch((err) => {
+        setProducts([]);
+        setFetchError(err.message || "Failed to load products");
+      });
   }, []);
 
 
@@ -50,6 +60,12 @@ const DashboardClient = () => {
           + Add New Product
         </button>
       </div>
+
+      {fetchError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {fetchError}
+        </div>
+      )}
 
       {/* Mobile Card View */}
       <div className="md:hidden space-y-4">

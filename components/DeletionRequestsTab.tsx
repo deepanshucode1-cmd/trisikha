@@ -93,14 +93,17 @@ export default function DeletionRequestsTab() {
       }
 
       const res = await fetch(`/api/admin/deletion-requests?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch deletion requests");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load deletion requests");
+      }
 
       const data = await res.json();
       setRequests(data.requests || []);
       setStats(data.stats || null);
     } catch (err) {
       console.error("Fetch deletion requests error:", err);
-      setError("Failed to load deletion requests");
+      setError((err as Error).message || "Failed to load deletion requests");
     } finally {
       setLoading(false);
     }
@@ -114,13 +117,17 @@ export default function DeletionRequestsTab() {
   const fetchRequestDetails = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/deletion-requests/${id}`);
-      if (!res.ok) throw new Error("Failed to fetch request details");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load request details");
+      }
       const data = await res.json();
       setSelectedRequest(data.request);
       setSelectedOrders(data.orders || []);
       setShowModal(true);
     } catch (err) {
       console.error("Fetch request details error:", err);
+      alert((err as Error).message || "Failed to load request details");
     }
   };
 
@@ -172,7 +179,10 @@ export default function DeletionRequestsTab() {
         body: JSON.stringify({ requestIds: Array.from(selectedIds) }),
       });
 
-      if (!res.ok) throw new Error("Bulk execution failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Bulk execution failed");
+      }
 
       const data = await res.json();
       alert(

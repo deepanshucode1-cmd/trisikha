@@ -3,7 +3,7 @@ import { createServiceClient } from "@/utils/supabase/service";
 import crypto from "crypto";
 import { z } from "zod";
 import { otpRateLimit, getClientIp } from "@/lib/rate-limit";
-import { handleApiError } from "@/lib/errors";
+import { handleApiError, getFirstZodError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 import { sanitizeObject } from "@/lib/xss";
 import { sendEmail } from "@/lib/email";
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

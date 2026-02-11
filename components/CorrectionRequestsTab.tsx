@@ -76,14 +76,17 @@ export default function CorrectionRequestsTab() {
       }
 
       const res = await fetch(`/api/admin/corrections?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch correction requests");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load correction requests");
+      }
 
       const data = await res.json();
       setRequests(data.requests || []);
       setStats(data.stats || null);
     } catch (err) {
       console.error("Fetch correction requests error:", err);
-      setError("Failed to load correction requests");
+      setError((err as Error).message || "Failed to load correction requests");
     } finally {
       setLoading(false);
     }
@@ -97,12 +100,16 @@ export default function CorrectionRequestsTab() {
   const openDetailModal = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/corrections/${id}`);
-      if (!res.ok) throw new Error("Failed to fetch request details");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load request details");
+      }
       const data = await res.json();
       setSelectedRequest(data.request);
       setShowModal(true);
     } catch (err) {
       console.error("Fetch request details error:", err);
+      alert((err as Error).message || "Failed to load request details");
     }
   };
 

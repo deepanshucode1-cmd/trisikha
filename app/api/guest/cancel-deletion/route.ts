@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { z } from "zod";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
-import { handleApiError } from "@/lib/errors";
+import { handleApiError, getFirstZodError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 import {
   cancelDeletionRequest,
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

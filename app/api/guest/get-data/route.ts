@@ -9,7 +9,7 @@ import { getPendingDeletionRequest, getDaysRemaining } from "@/lib/deletion-requ
 
 const requestSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
-  sessionToken: z.string().min(1, "Session token required"),
+  sessionToken: z.string().min(1, "Session token required").max(100).trim(),
 });
 
 /**

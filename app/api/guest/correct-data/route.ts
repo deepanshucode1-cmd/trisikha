@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { z } from "zod";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
-import { handleApiError } from "@/lib/errors";
+import { handleApiError, getFirstZodError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 import {
   createCorrectionRequest,
@@ -12,12 +12,12 @@ import { sanitizeObject } from "@/lib/xss";
 
 const correctionSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
-  sessionToken: z.string().min(1, "Session token required"),
+  sessionToken: z.string().min(1, "Session token required").max(100).trim(),
   fieldName: z.enum(["name", "phone", "address"], {
     message: "Field must be one of: name, phone, address",
   }),
-  currentValue: z.string().min(1, "Current value is required"),
-  requestedValue: z.string().min(1, "Requested value is required"),
+  currentValue: z.string().min(1, "Current value is required").max(500).trim(),
+  requestedValue: z.string().min(1, "Requested value is required").max(500).trim(),
   orderId: z.uuid({ message: "Invalid order ID" }),
 });
 
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

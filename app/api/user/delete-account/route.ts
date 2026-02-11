@@ -4,6 +4,7 @@ import { logSecurityEvent, logError } from "@/lib/logger";
 import { createServiceClient } from "@/utils/supabase/service";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
 import { z } from "zod";
+import { getFirstZodError } from "@/lib/errors";
 import { createClient } from "@supabase/supabase-js";
 import { logDataAccess } from "@/lib/audit";
 
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

@@ -130,14 +130,17 @@ export default function GrievancesTab() {
       }
 
       const res = await fetch(`/api/admin/grievances?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch grievances");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load grievances");
+      }
 
       const data = await res.json();
       setGrievances(data.grievances || []);
       setStats(data.stats || null);
     } catch (err) {
       console.error("Fetch grievances error:", err);
-      setError("Failed to load grievances");
+      setError((err as Error).message || "Failed to load grievances");
     } finally {
       setLoading(false);
     }
@@ -151,7 +154,10 @@ export default function GrievancesTab() {
   const openDetail = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/grievances/${id}`);
-      if (!res.ok) throw new Error("Failed to fetch grievance details");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to load grievance details");
+      }
       const data = await res.json();
       const g = data.grievance as Grievance;
       setSelectedGrievance(g);
@@ -162,6 +168,7 @@ export default function GrievancesTab() {
       setShowModal(true);
     } catch (err) {
       console.error("Fetch grievance details error:", err);
+      alert((err as Error).message || "Failed to load grievance details");
     }
   };
 

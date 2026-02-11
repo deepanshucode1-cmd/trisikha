@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { z } from "zod";
 import { logError } from "@/lib/logger";
+import { getFirstZodError } from "@/lib/errors";
 import { requireCsrf } from "@/lib/csrf";
 import { getGrievanceById, updateGrievance } from "@/lib/grievance";
 import { sanitizeObject } from "@/lib/xss";
@@ -121,7 +122,7 @@ export async function PATCH(
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

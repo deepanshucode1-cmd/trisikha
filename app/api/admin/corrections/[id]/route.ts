@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { z } from "zod";
 import { logError } from "@/lib/logger";
+import { getFirstZodError } from "@/lib/errors";
 import { processCorrectionRequest } from "@/lib/correction-request";
 import { sanitizeObject } from "@/lib/xss";
 
@@ -112,7 +113,7 @@ export async function POST(
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { updateVendorBreachStatus } from "@/lib/audit";
 import { logError } from "@/lib/logger";
+import { getFirstZodError } from "@/lib/errors";
 import { z } from "zod";
 import { sanitizeObject } from "@/lib/xss";
 
@@ -44,7 +45,7 @@ export async function PATCH(
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: validation.error.flatten() },
+        { error: getFirstZodError(validation.error), details: validation.error.flatten() },
         { status: 400 }
       );
     }

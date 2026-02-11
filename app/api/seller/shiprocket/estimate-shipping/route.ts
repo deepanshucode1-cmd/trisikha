@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { logError } from "@/lib/logger";
 import { shippingEstimateRateLimit, getClientIp } from "@/lib/rate-limit";
 import { z } from "zod";
+import { getFirstZodError } from "@/lib/errors";
 
 // Validation schema for shipping estimate request
 const shippingEstimateSchema = z.object({
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
     const parseResult = shippingEstimateSchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

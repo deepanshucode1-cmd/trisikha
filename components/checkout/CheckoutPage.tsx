@@ -346,7 +346,7 @@ export default function CheckoutPage() {
           setPlacingOrder(false);
           const errorData = await res.json();
           console.error("Checkout error:", errorData);
-          alert("An error occurred during checkout. Please try again.");
+          alert(errorData.error || "An error occurred during checkout. Please try again.");
         }
       })
       .catch((error) => {

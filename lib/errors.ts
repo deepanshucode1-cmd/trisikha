@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { logError, logSecurityEvent } from './logger';
 import { z } from 'zod';
 
+export function getFirstZodError(error: z.ZodError): string {
+  return error.issues[0]?.message || 'Invalid request';
+}
+
 export class AppError extends Error {
   constructor(
     public statusCode: number,
@@ -16,10 +20,11 @@ export class AppError extends Error {
 export function handleApiError(error: unknown, context: Record<string, any> = {}) {
   // Zod validation errors
   if (error instanceof z.ZodError) {
+    const firstMessage = error.issues[0]?.message || 'Validation failed';
     return NextResponse.json(
       {
-        error: 'Validation failed',
-        details: process.env.NODE_ENV === 'development' ? error.issues : undefined
+        error: firstMessage,
+        details: error.issues
       },
       { status: 400 }
     );

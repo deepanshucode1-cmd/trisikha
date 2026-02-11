@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { z } from "zod";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
-import { handleApiError } from "@/lib/errors";
+import { handleApiError, getFirstZodError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 import { createGrievance, getGrievancesByEmail } from "@/lib/grievance";
 import { sanitizeObject } from "@/lib/xss";
@@ -10,15 +10,17 @@ import { sendGrievanceReceived } from "@/lib/email";
 
 const grievanceSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
-  sessionToken: z.string().min(1, "Session token required"),
+  sessionToken: z.string().min(1, "Session token required").max(100).trim(),
   subject: z
     .string()
     .min(5, "Subject must be at least 5 characters")
-    .max(200, "Subject must be at most 200 characters"),
+    .max(200, "Subject must be at most 200 characters")
+    .trim(),
   description: z
     .string()
     .min(20, "Description must be at least 20 characters")
-    .max(2000, "Description must be at most 2000 characters"),
+    .max(2000, "Description must be at most 2000 characters")
+    .trim(),
   category: z.enum(
     ["data_processing", "correction", "deletion", "consent", "breach", "other"],
     { message: "Invalid grievance category" }
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: z.flattenError(parseResult.error) },
+        { error: getFirstZodError(parseResult.error), details: z.flattenError(parseResult.error) },
         { status: 400 }
       );
     }

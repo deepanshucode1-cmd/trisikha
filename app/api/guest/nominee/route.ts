@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/utils/supabase/service";
 import { z } from "zod";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
-import { handleApiError } from "@/lib/errors";
+import { handleApiError, getFirstZodError } from "@/lib/errors";
 import { logSecurityEvent } from "@/lib/logger";
 import { sanitizeObject } from "@/lib/xss";
 import {
@@ -19,10 +19,10 @@ import {
 
 const appointSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
-  sessionToken: z.string().min(1, "Session token required"),
+  sessionToken: z.string().min(1, "Session token required").max(100).trim(),
   nomineeEmail: z.email({ message: "Invalid nominee email address" }),
   nomineeOtp: z.string().length(6, "OTP must be 6 digits"),
-  nomineeName: z.string().min(1).max(100, "Name must be under 100 characters"),
+  nomineeName: z.string().min(1).max(100, "Name must be under 100 characters").trim(),
   relationship: z.enum(
     ["spouse", "child", "parent", "sibling", "legal_guardian", "other"],
     { message: "Invalid relationship type" }
@@ -31,7 +31,7 @@ const appointSchema = z.object({
 
 const revokeSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
-  sessionToken: z.string().min(1, "Session token required"),
+  sessionToken: z.string().min(1, "Session token required").max(100).trim(),
 });
 
 /**
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }
@@ -312,12 +312,12 @@ export async function GET(req: Request) {
       success: true,
       nominee: nominee
         ? {
-            id: nominee.id,
-            nomineeName: nominee.nominee_name,
-            nomineeEmail: nominee.nominee_email,
-            relationship: nominee.relationship,
-            createdAt: nominee.created_at,
-          }
+          id: nominee.id,
+          nomineeName: nominee.nominee_name,
+          nomineeEmail: nominee.nominee_email,
+          relationship: nominee.relationship,
+          createdAt: nominee.created_at,
+        }
         : null,
     });
   } catch (error) {
@@ -347,7 +347,7 @@ export async function DELETE(req: Request) {
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.flatten() },
+        { error: getFirstZodError(parseResult.error), details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

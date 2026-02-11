@@ -21,14 +21,15 @@ export default function Offerings() {
         const res = await fetch("/api/products");
 
         if (!res.ok) {
-          throw new Error("Failed to fetch products");
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to load products");
         }
 
         const data = await res.json();
         setProducts(data);
       } catch (err) {
         console.error(err);
-        toast.error("An error occurred while loading products");
+        toast.error(err instanceof Error ? err.message : "Failed to load products");
       } finally {
         setLoading(false);
       }
@@ -149,12 +150,6 @@ export default function Offerings() {
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-bold text-[#3d3c30]">
                       ₹{product.price}
-                    </span>
-                    <span className="text-sm text-gray-400 line-through">
-                      ₹{Math.round(product.price * 1.2)}
-                    </span>
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                      20% OFF
                     </span>
                   </div>
                 </div>
