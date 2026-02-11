@@ -23,12 +23,12 @@ const claimFieldsSchema = z.object({
     .string()
     .transform((v) => v === "true")
     .optional()
-    .default("false"),
+    .default(false),
   actionDeletion: z
     .string()
     .transform((v) => v === "true")
     .optional()
-    .default("false"),
+    .default(false),
 });
 
 /**
