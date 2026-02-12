@@ -99,7 +99,7 @@ export async function PATCH(
 
     if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parseResult.error.format() },
+        { error: "Invalid request", details: parseResult.error.flatten() },
         { status: 400 }
       );
     }

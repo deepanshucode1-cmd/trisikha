@@ -5,6 +5,7 @@ import { useCartStore } from "@/utils/store/cartStore";
 import Image from "next/image";
 import Link from "next/link";
 import { Product } from "./Products";
+import StarRating from "./StarRating";
 import { toast, ToastContainer } from "react-toastify";
 import { ShoppingCart, Zap, ArrowRight, Leaf } from "lucide-react";
 
@@ -29,7 +30,7 @@ export default function Offerings() {
         setProducts(data);
       } catch (err) {
         console.error(err);
-        toast.error(err instanceof Error ? err.message : "Failed to load products");
+        toast.error("An error occurred while loading products");
       } finally {
         setLoading(false);
       }
@@ -144,9 +145,19 @@ export default function Offerings() {
 
                 {/* Info */}
                 <div className="p-6 flex-grow">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-[#3d3c30] transition-colors">
+                  <h3 className="text-xl font-bold text-gray-800 mb-1 group-hover:text-[#3d3c30] transition-colors">
                     {product.name}
                   </h3>
+                  {product.review_count && product.review_count > 0 && (
+                    <div className="mb-2">
+                      <StarRating
+                        rating={product.avg_rating || 0}
+                        size="sm"
+                        showCount
+                        count={product.review_count}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-bold text-[#3d3c30]">
                       ₹{product.price}

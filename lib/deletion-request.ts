@@ -455,7 +455,38 @@ export async function executeDeletionRequest(
       };
     }
 
+    // Anonymize review data (DPDP compliance)
+    // 1. Scrub guest_email from review_tokens for this user
+    const { error: tokenAnonymizeError } = await supabase
+      .from("review_tokens")
+      .update({ guest_email: "[deleted]" })
+      .eq("guest_email", email);
+
+    if (tokenAnonymizeError) {
+      logError(tokenAnonymizeError as Error, {
+        context: "execute_deletion_anonymize_review_tokens_failed",
+        requestId,
+        email,
+      });
+    }
+
+    // 2. Nullify review_text for reviews linked to paid orders (text may contain PII)
+    const paidOrderIds = paidOrders.map((o) => o.id);
+    const { error: reviewAnonymizeError } = await supabase
+      .from("reviews")
+      .update({ review_text: null })
+      .in("order_id", paidOrderIds);
+
+    if (reviewAnonymizeError) {
+      logError(reviewAnonymizeError as Error, {
+        context: "execute_deletion_anonymize_reviews_failed",
+        requestId,
+        email,
+      });
+    }
+
     // Delete unpaid orders (no tax obligation)
+    // CASCADE will also delete their review_tokens and reviews
     let unpaidDeleted = 0;
     if (unpaidOrders.length > 0) {
       const unpaidIds = unpaidOrders.map((o) => o.id);
@@ -494,7 +525,7 @@ export async function executeDeletionRequest(
       rowCount: paidOrders.length,
       userId: adminId,
       endpoint: "/api/admin/deletion-requests/execute",
-      reason: `DPDP deletion deferred - OTP cleared for ${paidOrders.length} paid orders. Tax retention until ${retentionEndDate?.toISOString().split("T")[0]}`,
+      reason: `DPDP deletion deferred - OTP cleared, review data anonymized for ${paidOrders.length} paid orders. Tax retention until ${retentionEndDate?.toISOString().split("T")[0]}`,
     });
 
     logSecurityEvent("deletion_request_deferred", {
@@ -502,6 +533,8 @@ export async function executeDeletionRequest(
       email,
       paidOrdersCount: paidOrders.length,
       unpaidOrdersDeleted: unpaidDeleted,
+      reviewTokensAnonymized: !tokenAnonymizeError,
+      reviewTextsAnonymized: !reviewAnonymizeError,
       retentionEndDate: retentionEndDate?.toISOString(),
       earliestOrderFy,
       executedBy: adminId,
@@ -515,7 +548,7 @@ export async function executeDeletionRequest(
       hasPaidOrders: true,
       paidOrdersCount: paidOrders.length,
       retentionEndDate,
-      message: `Deletion deferred due to tax compliance. ${paidOrders.length} paid order(s) retained until ${retentionEndDate?.toISOString().split("T")[0]}. OTP data cleared. ${unpaidDeleted} unpaid order(s) deleted.`,
+      message: `Deletion deferred due to tax compliance. ${paidOrders.length} paid order(s) retained until ${retentionEndDate?.toISOString().split("T")[0]}. OTP data cleared. Review data anonymized. ${unpaidDeleted} unpaid order(s) deleted.`,
     };
   }
 

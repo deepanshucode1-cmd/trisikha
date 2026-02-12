@@ -147,6 +147,42 @@ export const adminShippingRateLimit = hasRedisCredentials
       inMemoryLimiter.limit(identifier, 30, 60 * 1000),
   };
 
+// Rate limiting for review submissions (5 per hour per IP)
+export const reviewSubmitRateLimit = hasRedisCredentials
+  ? new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "ratelimit:review-submit",
+  })
+  : {
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 5, 60 * 60 * 1000),
+  };
+
+// Rate limiting for review token verification (20 per minute per IP)
+export const reviewVerifyRateLimit = hasRedisCredentials
+  ? new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
+    prefix: "ratelimit:review-verify",
+  })
+  : {
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 20, 60 * 1000),
+  };
+
+// Rate limiting for review helpful votes (30 per minute per IP)
+export const reviewHelpfulRateLimit = hasRedisCredentials
+  ? new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(30, "1 m"),
+    prefix: "ratelimit:review-helpful",
+  })
+  : {
+    limit: async (identifier: string) =>
+      inMemoryLimiter.limit(identifier, 30, 60 * 1000),
+  };
+
 // Helper function to get client IP from request
 export function getClientIp(request: Request): string {
   return (

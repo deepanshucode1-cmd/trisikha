@@ -110,15 +110,18 @@ export async function POST(req: Request) {
       calculatedTotal += product.price * item.quantity;
     }
 
-    // Verify shipping cost from Shiprocket
-    let verifiedShippingCost = selected_courier.rate;
+    // Verify shipping cost from Shiprocket (strict — must succeed)
+    let verifiedShippingCost: number;
     try {
       const token = await shiprocket.login();
 
-      // Calculate total weight
-      const totalWeight = cart_items.reduce((sum: number, item: any) => {
-        const product = products.find((p: any) => p.id === item.id);
-        return sum + ((product?.weight || 0.5) * item.quantity);
+      // Calculate total weight — weight must exist on every product
+      const totalWeight = cart_items.reduce((sum: number, item: { id: string; quantity: number }) => {
+        const product = products.find((p: { id: string; weight: number | null }) => p.id === item.id);
+        if (!product?.weight) {
+          throw new Error(`Product ${item.id} is missing weight data. Cannot calculate shipping.`);
+        }
+        return sum + (product.weight * item.quantity);
       }, 0);
 
       // Call Shiprocket serviceability API to verify rate
@@ -139,32 +142,57 @@ export async function POST(req: Request) {
       // Find the selected courier and use its verified rate
       const matchedCourier = couriers.find((c: any) => c.courier_company_id === selected_courier.id);
 
-      if (matchedCourier) {
-        verifiedShippingCost = matchedCourier.rate;
-        logOrder("shipping_verified", {
-          courierId: selected_courier.id,
-          courierName: selected_courier.name,
-          originalRate: selected_courier.rate,
-          verifiedRate: verifiedShippingCost,
-          email: guest_email,
-        });
-      } else {
-        // Courier not available - use original rate but log warning
+      if (!matchedCourier) {
         logSecurityEvent("courier_not_found", {
           courierId: selected_courier.id,
           courierName: selected_courier.name,
           availableCouriers: couriers.map((c: any) => c.courier_company_id),
           email: guest_email,
+          ip,
         });
+        return NextResponse.json(
+          { error: "Selected courier is no longer available for your pincode. Please refresh and choose another." },
+          { status: 400 }
+        );
       }
+
+      verifiedShippingCost = matchedCourier.rate;
+
+      // Reject if client-submitted rate diverges from verified rate (₹1 tolerance for rounding)
+      const RATE_TOLERANCE = 1.0;
+      if (Math.abs(verifiedShippingCost - selected_courier.rate) > RATE_TOLERANCE) {
+        logSecurityEvent("shipping_rate_mismatch", {
+          courierId: selected_courier.id,
+          courierName: selected_courier.name,
+          clientRate: selected_courier.rate,
+          verifiedRate: verifiedShippingCost,
+          email: guest_email,
+          ip,
+        });
+        return NextResponse.json(
+          { error: "Shipping rate has changed. Please refresh and try again.", updated_rate: verifiedShippingCost },
+          { status: 409 }
+        );
+      }
+
+      logOrder("shipping_verified", {
+        courierId: selected_courier.id,
+        courierName: selected_courier.name,
+        clientRate: selected_courier.rate,
+        verifiedRate: verifiedShippingCost,
+        email: guest_email,
+      });
     } catch (shippingError) {
-      // If Shiprocket verification fails, use the frontend rate but log the error
       logError(new Error("Shiprocket verification failed"), {
         endpoint: "/api/checkout",
         email: guest_email,
         selectedCourier: selected_courier,
         error: (shippingError as Error).message,
       });
+      return NextResponse.json(
+        { error: "Unable to verify shipping rates. Please try again." },
+        { status: 502 }
+      );
     }
 
     // Add shipping to total

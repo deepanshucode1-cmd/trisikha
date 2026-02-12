@@ -92,6 +92,35 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Order not found" }, { status: 200 });
       }
 
+      // Generate review tokens for each order item
+      const { data: orderItems } = await supabase
+        .from("order_items")
+        .select("id, product_id, product_name")
+        .eq("order_id", order_data.id);
+
+      if (orderItems && orderItems.length > 0) {
+        const reviewTokens = orderItems.map((item) => ({
+          order_id: order_data.id,
+          order_item_id: item.id,
+          product_id: item.product_id,
+          token: crypto.randomBytes(32).toString("hex"),
+          guest_email: order_data.guest_email,
+          product_name: item.product_name,
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        }));
+
+        const { error: tokenError } = await supabase
+          .from("review_tokens")
+          .insert(reviewTokens);
+
+        if (tokenError) {
+          logError(new Error("Failed to create review tokens"), {
+            orderId: order_data.id,
+            error: tokenError.message,
+          });
+        }
+      }
+
       await sendOrderDelivered(order_data.guest_email, order_data.id);
       logOrder("order_delivered", { orderId: order_data.id, awb });
 

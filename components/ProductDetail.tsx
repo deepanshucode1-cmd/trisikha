@@ -5,7 +5,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Footer from './Footer';
 import Header from './Header';
+import StarRating from './StarRating';
+import ProductReviews from './ProductReviews';
 import { useCartStore } from '@/utils/store/cartStore';
+
+interface ReviewData {
+  id: string;
+  rating: number;
+  review_text: string | null;
+  helpful_count: number;
+  created_at: string;
+}
 
 type Product = {
   id: string;
@@ -21,6 +31,11 @@ type Product = {
   manufacturerName?: string;
   manufacturerAddress?: string;
   netQuantity?: string;
+  avgRating?: number | null;
+  reviewCount?: number;
+  initialReviews?: ReviewData[];
+  initialReviewTotal?: number;
+  ratingDistribution?: number[];
 };
 
 export default function ProductDetail(product: Product) {
@@ -66,6 +81,13 @@ export default function ProductDetail(product: Product) {
         {/* Product Details */}
         <div className="md:w-1/2 flex flex-col gap-4">
           <h1 className="text-2xl font-bold">{product.name}</h1>
+
+          {/* Rating summary - clickable to scroll to reviews */}
+          {product.reviewCount && product.reviewCount > 0 && (
+            <a href="#reviews" className="flex items-center gap-2 hover:opacity-80 transition-opacity w-fit">
+              <StarRating rating={product.avgRating || 0} size="sm" showCount count={product.reviewCount} />
+            </a>
+          )}
 
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold text-green-700">Rs {product.price.toFixed(2)}</span>
@@ -187,6 +209,18 @@ export default function ProductDetail(product: Product) {
           </div>
 
         </div>
+      </section>
+
+      {/* Reviews Section */}
+      <section className="px-6 pb-8 max-w-6xl mx-auto">
+        <ProductReviews
+          productId={product.id}
+          initialReviews={product.initialReviews || []}
+          initialTotal={product.initialReviewTotal || 0}
+          avgRating={product.avgRating || null}
+          reviewCount={product.reviewCount || 0}
+          ratingDistribution={product.ratingDistribution || [0, 0, 0, 0, 0]}
+        />
       </section>
 
       {/* Footer */}

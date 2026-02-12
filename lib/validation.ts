@@ -84,3 +84,26 @@ export const assignAwbSchema = z.object({
 export const trackOrderSchema = z.object({
   order_id: z.uuid("Invalid order ID"),
 });
+
+// Review token verification
+export const reviewTokenSchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/, "Invalid review token"),
+});
+
+// Review submission
+export const reviewSubmitSchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/, "Invalid review token"),
+  rating: z.number().int("Rating must be an integer").min(1, "Rating must be at least 1").max(5, "Rating must be at most 5"),
+  review_text: z.string()
+    .min(10, "Review must be at least 10 characters")
+    .max(1000, "Review must be at most 1000 characters")
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .transform(val => val === "" ? undefined : val),
+});
+
+// Admin review removal
+export const reviewRemovalSchema = z.object({
+  reason: z.string().max(500, "Reason too long").trim().optional(),
+});
