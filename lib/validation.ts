@@ -65,6 +65,29 @@ export const productSchema = z.object({
   length: z.number().positive("Length must be positive").max(500, "Length too large (max 500cm)"),
   breadth: z.number().positive("Breadth must be positive").max(500, "Breadth too large (max 500cm)"),
   height: z.number().positive("Height must be positive").max(500, "Height too large (max 500cm)"),
+  // Legal metrology fields (optional)
+  country_of_origin: z.string().max(100, "Country name too long").trim().optional(),
+  manufacturer_name: z.string().max(200, "Manufacturer name too long").trim().optional(),
+  manufacturer_address: z.string().max(500, "Manufacturer address too long").trim().optional(),
+  net_quantity: z.string().max(100, "Net quantity too long").trim().optional(),
+});
+
+// Product specifications (FCO / technical data)
+export const productSpecificationsSchema = z.object({
+  npk_nitrogen_percent: z.number().min(0).max(100, "Max 100%").optional().nullable(),
+  npk_phosphorus_percent: z.number().min(0).max(100, "Max 100%").optional().nullable(),
+  npk_potassium_percent: z.number().min(0).max(100, "Max 100%").optional().nullable(),
+  organic_matter_percent: z.number().min(0).max(100, "Max 100%").optional().nullable(),
+  moisture_content_percent: z.number().min(0).max(100, "Max 100%").optional().nullable(),
+  ph_value: z.number().min(0).max(14, "pH must be 0-14").optional().nullable(),
+  cn_ratio: z.number().min(0).max(999, "C:N ratio too large").optional().nullable(),
+  test_certificate_number: z.string().max(100, "Certificate number too long").trim().optional().nullable(),
+  test_certificate_date: z.string().optional().nullable(),
+  testing_laboratory: z.string().max(200, "Lab name too long").trim().optional().nullable(),
+  manufacturing_license: z.string().max(100, "License number too long").trim().optional().nullable(),
+  shelf_life_months: z.number().int().min(1).max(120, "Max 120 months").optional().nullable(),
+  batch_lot_number: z.string().max(100, "Batch number too long").trim().optional().nullable(),
+  best_before_date: z.string().optional().nullable(),
 });
 
 // Payment verification validation

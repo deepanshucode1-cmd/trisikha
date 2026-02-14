@@ -145,12 +145,12 @@ export async function sendReviewRequest(
 
   return sendEmail({
     to: email,
-    subject: "TrishikhaOrganics: How was your order? Share your experience!",
+    subject: "TrishikhaOrganics: How was your order? Please share your experience!",
     html: `
       <h2 style="color: #3d3c30;">How was your order?</h2>
       <p>Your order <strong>#${escapeHtml(orderId)}</strong> was delivered recently. We hope you're enjoying your purchase!</p>
       <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
-        <h3 style="margin-top: 0; color: #166534;">Share Your Experience</h3>
+        <h3 style="margin-top: 0; color: #166534;">Please share Your Experience</h3>
         <p>Your feedback helps other customers and helps us improve. Leave a quick review for the products you received:</p>
         <ul style="list-style: none; padding: 0;">
           ${reviewButtons}

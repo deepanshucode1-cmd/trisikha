@@ -17,6 +17,23 @@ interface ReviewData {
   created_at: string;
 }
 
+interface ProductSpecifications {
+  npkNitrogen?: number | null;
+  npkPhosphorus?: number | null;
+  npkPotassium?: number | null;
+  organicMatter?: number | null;
+  moistureContent?: number | null;
+  phValue?: number | null;
+  cnRatio?: number | null;
+  testCertificateNumber?: string | null;
+  testCertificateDate?: string | null;
+  testingLaboratory?: string | null;
+  manufacturingLicense?: string | null;
+  shelfLifeMonths?: number | null;
+  batchLotNumber?: string | null;
+  bestBeforeDate?: string | null;
+}
+
 type Product = {
   id: string;
   name: string;
@@ -36,7 +53,89 @@ type Product = {
   initialReviews?: ReviewData[];
   initialReviewTotal?: number;
   ratingDistribution?: number[];
+  specifications?: ProductSpecifications;
 };
+
+function SpecRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex">
+      <span className="text-gray-600 w-40 flex-shrink-0">{label}:</span>
+      <span className="text-gray-800 font-medium">{value}</span>
+    </div>
+  );
+}
+
+function SpecificationsSection({ specs }: { specs: ProductSpecifications }) {
+  const hasNPK = specs.npkNitrogen != null || specs.npkPhosphorus != null || specs.npkPotassium != null;
+  const hasComposition = specs.organicMatter != null || specs.moistureContent != null || specs.phValue != null || specs.cnRatio != null;
+  const hasCertification = specs.testCertificateNumber || specs.testingLaboratory || specs.manufacturingLicense;
+  const hasShelfInfo = specs.shelfLifeMonths != null || specs.batchLotNumber || specs.bestBeforeDate;
+
+  if (!hasNPK && !hasComposition && !hasCertification && !hasShelfInfo) return null;
+
+  return (
+    <div className="mt-6 border-t border-gray-200 pt-6">
+      <h3 className="text-lg font-semibold text-gray-800 mb-3">Technical Specifications</h3>
+      <div className="bg-gray-50 rounded-lg p-4 space-y-4 text-sm">
+
+        {/* NPK Content */}
+        {hasNPK && (
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">NPK Content</p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              {[
+                { label: 'Nitrogen (N)', value: specs.npkNitrogen },
+                { label: 'Phosphorus (P)', value: specs.npkPhosphorus },
+                { label: 'Potassium (K)', value: specs.npkPotassium },
+              ].map((item) => (
+                <div key={item.label} className="bg-white rounded-md p-2 border border-gray-200">
+                  <p className="text-gray-500 text-xs">{item.label}</p>
+                  <p className="text-green-700 font-semibold text-lg">
+                    {item.value != null ? `${item.value}%` : '—'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Composition */}
+        {hasComposition && (
+          <div className="space-y-2">
+            {specs.organicMatter != null && <SpecRow label="Organic Matter" value={`${specs.organicMatter}%`} />}
+            {specs.moistureContent != null && <SpecRow label="Moisture Content" value={`${specs.moistureContent}%`} />}
+            {specs.phValue != null && <SpecRow label="pH Value" value={String(specs.phValue)} />}
+            {specs.cnRatio != null && <SpecRow label="C:N Ratio" value={`${specs.cnRatio}:1`} />}
+          </div>
+        )}
+
+        {/* Certification */}
+        {hasCertification && (
+          <div className="space-y-2 border-t border-gray-200 pt-3">
+            <p className="text-xs font-medium text-gray-500 mb-1">Certification</p>
+            {specs.testCertificateNumber && (
+              <SpecRow
+                label="Certificate No."
+                value={`${specs.testCertificateNumber}${specs.testCertificateDate ? ` (${specs.testCertificateDate})` : ''}`}
+              />
+            )}
+            {specs.testingLaboratory && <SpecRow label="Testing Lab" value={specs.testingLaboratory} />}
+            {specs.manufacturingLicense && <SpecRow label="Mfg. License" value={specs.manufacturingLicense} />}
+          </div>
+        )}
+
+        {/* Shelf Life & Batch */}
+        {hasShelfInfo && (
+          <div className="space-y-2 border-t border-gray-200 pt-3">
+            {specs.shelfLifeMonths != null && <SpecRow label="Shelf Life" value={`${specs.shelfLifeMonths} months`} />}
+            {specs.batchLotNumber && <SpecRow label="Batch/Lot No." value={specs.batchLotNumber} />}
+            {specs.bestBeforeDate && <SpecRow label="Best Before" value={specs.bestBeforeDate} />}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function ProductDetail(product: Product) {
   const router = useRouter();
@@ -207,6 +306,11 @@ export default function ProductDetail(product: Product) {
               )}
             </div>
           </div>
+
+          {/* Technical Specifications */}
+          {product.specifications && (
+            <SpecificationsSection specs={product.specifications} />
+          )}
 
         </div>
       </section>

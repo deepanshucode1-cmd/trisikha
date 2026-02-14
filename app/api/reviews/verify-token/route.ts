@@ -58,10 +58,6 @@ export async function GET(req: Request) {
       .eq("id", tokenData.order_id)
       .single();
 
-    console.log(order);
-    console.log(order?.order_status);
-    console.log(order?.return_status);
-
     if (!order || order.order_status !== "DELIVERED" || (order.return_status !== null && order.return_status !== "NOT_REQUESTED")) {
       return NextResponse.json({ valid: false, reason: "order_cancelled" });
     }

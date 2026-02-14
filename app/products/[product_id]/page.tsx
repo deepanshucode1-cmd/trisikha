@@ -48,16 +48,19 @@ export default async function Page({ params }: PageProps) {
 
   const supabase = await createClient();
 
-  // Fetch product
-  const { data: product, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('id', product_id)
-    .single();
+  // Fetch product and specifications in parallel
+  const [productRes, specsRes] = await Promise.all([
+    supabase.from('products').select('*').eq('id', product_id).single(),
+    supabase.from('product_specifications').select('*').eq('product_id', product_id).maybeSingle(),
+  ]);
+
+  const { data: product, error } = productRes;
 
   if (error || !product) {
     notFound();
   }
+
+  const specs = specsRes.data;
 
   // SSR: Fetch first page of reviews
   const { data: reviews, count: reviewTotal } = await supabase
@@ -158,6 +161,22 @@ export default async function Page({ params }: PageProps) {
         initialReviews={reviews || []}
         initialReviewTotal={reviewTotal || 0}
         ratingDistribution={ratingDistribution}
+        specifications={specs ? {
+          npkNitrogen: specs.npk_nitrogen_percent,
+          npkPhosphorus: specs.npk_phosphorus_percent,
+          npkPotassium: specs.npk_potassium_percent,
+          organicMatter: specs.organic_matter_percent,
+          moistureContent: specs.moisture_content_percent,
+          phValue: specs.ph_value,
+          cnRatio: specs.cn_ratio,
+          testCertificateNumber: specs.test_certificate_number,
+          testCertificateDate: specs.test_certificate_date,
+          testingLaboratory: specs.testing_laboratory,
+          manufacturingLicense: specs.manufacturing_license,
+          shelfLifeMonths: specs.shelf_life_months,
+          batchLotNumber: specs.batch_lot_number,
+          bestBeforeDate: specs.best_before_date,
+        } : undefined}
       />
     </>
   );

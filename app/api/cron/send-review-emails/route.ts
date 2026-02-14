@@ -66,11 +66,12 @@ export async function POST(req: Request) {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // Find orders eligible for review emails
+    // Use .or() to also include rows where return_status is NULL (legacy data)
     const { data: eligibleOrders, error: queryError } = await supabase
       .from("orders")
       .select("id, guest_email")
       .eq("order_status", "DELIVERED")
-      .eq("return_status", "NOT_REQUESTED")
+      .or("return_status.eq.NOT_REQUESTED,return_status.is.null")
       .is("review_email_sent_at", null)
       .lte("delivered_at", sevenDaysAgo)
       .limit(50);
