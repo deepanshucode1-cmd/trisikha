@@ -1,6 +1,6 @@
 import ProductDetail from '@/components/ProductDetail'
 import React from 'react'
-import  PageProps, { NextPage }  from 'next/types'
+import PageProps, { NextPage } from 'next/types'
 
 interface PageProps {
   params: Promise<{
@@ -8,25 +8,25 @@ interface PageProps {
   }>;
 }
 
-const  page : NextPage<PageProps> = async ({ params }) => {
+const page: NextPage<PageProps> = async ({ params }) => {
 
-    const resolvedParams = await params;
-    const { product_id } = resolvedParams;
-    if(!product_id){
-        return React.createElement('div', null, 'Product ID not found')
-    }
+  const resolvedParams = await params;
+  const { product_id } = resolvedParams;
+  if (!product_id) {
+    return React.createElement('div', null, 'Product ID not found')
+  }
 
-    if(product_id === "trishikha-gold-1kg" ){
-        return (
-            <ProductDetail name="Trishikha Gold - 1kg" price="₹ 135" image="/product_detail.jpg"/>
-        )
-    }
+  if (product_id === "trishikha-gold-1kg") {
+    return (
+      <ProductDetail name="Trishikha Gold - 1kg" price="₹ 135" image="/product1.jpeg" />
+    )
+  }
 
-    if(product_id === "trishikha-gold-5kg" ){
-        return (
-            <ProductDetail name="Trishikha Gold - 5kg" price="₹ 375" image="/product_detail.jpg"/>
-        )
-    }
+  if (product_id === "trishikha-gold-5kg") {
+    return (
+      <ProductDetail name="Trishikha Gold - 5kg" price="₹ 510" image="/product22.png" />
+    )
+  }
 
 
   return (

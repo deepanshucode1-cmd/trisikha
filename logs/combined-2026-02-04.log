@@ -1,0 +1,5 @@
+{"action":"admin_view_incidents","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-04 11:44:27","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"action":"admin_view_whitelist","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-04 11:45:01","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"action":"admin_view_blocked_ips","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-04 11:45:02","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"action":"admin_view_incidents","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-04 13:25:26","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"adminId":"b1410a95-ac00-48f3-9457-d88e05af38d3","breachEndDate":"2026-02-04","breachStartDate":"2026-02-03","event":"admin_identified_affected_users","incidentId":"298b563c-ade2-43cc-bc66-8d561284df43","level":"warn","message":"SECURITY_EVENT","result":{"alreadyTracked":0,"message":"No affected users found in the specified date range","success":true,"usersAdded":0,"usersIdentified":0},"service":"trisikha-api","timestamp":"2026-02-04 13:27:28","vendorType":"razorpay"}

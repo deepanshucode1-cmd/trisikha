@@ -1,0 +1,11 @@
+{"action":"admin_view_incidents","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-05 14:46:29","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"event":"incident_updated","incidentId":"298b563c-ade2-43cc-bc66-8d561284df43","is_personal_data_breach":true,"level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-05 14:54:32"}
+{"action":"admin_update_incident","dpbClassification":true,"incidentId":"298b563c-ade2-43cc-bc66-8d561284df43","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-05 14:54:32","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"action":"admin_view_incidents","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-05 14:54:33","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"email":"yogadropins@gmail.com","event":"data_otp_sent","expiresAt":"2026-02-05T14:00:47.984Z","ip":"::1","level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-05 19:20:53"}
+{"email":"yogadropins@gmail.com","event":"data_otp_verified","ip":"::1","level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-05 19:21:08"}
+{"email":"yogadropins@gmail.com","event":"guest_data_accessed","hasPendingDeletion":false,"ip":"::1","level":"warn","message":"SECURITY_EVENT","ordersCount":95,"service":"trisikha-api","timestamp":"2026-02-05 19:21:09"}
+{"action":"admin_view_incidents","level":"info","message":"AUTH","service":"trisikha-api","timestamp":"2026-02-05 20:34:06","userId":"b1410a95-ac00-48f3-9457-d88e05af38d3"}
+{"email":"yogadropins@gmail.com","event":"data_otp_sent","expiresAt":"2026-02-05T15:17:00.657Z","ip":"::1","level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-05 20:37:05"}
+{"email":"yogadropins@gmail.com","event":"data_otp_verified","ip":"::1","level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-05 20:37:18"}
+{"email":"yogadropins@gmail.com","event":"guest_data_accessed","hasPendingDeletion":false,"ip":"::1","level":"warn","message":"SECURITY_EVENT","ordersCount":95,"service":"trisikha-api","timestamp":"2026-02-05 20:37:20"}

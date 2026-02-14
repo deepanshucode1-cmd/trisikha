@@ -1,0 +1,4 @@
+{"email":"yogadropins@gmail.com","event":"data_otp_sent","expiresAt":"2026-02-01T16:53:38.768Z","ip":"::1","level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-01 22:13:44"}
+{"email":"yogadropins@gmail.com","event":"data_otp_verified","ip":"::1","level":"warn","message":"SECURITY_EVENT","service":"trisikha-api","timestamp":"2026-02-01 22:14:10"}
+{"context":"get_pending_deletion_request_failed","email":"yogadropins@gmail.com","level":"error","message":"ERROR Could not find the table 'public.deletion_requests' in the schema cache","service":"trisikha-api","timestamp":"2026-02-01 22:14:11"}
+{"email":"yogadropins@gmail.com","event":"guest_data_accessed","hasPendingDeletion":false,"ip":"::1","level":"warn","message":"SECURITY_EVENT","ordersCount":95,"service":"trisikha-api","timestamp":"2026-02-01 22:14:11"}

@@ -11,7 +11,7 @@ const products = [
   {
     id: 2,
     name: "Trishikha Gold - 5kg",
-    price: "₹ 375.00",
+    price: "₹ 510.00",
     image: "/product22.png",
   },
 ];

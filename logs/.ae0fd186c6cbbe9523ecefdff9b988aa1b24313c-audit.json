@@ -1,0 +1,60 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/home/nishant/Desktop/trisikha/trisikha/logs/.ae0fd186c6cbbe9523ecefdff9b988aa1b24313c-audit.json",
+    "files": [
+        {
+            "date": 1769964206874,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-01.log",
+            "hash": "5fffeb604c60cc2027b53b589ae2c954491db7bcf3ef460b3b1b952923ec1e7c"
+        },
+        {
+            "date": 1770185314621,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-04.log",
+            "hash": "40665fa3c0a2cb9d745f889365c2d9d41020d5a4dd1fc9090887ceb2c7588187"
+        },
+        {
+            "date": 1770282980805,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-05.log",
+            "hash": "8db8e253480852d096d14c14c2adea70dfb2fb74bf12da2b6ee26e75ffac5c3a"
+        },
+        {
+            "date": 1770364752823,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-06.log",
+            "hash": "d20ea1011c4a2d36398ab47195487de3be58f67b7b3d78a93e7c0ea14aa96ed5"
+        },
+        {
+            "date": 1770545565381,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-08.log",
+            "hash": "ec8029c63cdb9676f586bb182b8678616cdb4d746ad91ca82657b4d5e4bd2849"
+        },
+        {
+            "date": 1770638937174,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-09.log",
+            "hash": "576879d4f0abf4590813569c1bb975ea3aa7589e95e93b4ade3c5912e6a6c23f"
+        },
+        {
+            "date": 1770727372282,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-10.log",
+            "hash": "6f2bb18103b919b739b8e0b6374742414933254a1c40de64b3bba41dae093468"
+        },
+        {
+            "date": 1770790948481,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-11.log",
+            "hash": "e63e50a2e2887c43aba67e9cde35c8243175453662be002a0684db880a244be4"
+        },
+        {
+            "date": 1770891174521,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-12.log",
+            "hash": "b91f355de897fee04b4b5cfa422f6cecc2d0495716a133e20d731d02b7602654"
+        },
+        {
+            "date": 1771053755773,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/combined-2026-02-14.log",
+            "hash": "d18e1621a561343a5c983f788462960b42e14653286df7003382a69902ef53bb"
+        }
+    ],
+    "hashType": "sha256"
+}

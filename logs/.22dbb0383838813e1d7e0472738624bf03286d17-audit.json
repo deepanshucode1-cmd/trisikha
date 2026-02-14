@@ -1,0 +1,60 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/home/nishant/Desktop/trisikha/trisikha/logs/.22dbb0383838813e1d7e0472738624bf03286d17-audit.json",
+    "files": [
+        {
+            "date": 1769964206869,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-01.log",
+            "hash": "3931471b1aa8da0e43687dda6efeca9190f605177f0152ad6764070f309834b4"
+        },
+        {
+            "date": 1770185314619,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-04.log",
+            "hash": "c9e03fc7bd07244ba5331f7bf37cb9725513a71a9956506c7585cf5465edab8f"
+        },
+        {
+            "date": 1770282980803,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-05.log",
+            "hash": "30dbe74e183873bccfe903825d64123f0f26a2293051e854a9a2f1ce3cd59f62"
+        },
+        {
+            "date": 1770364752820,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-06.log",
+            "hash": "85587fd53cd6baecbbdcf8ddb1cce58e29db56d55387f39d2b6e6efc748a2601"
+        },
+        {
+            "date": 1770545565379,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-08.log",
+            "hash": "469d573fc277203ece3084023b4cb82dd8ddaf754a12f5eb67271d506a278227"
+        },
+        {
+            "date": 1770638937171,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-09.log",
+            "hash": "c9f2938cf814ce45f8903bc9e4b57b32f1d22b312bab07f5331494eb3415e43f"
+        },
+        {
+            "date": 1770727372280,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-10.log",
+            "hash": "dc06a68877340c28b895ccb756c3ca4c194ed48ac9e4a949bf187ad801d17a5b"
+        },
+        {
+            "date": 1770790948478,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-11.log",
+            "hash": "f05cbfbf6aae0208a4c5d6e60c8d1cbe5b87c1ddee1465949b6157a9958ae525"
+        },
+        {
+            "date": 1770891174518,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-12.log",
+            "hash": "f48963db891ad04b1c2859af8465ad73d89c9660596f291484e76b9d71f7268a"
+        },
+        {
+            "date": 1771053755770,
+            "name": "/home/nishant/Desktop/trisikha/trisikha/logs/error-2026-02-14.log",
+            "hash": "4651138e865bc0891e46628b580e1a87d35d56ca6f55dcee010e7b07c3f61965"
+        }
+    ],
+    "hashType": "sha256"
+}
