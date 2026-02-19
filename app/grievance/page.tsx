@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast, ToastContainer } from "react-toastify";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import "react-toastify/dist/ReactToastify.css";
 
 type GrievanceData = {
@@ -198,16 +200,12 @@ export default function GrievancePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <>
+      <Header />
+      <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <Link
-            href="/"
-            className="text-green-700 hover:text-green-800 text-sm mb-4 inline-block"
-          >
-            &larr; Back to Home
-          </Link>
           <h1 className="text-3xl font-bold text-gray-900">
             Grievance Redressal
           </h1>
@@ -572,5 +570,7 @@ export default function GrievancePage() {
         )}
       </div>
     </div>
+    <Footer />
+    </>
   );
 }

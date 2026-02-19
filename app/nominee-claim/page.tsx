@@ -3,6 +3,8 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { toast, ToastContainer } from "react-toastify";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import "react-toastify/dist/ReactToastify.css";
 
 type Step = "email" | "otp" | "claim";
@@ -159,15 +161,13 @@ export default function NomineeClaimPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <>
+      <Header />
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
       <ToastContainer position="top-center" autoClose={5000} />
 
       <div className="max-w-xl mx-auto">
-        <div className="mb-6">
-          <Link href="/" className="text-sm text-[#3d3c30] hover:underline">
-            &larr; Back to Home
-          </Link>
-        </div>
+
 
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
           Nominee Claim
@@ -494,5 +494,7 @@ export default function NomineeClaimPage() {
         )}
       </div>
     </div>
+    <Footer />
+    </>
   );
 }

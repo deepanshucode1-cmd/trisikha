@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast, ToastContainer } from "react-toastify";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import "react-toastify/dist/ReactToastify.css";
 
 type NomineeData = {
@@ -228,7 +230,9 @@ export default function NomineePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <>
+      <Header />
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
       <ToastContainer position="top-center" autoClose={5000} />
 
       <div className="max-w-xl mx-auto">
@@ -542,5 +546,7 @@ export default function NomineePage() {
         )}
       </div>
     </div>
+    <Footer />
+    </>
   );
 }

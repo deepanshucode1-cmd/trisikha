@@ -182,9 +182,13 @@ export default function ProductDetail(product: Product) {
           <h1 className="text-2xl font-bold">{product.name}</h1>
 
           {/* Rating summary - clickable to scroll to reviews */}
-          {product.reviewCount && product.reviewCount > 0 && (
+          {product.reviewCount > 0 ? (
             <a href="#reviews" className="flex items-center gap-2 hover:opacity-80 transition-opacity w-fit">
               <StarRating rating={product.avgRating || 0} size="sm" showCount count={product.reviewCount} />
+            </a>
+          ) : (
+            <a href="#reviews" className="text-sm text-gray-400 hover:text-gray-600 transition-colors w-fit">
+              No ratings yet — be the first to review!
             </a>
           )}
 

@@ -148,7 +148,7 @@ export default function Offerings() {
                   <h3 className="text-xl font-bold text-gray-800 mb-1 group-hover:text-[#3d3c30] transition-colors">
                     {product.name}
                   </h3>
-                  {product.review_count && product.review_count > 0 && (
+                  {product.review_count > 0 ? (
                     <div className="mb-2">
                       <StarRating
                         rating={product.avg_rating || 0}
@@ -157,6 +157,8 @@ export default function Offerings() {
                         count={product.review_count}
                       />
                     </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 mb-2">No reviews yet</p>
                   )}
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-bold text-[#3d3c30]">

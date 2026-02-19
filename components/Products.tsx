@@ -128,7 +128,7 @@ const SellProducts = () => {
                   <h3 className="text-xl font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-green-700 transition-colors">
                     {product.name}
                   </h3>
-                  {product.review_count && product.review_count > 0 && (
+                  {product.review_count > 0 ? (
                     <div className="mb-2">
                       <StarRating
                         rating={product.avg_rating || 0}
@@ -137,6 +137,8 @@ const SellProducts = () => {
                         count={product.review_count}
                       />
                     </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 mb-2">No reviews yet</p>
                   )}
                   <p className="text-sm text-gray-500 mb-4 line-clamp-3">
                     Premium organic {product.name.toLowerCase()}. Sustainably sourced and packed with natural goodness for vibrant health.
