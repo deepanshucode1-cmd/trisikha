@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     // 2. Double-check payment status with Razorpay API
     const payment = await razorpay.payments.fetch(razorpay_payment_id);
 
-    if (payment.status !== "captured" && payment.status !== "authorized") {
+    if (payment.status !== "captured") {
       logPayment("verification_failed_at_gateway", {
         orderId: order_id,
         razorpayPaymentId: razorpay_payment_id,

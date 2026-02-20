@@ -183,11 +183,23 @@ export const reviewHelpfulRateLimit = hasRedisCredentials
       inMemoryLimiter.limit(identifier, 30, 60 * 1000),
   };
 
+// Validates an IP string is a well-formed IPv4 or IPv6 address.
+// Rejects any value containing newlines, spaces, or other characters
+// that could enable log injection if the IP is written to a log.
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+const IPV6_RE = /^[0-9a-fA-F:]{2,39}$/;
+
+function sanitizeIp(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const candidate = raw.split(",")[0].trim();
+  return IPV4_RE.test(candidate) || IPV6_RE.test(candidate) ? candidate : "";
+}
+
 // Helper function to get client IP from request
 export function getClientIp(request: Request): string {
   return (
-    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-    request.headers.get("x-real-ip") ||
+    sanitizeIp(request.headers.get("x-forwarded-for")) ||
+    sanitizeIp(request.headers.get("x-real-ip")) ||
     "unknown"
   );
 }

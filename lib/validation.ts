@@ -92,9 +92,9 @@ export const productSpecificationsSchema = z.object({
 
 // Payment verification validation
 export const paymentVerifySchema = z.object({
-  razorpay_order_id: z.string().min(1, "Razorpay order ID required").max(100).trim(),
-  razorpay_payment_id: z.string().min(1, "Razorpay payment ID required").max(100).trim(),
-  razorpay_signature: z.string().min(1, "Razorpay signature required").max(512).trim(),
+  razorpay_order_id: z.string().max(100, "Order ID too long").regex(/^order_[a-zA-Z0-9]+$/, "Invalid Razorpay order ID format"),
+  razorpay_payment_id: z.string().max(100, "Payment ID too long").regex(/^pay_[a-zA-Z0-9]+$/, "Invalid Razorpay payment ID format"),
+  razorpay_signature: z.string().regex(/^[a-f0-9]{64}$/, "Invalid Razorpay signature format"),
   order_id: z.uuid("Invalid order ID"),
 });
 
