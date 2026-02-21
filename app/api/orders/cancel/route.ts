@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import Razorpay from "razorpay";
 import { createServiceClient } from "@/utils/supabase/service";
 import shiprocket, { createReturnOrder, getReturnShippingRate } from "@/utils/shiprocket";
@@ -63,7 +64,12 @@ export async function POST(req: Request) {
       .eq("id", orderId)
       .single();
 
-    if (error || !order) {
+    if (error) {
+      logSecurityEvent("cancel_order_fetch_error", { orderId, ip, error: error.message });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    if (!order) {
       logSecurityEvent("cancel_invalid_order", { orderId, ip });
       return NextResponse.json({ error: "Invalid order" }, { status: 400 });
     }
@@ -143,9 +149,12 @@ export async function POST(req: Request) {
         );
       }
 
-      // Verify OTP
+      // Verify OTP (timing-safe to prevent timing attacks)
+      const otpMatch = order.otp_code
+        ? crypto.timingSafeEqual(Buffer.from(order.otp_code), Buffer.from(otp))
+        : false;
       if (
-        order.otp_code !== otp ||
+        !otpMatch ||
         new Date(order.otp_expires_at) < new Date()
       ) {
         const newAttempts = (order.otp_attempts || 0) + 1;

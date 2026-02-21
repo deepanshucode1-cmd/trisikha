@@ -18,20 +18,32 @@ export function escapeHtml(unsafe: string | null | undefined): string {
 }
 
 /**
- * Sanitize URL to prevent javascript: and other dangerous protocols
- * Only allows http and https URLs
+ * Returns the set of allowed URL domains from the ALLOWED_URL_DOMAINS env var.
+ * Called on every invocation so the env var can be changed between tests.
+ */
+function getAllowedDomains(): Set<string> {
+  const raw = process.env.ALLOWED_URL_DOMAINS || "";
+  return new Set(raw.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * Sanitize URL to prevent javascript: and other dangerous protocols.
+ * Only allows http and https URLs whose hostname matches ALLOWED_URL_DOMAINS.
+ * Fails closed (returns "") when no domains are configured.
  */
 export function sanitizeUrl(url: string | null | undefined): string {
   if (!url) return "";
   try {
     const parsed = new URL(url);
-    // Only allow http and https protocols
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return "";
-    }
-    return url;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    const allowed = getAllowedDomains();
+    if (allowed.size === 0) return ""; // fail closed — no domains configured
+    const host = parsed.hostname.toLowerCase();
+    const ok = [...allowed].some((d) =>
+      d.startsWith("*.") ? host === d.slice(2) || host.endsWith("." + d.slice(2)) : host === d
+    );
+    return ok ? url : "";
   } catch {
-    // If URL parsing fails, it's not a valid URL
     return "";
   }
 }
