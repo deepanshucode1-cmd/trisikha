@@ -283,6 +283,7 @@ export async function POST(req: Request) {
       }
 
       // Calculate refund amount (deduct forward shipping + return shipping from Shiprocket)
+      //use 0 as fallback for now
       const forwardShippingCost = freshOrder.shipping_cost || 0;
 
       // Determine package dimensions
@@ -290,34 +291,39 @@ export async function POST(req: Request) {
 
       // Env fallbacks — only reached for pre-constraint historical rows where
       // order_items dimensions are null (new orders always have values enforced by DB)
-      const defaultWeight  = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT  || "1");
-      const defaultLength  = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH  || "20");
+      const defaultWeight = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT || "1");
+      const defaultLength = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH || "20");
       const defaultBreadth = parseFloat(process.env.DEFAULT_PACKAGE_BREADTH || "15");
-      const defaultHeight  = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT  || "10");
+      const defaultHeight = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT || "10");
 
-      if (freshOrder.package_weight && freshOrder.package_length) {
-        // Priority 1: dimensions stored at fulfillment time (most accurate for this shipment)
-        packageWeight  = freshOrder.package_weight;
-        packageLength  = freshOrder.package_length;
-        packageBreadth = freshOrder.package_breadth || defaultBreadth;
-        packageHeight  = freshOrder.package_height  || defaultHeight;
-      } else {
-        // Priority 2: compute from order_items snapshot — works for both single and multi-item
-        // weight:          sum of (unit weight × quantity) across all items
-        // length/breadth/height: max of each axis (box must fit the largest item per dimension)
-        packageWeight  = orderItems.reduce((sum, item) => sum + (item.weight || 0) * item.quantity, 0) || defaultWeight;
-        packageLength  = Math.max(...orderItems.map((item) => item.length  || 0)) || defaultLength;
-        packageBreadth = Math.max(...orderItems.map((item) => item.breadth || 0)) || defaultBreadth;
-        packageHeight  = Math.max(...orderItems.map((item) => item.height  || 0)) || defaultHeight;
-      }
+      // Compute from order_items snapshot — works for both single and multi-item
+      // weight:          sum of (unit weight × quantity) across all items
+      // length/breadth/height: max of each axis (box must fit the largest item per dimension)
+      //db constraints ensure that weight, length, breadth, height are always positive
+      packageWeight = orderItems.reduce((sum, item) => sum + (item.weight || 0) * item.quantity, 0) || defaultWeight;
+      packageLength = Math.max(...orderItems.map((item) => item.length || 0)) || defaultLength;
+      packageBreadth = Math.max(...orderItems.map((item) => item.breadth || 0)) || defaultBreadth;
+      packageHeight = Math.max(...orderItems.map((item) => item.height || 0)) || defaultHeight;
 
-      // Get return shipping cost from Shiprocket API
+      // Get return shipping cost from Shiprocket API (no fallback — must succeed)
       const warehousePincode = process.env.WAREHOUSE_PINCODE || "382721";
-      const returnShippingCost = await getReturnShippingRate({
-        pickupPincode: freshOrder.shipping_pincode || "",
-        deliveryPincode: warehousePincode,
-        weight: packageWeight,
-      });
+      let returnShippingCost: number;
+      try {
+        returnShippingCost = await getReturnShippingRate({
+          pickupPincode: freshOrder.shipping_pincode || "",
+          deliveryPincode: warehousePincode,
+          weight: packageWeight,
+          length: packageLength,
+          breadth: packageBreadth,
+          height: packageHeight,
+        });
+      } catch (rateError) {
+        logError(rateError as Error, { context: "return_rate_fetch_failed", orderId });
+        return NextResponse.json(
+          { error: "We could not fetch the return shipping rate. Please try again in a few minutes, or file a grievance if the issue persists." },
+          { status: 503 }
+        );
+      }
 
       const totalDeduction = forwardShippingCost + returnShippingCost;
       const refundAmount = Math.max(0, freshOrder.total_amount - totalDeduction);
@@ -386,6 +392,12 @@ export async function POST(req: Request) {
           height: packageHeight,
           weight: packageWeight,
         });
+
+        if (!returnResult.order_id || !returnResult.awb_code) {
+          throw new Error(
+            `Shiprocket return order creation failed: ${returnResult.message || "missing order_id or awb_code in response"}`
+          );
+        }
 
         logOrder("return_order_created", {
           orderId,

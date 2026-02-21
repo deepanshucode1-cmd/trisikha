@@ -1,6 +1,7 @@
 // lib/shiprocket.ts
 
 import { logError, logOrder } from "@/lib/logger";
+import retry from "@/utils/retry";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 let cachedToken: string | null = null;
@@ -22,23 +23,25 @@ async function login(): Promise<string> {
     throw new Error("Shiprocket credentials not configured");
   }
 
-  const res = await fetch("https://apiv2.shiprocket.in/v1/external/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  return retry(async () => {
+    const res = await fetch("https://apiv2.shiprocket.in/v1/external/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (!res.ok) {
-    logError(new Error("Shiprocket authentication failed"), { response: data });
-    throw new Error(data.message || "Unable to authenticate with shipping partner");
-  }
+    if (!res.ok) {
+      logError(new Error("Shiprocket authentication failed"), { response: data });
+      throw new Error(data.message || "Unable to authenticate with shipping partner");
+    }
 
-  cachedToken = data.token as string;
-  tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    cachedToken = data.token as string;
+    tokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
-  return cachedToken!;
+    return cachedToken!;
+  }, 3, 1000);
 }
 
 interface FetchOptions {
@@ -291,9 +294,9 @@ interface ReturnShippingRateParams {
   pickupPincode: string;      // Customer's pincode (where return pickup happens)
   deliveryPincode: string;    // Warehouse pincode (where return is delivered)
   weight: number;             // Weight in kg
-  length?: number;            // Length in cm
-  breadth?: number;           // Breadth in cm
-  height?: number;            // Height in cm
+  length: number;             // Length in cm
+  breadth: number;            // Breadth in cm
+  height: number;             // Height in cm
   codAmount?: number;         // COD amount (0 for prepaid returns)
 }
 
@@ -319,66 +322,56 @@ export async function getReturnShippingRate(params: ReturnShippingRateParams): P
     pickupPincode,
     deliveryPincode,
     weight,
-    length = 20,
-    breadth = 15,
-    height = 10,
+    length,
+    breadth,
+    height,
     codAmount = 0,
   } = params;
 
   try {
-    const queryParams = new URLSearchParams({
-      pickup_postcode: pickupPincode,
-      delivery_postcode: deliveryPincode,
-      weight: weight.toString(),
-      length: length.toString(),
-      breadth: breadth.toString(),
-      height: height.toString(),
-      cod: codAmount > 0 ? "1" : "0",
-      declared_value: codAmount.toString(),
-    });
-
-    const response = await authedFetch(
-      `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?${queryParams.toString()}`,
-      { method: "GET" }
-    ) as ServiceabilityResponse;
-
-    if (response.data?.available_courier_companies && response.data.available_courier_companies.length > 0) {
-      // Get the cheapest courier rate
-      const rates = response.data.available_courier_companies;
-      const cheapestRate = rates.reduce((min, courier) =>
-        courier.rate < min.rate ? courier : min
-        , rates[0]);
-
-      logOrder("return_shipping_rate_fetched", {
-        pickupPincode,
-        deliveryPincode,
-        weight,
-        cheapestCourier: cheapestRate.courier_name,
-        rate: cheapestRate.rate,
+    return await retry(async () => {
+      const queryParams = new URLSearchParams({
+        pickup_postcode: pickupPincode,
+        delivery_postcode: deliveryPincode,
+        weight: weight.toString(),
+        length: length.toString(),
+        breadth: breadth.toString(),
+        height: height.toString(),
+        cod: codAmount > 0 ? "1" : "0",
+        declared_value: codAmount.toString(),
       });
 
-      return cheapestRate.rate;
-    }
+      const response = await authedFetch(
+        `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?${queryParams.toString()}`,
+        { method: "GET" }
+      ) as ServiceabilityResponse;
 
-    // Fallback: If no couriers available, estimate based on weight
-    logError(new Error("No couriers available for return shipping"), {
-      pickupPincode,
-      deliveryPincode,
-      response,
-    });
+      if (response.data?.available_courier_companies && response.data.available_courier_companies.length > 0) {
+        const rates = response.data.available_courier_companies;
+        const cheapestRate = rates.reduce((min, courier) =>
+          courier.rate < min.rate ? courier : min
+          , rates[0]);
 
-    // Fallback rate: ₹50 base + ₹30 per 0.5kg
-    return 50 + Math.ceil(weight / 0.5) * 30;
+        logOrder("return_shipping_rate_fetched", {
+          pickupPincode,
+          deliveryPincode,
+          weight,
+          cheapestCourier: cheapestRate.courier_name,
+          rate: cheapestRate.rate,
+        });
 
+        return cheapestRate.rate;
+      }
+
+      throw new Error("No couriers are currently available for return shipping to this location. Please try again or file a grievance.");
+    }, 3, 1000);
   } catch (error) {
     logError(error as Error, {
       context: "get_return_shipping_rate_failed",
       pickupPincode,
       deliveryPincode,
     });
-
-    // Fallback rate on error
-    return 50 + Math.ceil(weight / 0.5) * 30;
+    throw error;
   }
 }
 

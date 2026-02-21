@@ -104,9 +104,12 @@ export async function POST(req: Request) {
           deliveryPincode: warehousePincode,
           weight: 0.5,
         });
-      } catch (e) {
-        // Fallback if API fails
-        returnShippingCost = 80;
+      } catch (rateError) {
+        logError(rateError as Error, { context: "return_rate_estimate_failed", orderId });
+        return NextResponse.json(
+          { error: "We could not fetch the return shipping rate. Please try again in a few minutes, or file a grievance if the issue persists." },
+          { status: 503 }
+        );
       }
 
       estimatedRefund = Math.max(0, order.total_amount - forwardShippingCost - returnShippingCost);
