@@ -97,14 +97,21 @@ export async function POST(req: Request) {
     if (isReturnEligible) {
       // 48-hour return window only applies to DELIVERED orders
       if (order.order_status === "DELIVERED") {
-        const windowStart = new Date(order.delivered_at || order.updated_at);
-        const hoursSinceDelivery = (Date.now() - windowStart.getTime()) / (1000 * 60 * 60);
+        if (!order.delivered_at) {
+          // delivered_at not recorded — updated_at is unreliable (changes on OTP sends,
+          // status transitions, etc.), so we cannot calculate the window accurately.
+          // Fail open: allow the return rather than penalise the customer for a data gap.
+          logOrder("return_window_unknown", { orderId, reason: "delivered_at missing" });
+        } else {
+          const hoursSinceDelivery =
+            (Date.now() - new Date(order.delivered_at).getTime()) / (1000 * 60 * 60);
 
-        if (hoursSinceDelivery > RETURN_WINDOW_HOURS) {
-          logOrder("return_window_expired", { orderId, hoursSinceDelivery });
-          return NextResponse.json({
-            error: "Return window expired. Returns must be requested within 48 hours of delivery."
-          }, { status: 400 });
+          if (hoursSinceDelivery > RETURN_WINDOW_HOURS) {
+            logOrder("return_window_expired", { orderId, hoursSinceDelivery });
+            return NextResponse.json({
+              error: "Return window expired. Returns must be requested within 48 hours of delivery."
+            }, { status: 400 });
+          }
         }
       }
       // PICKED_UP orders: no time limit for returns
@@ -118,8 +125,12 @@ export async function POST(req: Request) {
       }
     }
 
-    if (order.order_status === "SHIPPED") {
-      return NextResponse.json({ error: "Shipped orders cannot be cancelled" });
+    // Only CONFIRMED orders can be cancelled; PICKED_UP and DELIVERED are handled
+    // above as returns. Everything else (SHIPPED, RETURN_REQUESTED,
+    // RETURN_PICKUP_SCHEDULED, CANCELLATION_REQUESTED, etc.) is rejected here.
+    if (!isReturnEligible && order.order_status !== "CONFIRMED") {
+      const error = "Order cannot be cancelled or returned at this stage, please file a grievance if there is an error from our side";
+      return NextResponse.json({ error }, { status: 400 });
     }
 
     if (order.refund_status === "REFUND_INITIATED") {
@@ -180,7 +191,7 @@ export async function POST(req: Request) {
 
           return NextResponse.json(
             {
-              error: "Too many failed attempts. Account locked for 1 hour.",
+              error: "Too many failed attempts. Please try again after 1 hour.",
               lockedUntil: lockUntil.toISOString(),
             },
             { status: 429 }
@@ -241,8 +252,14 @@ export async function POST(req: Request) {
       .eq("id", orderId)
       .single();
 
-    if (freshError || !freshOrder) {
-      return NextResponse.json({ error: "Invalid order" }, { status: 500 });
+    if (freshError) {
+      logError(new Error(freshError.message), { context: "order_refetch_failed", orderId });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    if (!freshOrder) {
+      logSecurityEvent("cancel_invalid_order", { orderId, ip });
+      return NextResponse.json({ error: "Invalid order" }, { status: 400 });
     }
 
     // ✅ 3b. RETURN PROCESSING (for post-pickup orders)
@@ -255,44 +272,43 @@ export async function POST(req: Request) {
         .select("*")
         .eq("order_id", orderId);
 
-      if (itemsError || !orderItems || orderItems.length === 0) {
-        logError(new Error("Failed to fetch order items for return"), { orderId });
-        return NextResponse.json({ error: "Unable to process return" }, { status: 500 });
+      if (itemsError) {
+        logError(new Error(itemsError.message), { context: "order_items_fetch_failed", orderId });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+      }
+
+      if (!orderItems || orderItems.length === 0) {
+        logError(new Error("No order items found for return"), { context: "order_items_empty", orderId });
+        return NextResponse.json({ error: "Unable to process return, please file a grievance if you find an error from our side" }, { status: 500 });
       }
 
       // Calculate refund amount (deduct forward shipping + return shipping from Shiprocket)
       const forwardShippingCost = freshOrder.shipping_cost || 0;
 
-      // Determine package dimensions based on order data
+      // Determine package dimensions
       let packageWeight: number, packageLength: number, packageBreadth: number, packageHeight: number;
-      const isSingleItem = orderItems.length === 1;
 
-      // Default dimensions from env (fallback values)
-      const defaultWeight = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT || "1");
-      const defaultLength = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH || "20");
+      // Env fallbacks — only reached for pre-constraint historical rows where
+      // order_items dimensions are null (new orders always have values enforced by DB)
+      const defaultWeight  = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT  || "1");
+      const defaultLength  = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH  || "20");
       const defaultBreadth = parseFloat(process.env.DEFAULT_PACKAGE_BREADTH || "15");
-      const defaultHeight = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT || "10");
+      const defaultHeight  = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT  || "10");
 
       if (freshOrder.package_weight && freshOrder.package_length) {
-        // Use stored dimensions from fulfillment
-        packageWeight = freshOrder.package_weight;
-        packageLength = freshOrder.package_length;
+        // Priority 1: dimensions stored at fulfillment time (most accurate for this shipment)
+        packageWeight  = freshOrder.package_weight;
+        packageLength  = freshOrder.package_length;
         packageBreadth = freshOrder.package_breadth || defaultBreadth;
-        packageHeight = freshOrder.package_height || defaultHeight;
-      } else if (isSingleItem) {
-        // Single item order: use item dimensions
-        const item = orderItems[0];
-        const itemWeight = (item.weight || 0) * item.quantity;
-        packageWeight = itemWeight > 0 ? itemWeight : defaultWeight;
-        packageLength = item.length || defaultLength;
-        packageBreadth = item.breadth || defaultBreadth;
-        packageHeight = item.height || defaultHeight;
+        packageHeight  = freshOrder.package_height  || defaultHeight;
       } else {
-        // Multi-item without stored dimensions: use defaults
-        packageWeight = defaultWeight;
-        packageLength = defaultLength;
-        packageBreadth = defaultBreadth;
-        packageHeight = defaultHeight;
+        // Priority 2: compute from order_items snapshot — works for both single and multi-item
+        // weight:          sum of (unit weight × quantity) across all items
+        // length/breadth/height: max of each axis (box must fit the largest item per dimension)
+        packageWeight  = orderItems.reduce((sum, item) => sum + (item.weight || 0) * item.quantity, 0) || defaultWeight;
+        packageLength  = Math.max(...orderItems.map((item) => item.length  || 0)) || defaultLength;
+        packageBreadth = Math.max(...orderItems.map((item) => item.breadth || 0)) || defaultBreadth;
+        packageHeight  = Math.max(...orderItems.map((item) => item.height  || 0)) || defaultHeight;
       }
 
       // Get return shipping cost from Shiprocket API
