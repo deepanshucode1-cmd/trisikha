@@ -461,7 +461,7 @@ export async function POST(req: Request) {
         }).eq("id", orderId);
 
         return NextResponse.json({
-          error: "Unable to schedule return pickup. Our team will contact you.",
+          error: "Unable to schedule return pickup. Please try again in a few minutes, if issue persist please contact us or file a grievance.",
           isReturn: true,
         }, { status: 500 });
       }
@@ -523,15 +523,6 @@ export async function POST(req: Request) {
       }).eq("id", orderId);
 
       logOrder("shiprocket_cancel_success", { orderId, shiprocketOrderId: freshOrder.shiprocket_order_id });
-    }
-
-    if (
-      freshOrder.shiprocket_order_id &&
-      freshOrder.shiprocket_status === "SHIPPING_CANCELLATION_FAILED"
-    ) {
-      return NextResponse.json({
-        error: "Unable to cancel shipment. Please retry or contact support."
-      }, { status: 409 });
     }
 
     // ✅ 5. REFUND INITIATION (atomic lock)
