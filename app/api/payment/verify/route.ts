@@ -129,6 +129,7 @@ export async function POST(req: Request) {
         order_status: "CONFIRMED",
         shiprocket_status: "NOT_SHIPPED",
         payment_id: razorpay_payment_id,
+        paid_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq("id", order_id)

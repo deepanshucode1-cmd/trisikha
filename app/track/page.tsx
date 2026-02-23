@@ -3,7 +3,7 @@
 import { useState, useMemo, Suspense } from "react";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
-import { Search, Package, CheckCircle, Clock, MapPin, Truck, UserCheck, ArrowUpRight, FileText } from "lucide-react";
+import { Search, Package, CheckCircle, Clock, MapPin, Truck, UserCheck, ArrowUpRight, FileText, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { sanitizeUrl } from "@/lib/xss";
 
@@ -85,7 +85,6 @@ function TrackOrderContent() {
       const response = await fetch(`/api/track?order_id=${encodeURIComponent(input.trim())}&email=${encodeURIComponent(email.trim())}`);
       const data = await response.json();
 
-      console.log(data);
       if (!response.ok) {
         setError(data.error || "Something went wrong");
         setTrackingData(null);
@@ -128,55 +127,63 @@ function TrackOrderContent() {
 
     if(result === null) return activities;
     if(result.stage === "PAYMENT_NOT_CONFIRMED"){
+      const orderDate = result.created_at ? new Date(result.created_at) : new Date();
       activities.push({
         srStatusLabel: "PAYMENT NOT CONFIRMED",
-        status: "Payment Not Confirmed",
+        status: "Order Placed",
         detail: "Awaiting payment confirmation to proceed with order processing.",
         location: null,
-        originalDate: new Date(), // Current time as placeholder
-        time: new Date(result.order.updated_at).toLocaleString('en-IN', { 
-          year: 'numeric', month: 'short', day: 'numeric', 
-          hour: '2-digit', minute: '2-digit' 
+        originalDate: orderDate,
+        time: orderDate.toLocaleString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
         }),
         isDone: false,
       });
     }
     if(result.stage === "PAYMENT_CONFIRMED_AWB_NOT_ASSIGNED"){
+      const orderDate = result.created_at ? new Date(result.created_at) : new Date();
+      const paidDate = result.paid_at ? new Date(result.paid_at) : orderDate;
       activities.push({
-        srStatusLabel: "PAYMENT CONFIRMED",
-        status: "Payment Confirmed",
-        detail: "Your order has been confirmed and is waiting for courier assignment by seller.",
+        srStatusLabel: "ORDER PLACED",
+        status: "Order Placed",
+        detail: "Your order has been placed.",
         location: null,
-        originalDate: new Date(), // Current time as placeholder
-        time: new Date(result.order.updated_at).toLocaleString('en-IN', { 
-          year: 'numeric', month: 'short', day: 'numeric', 
-          hour: '2-digit', minute: '2-digit' 
+        originalDate: orderDate,
+        time: orderDate.toLocaleString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
         }),
         isDone: true,
       });
+      activities.push({
+        srStatusLabel: "PAYMENT CONFIRMED",
+        status: "Payment Confirmed",
+        detail: "Payment verified. Waiting for courier assignment by seller.",
+        location: null,
+        originalDate: paidDate,
+        time: paidDate.toLocaleString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }),
+        isDone: true,
+      });
+    }
 
-      console.log('result.order.updated_at:', new Date(result.order.updated_at).toLocaleString('en-IN', { 
-          year: 'numeric', month: 'short', day: 'numeric', 
-          hour: '2-digit', minute: '2-digit' 
-        }));
-    }  
-
-    if (result?.shiprocket?.tracking_data?.shipment_track_activities?.length > 0) {
-      if (result?.shiprocket?.tracking_data?.shipment_track_activities?.length > 0) {
-  const mappedActivities = result.shiprocket.tracking_data.shipment_track_activities.map((item: any) => ({
-    srStatusLabel: item["sr-status-label"],
-    status: item["sr-status-label"] || item.activity,
-    detail: item.activity !== item["sr-status-label"] ? item.activity : null,
-    location: item.location,
-    originalDate: new Date(item.date),
-    time: new Date(item.date).toLocaleString('en-IN', { 
-      year: 'numeric', month: 'short', day: 'numeric', 
-      hour: '2-digit', minute: '2-digit' 
-    }),
-    isDone: true,
-  }));
-  activities.push(...mappedActivities);  // Spread to flatten
-}
+    if (result?.tracking?.shipment_track_activities?.length > 0) {
+      const mappedActivities = result.tracking.shipment_track_activities.map((item: any) => ({
+        srStatusLabel: item["sr-status-label"],
+        status: item["sr-status-label"] || item.activity,
+        detail: item.activity !== item["sr-status-label"] ? item.activity : null,
+        location: item.location,
+        originalDate: new Date(item.date),
+        time: new Date(item.date).toLocaleString('en-IN', {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        }),
+        isDone: true,
+      }));
+      activities.push(...mappedActivities);
     }
 
     // Filter NA, sort chronological (oldest first) using originalDate, unique by srStatusLabel if needed
@@ -222,10 +229,10 @@ function TrackOrderContent() {
   const isDelivered = currentStageIndex === -1;
   const currentStatus = isDelivered ? "Delivered" : steps[currentStageIndex]?.title || "In Progress";
 
-  // Helper: Get tracking number safely
-  const trackingNumber = trackingData?.order.shiprocket_awb_code || result?.shiprocket?.tracking_data?.awb_code;
+  // Helper: Get tracking number safely from Shiprocket tracking data
+  const trackingNumber = result?.tracking?.awb_code;
   const hasTrackingNumber = !!trackingNumber;
-  const trackUrl = trackingData?.shiprocket_tracking_url || result?.shiprocket?.tracking_data?.track_url;
+  const trackUrl = result?.tracking?.track_url;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2c2b20] via-[#3d3c30] to-[#464433] text-[#e0dbb5]">
@@ -370,9 +377,15 @@ function TrackOrderContent() {
               <div className="mb-6 p-4 bg-[#3d3c30]/50 rounded-2xl border border-[#6a684d]/30">
                 <p className="text-lg mb-2 flex items-center gap-2">
                   <MapPin className="w-5 h-5 text-[#d1cd9f]" />
-                  <strong className="text-[#d1cd9f]">Tracking Number:</strong> 
+                  <strong className="text-[#d1cd9f]">Tracking Number:</strong>
                   {trackingNumber}
                 </p>
+                {result?.courier_name && (
+                  <p className="text-sm text-[#6a684d] mb-2 flex items-center gap-2">
+                    <Truck className="w-4 h-4" />
+                    Courier: {result.courier_name}
+                  </p>
+                )}
                 {sanitizeUrl(trackUrl) && (
                   <a
                     href={sanitizeUrl(trackUrl)}
@@ -432,8 +445,93 @@ function TrackOrderContent() {
               </div>
             )}
 
+            {/* Return Tracking Section */}
+            {result?.returnInfo && (
+              <div className="mt-8 space-y-4">
+                {/* Return Status Banner */}
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
+                  <div className="flex items-center gap-3 mb-2">
+                    <RotateCcw className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-lg font-bold text-amber-400">Return Status</h3>
+                    <span className="ml-auto text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 font-medium">
+                      {result.returnInfo.return_status?.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <p className="text-sm text-[#e0dbb5]/80">{result.returnInfo.return_message}</p>
+                </div>
+
+                {/* Return AWB + Courier */}
+                {result.returnInfo.return_pickup_awb && (
+                  <div className="p-4 bg-[#3d3c30]/50 rounded-2xl border border-amber-500/20">
+                    <p className="text-lg mb-2 flex items-center gap-2">
+                      <MapPin className="w-5 h-5 text-amber-400" />
+                      <strong className="text-amber-400">Return Tracking Number:</strong>
+                      {result.returnInfo.return_pickup_awb}
+                    </p>
+                    {result.returnInfo.return_courier_name && (
+                      <p className="text-sm text-[#6a684d] mb-2 flex items-center gap-2">
+                        <Truck className="w-4 h-4" />
+                        Courier: {result.returnInfo.return_courier_name}
+                      </p>
+                    )}
+                    {result.returnTracking?.track_url && sanitizeUrl(result.returnTracking.track_url) && (
+                      <a
+                        href={sanitizeUrl(result.returnTracking.track_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 underline underline-offset-2 transition-colors"
+                      >
+                        <span>Track Return on Shiprocket</span>
+                        <ArrowUpRight className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Return Shipment Timeline */}
+                {result.returnTracking?.shipment_track_activities?.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-2xl font-bold mb-4 text-amber-400 flex items-center gap-2">
+                      <RotateCcw className="w-6 h-6" />
+                      Return Timeline
+                      <span className="text-sm opacity-70 ml-2">({result.returnTracking.shipment_track_activities.length} updates)</span>
+                    </h3>
+                    <div className="relative border-l-4 border-amber-500/30 pl-4 space-y-6">
+                      {result.returnTracking.shipment_track_activities
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                        .map((item: any, i: number) => (
+                          <div key={i} className="flex items-start space-x-4 p-4 bg-[#3d3c30]/30 rounded-xl border-l-4 border-amber-400/50">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center mt-1 flex-shrink-0 shadow-md bg-amber-400">
+                              <RotateCcw className="w-4 h-4 text-[#2c2b20]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-[#e0dbb5] truncate">{item["sr-status-label"] || item.activity}</p>
+                              {item.activity && item.activity !== item["sr-status-label"] && (
+                                <p className="text-sm opacity-80 text-[#6a684d] mt-1 line-clamp-2">{item.activity}</p>
+                              )}
+                              {item.location && (
+                                <p className="text-sm opacity-80 text-[#6a684d] flex items-center gap-1 mt-1">
+                                  <MapPin className="w-4 h-4" />
+                                  {item.location}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">
+                                {new Date(item.date).toLocaleString('en-IN', {
+                                  year: 'numeric', month: 'short', day: 'numeric',
+                                  hour: '2-digit', minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* No Timeline Fallback */}
-            {timelineActivities.length === 0 && (
+            {timelineActivities.length === 0 && !result?.returnInfo && (
               <div className="text-center py-8 text-[#6a684d] italic">
                 No detailed timeline available yet. Check back soon for updates!
               </div>

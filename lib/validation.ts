@@ -31,7 +31,7 @@ export const selectedCourierSchema = z.object({
 
 // Checkout validation (matches frontend payload)
 export const checkoutSchema = z.object({
-  guest_email: z.string().email("Invalid email address").max(255, "Email too long").trim(),
+  guest_email: z.email("Invalid email address").max(255, "Email too long").trim(),
   guest_phone: z.string().regex(/^[6-9]\d{9}$/, "Phone number must be 10 digits starting with 6-9"),
   cart_items: z.array(cartItemSchema).min(1, "Cart must have at least one item").max(10, "Maximum 10 items allowed in cart"),
   total_amount: z.number().min(0, "Total amount cannot be negative").max(10000, "Total amount exceeds limit").optional(),
@@ -43,7 +43,7 @@ export const checkoutSchema = z.object({
 // OTP validation
 export const otpRequestSchema = z.object({
   orderId: z.uuid("Invalid order ID"),
-  emailOrPhone: z.string().email("Invalid email address").or(z.string().regex(/^[6-9]\d{9}$/, "Invalid phone number")),
+  email: z.email("Invalid email address").max(255, "Email too long").trim(),
 });
 
 // Cancel order validation
@@ -106,6 +106,7 @@ export const assignAwbSchema = z.object({
 // Tracking validation
 export const trackOrderSchema = z.object({
   order_id: z.uuid("Invalid order ID"),
+  email: z.email("Invalid email address").max(255, "Email too long").trim(),
 });
 
 // Review token verification

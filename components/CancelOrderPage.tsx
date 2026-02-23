@@ -14,13 +14,9 @@ interface ReturnResult {
   returnShippingCost?: number;
 }
 
-// Return info from OTP response (before confirmation)
+// Whether the OTP was for a return (not cancellation)
 interface ReturnInfo {
   isReturn: boolean;
-  originalAmount: number;
-  forwardShippingCost: number;
-  returnShippingCost: number;
-  estimatedRefund: number;
 }
 
 // Validation rules based on backend schema
@@ -138,7 +134,7 @@ export default function CancelOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId,
-          emailOrPhone: contact,
+          email: contact,
         }),
       });
 
@@ -148,13 +144,7 @@ export default function CancelOrderPage() {
 
       // Store return info if this is a return request
       if (data.isReturn) {
-        setReturnInfo({
-          isReturn: true,
-          originalAmount: data.originalAmount,
-          forwardShippingCost: data.forwardShippingCost,
-          returnShippingCost: data.returnShippingCost,
-          estimatedRefund: data.estimatedRefund,
-        });
+        setReturnInfo({ isReturn: true });
       } else {
         setReturnInfo(null);
       }
@@ -355,38 +345,22 @@ export default function CancelOrderPage() {
               {/* Return Info Banner */}
               {returnInfo?.isReturn && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-                  <div className="flex items-start gap-2 mb-3">
+                  <div className="flex items-start gap-2">
                     <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    <p className="text-sm font-medium text-amber-800">
-                      You are requesting a <strong>return</strong>, not a cancellation.
-                    </p>
-                  </div>
-
-                  <div className="bg-white rounded p-3 text-sm">
-                    <h4 className="font-semibold text-gray-800 mb-2">Refund Breakdown</h4>
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Order Total</span>
-                        <span className="text-gray-800">₹{returnInfo.originalAmount?.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-red-600">
-                        <span>Forward Shipping</span>
-                        <span>-₹{returnInfo.forwardShippingCost?.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-red-600">
-                        <span>Return Shipping</span>
-                        <span>-₹{returnInfo.returnShippingCost?.toFixed(2)}</span>
-                      </div>
-                      <div className="border-t pt-2 mt-2 flex justify-between font-semibold">
-                        <span className="text-gray-800">Estimated Refund</span>
-                        <span className="text-green-600">₹{returnInfo.estimatedRefund?.toFixed(2)}</span>
-                      </div>
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">
+                        You are requesting a <strong>return</strong>, not a cancellation.
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Shipping costs (forward and return) will be deducted from your refund. Please review our{" "}
+                        <a href="/return-policy" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                          return policy
+                        </a>{" "}
+                        for full details.
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Refund will be processed after we receive the returned items.
-                    </p>
                   </div>
                 </div>
               )}
@@ -522,7 +496,7 @@ export default function CancelOrderPage() {
                       </svg>
                       <div>
                         <p className="font-medium">Refund after pickup</p>
-                        <p className="mt-1">Your refund will be processed after we receive the returned items. This typically takes 5-7 business days after delivery to our warehouse.</p>
+                        <p className="mt-1">Your refund will be processed after we receive the returned items. This typically takes 5-7 business days after delivery to our warehouse, or may be more depending on your bank and payment method.</p>
                       </div>
                     </div>
                   </div>
@@ -539,7 +513,7 @@ export default function CancelOrderPage() {
                       <svg className="w-5 h-5 text-[#3d3c30]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Refund typically takes 5-7 business days
+                      Refund typically takes 5-7 business days or more depending on your bank
                     </div>
                   </div>
                 </>

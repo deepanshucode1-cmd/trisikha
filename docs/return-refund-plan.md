@@ -93,8 +93,8 @@ The tracking endpoint (`/api/track`) is extended to show return status when `ret
 | `RETURN_PICKUP_SCHEDULED` | "Return pickup scheduled. Keep the package ready." |
 | `RETURN_IN_TRANSIT` | "Your return is on its way to our warehouse." |
 | `RETURN_DELIVERED` | "Return received. Your refund is being processed." |
-| `RETURN_REFUND_INITIATED` | "Refund initiated. It will reflect in 5-7 business days." |
-| `RETURN_REFUND_COMPLETED` | "Refund of ₹X has been processed to your original payment method." |
+| `RETURN_REFUND_INITIATED` | "Refund initiated. It typically reflects within 5-7 business days or may be more depending on your bank and payment method." |
+| `RETURN_REFUND_COMPLETED` | "Your refund has been processed to your original payment method." |
 
 ## New DB Columns
 

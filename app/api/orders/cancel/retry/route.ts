@@ -392,7 +392,7 @@ export async function POST(req: Request) {
             from: process.env.EMAIL_USER,
             to: order.guest_email,
             subject: "TrishikhaOrganics: Order Cancelled - Refund Processed",
-            text: `Hi,\n\nYour order with Order ID: ${orderId} has been successfully cancelled and refunded.\n\nRefund Amount: ₹${refund_amount}\n\nThe amount should reflect in your account within 5-7 business days depending on your bank's processing time.\n\nWe apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.\n\nThank you,\nTrishikhaOrganics Team`,
+            text: `Hi,\n\nYour order with Order ID: ${orderId} has been successfully cancelled and refunded.\n\nRefund Amount: ₹${refund_amount}\n\nThe amount typically reflects within 5-7 business days or may be more depending on your bank and payment method.\n\nWe apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.\n\nThank you,\nTrishikhaOrganics Team`,
           });
 
           return NextResponse.json({ success: true, refundAmount: refund_amount });

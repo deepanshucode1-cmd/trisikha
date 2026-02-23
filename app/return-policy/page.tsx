@@ -139,7 +139,7 @@ export default function ReturnPolicy() {
                   <div className="w-8 h-8 bg-[#3d3c30] text-white rounded-full flex items-center justify-center flex-shrink-0">3</div>
                   <div>
                     <p className="font-semibold text-gray-800">Refund Processed</p>
-                    <p className="text-gray-600 text-sm">5-7 business days after product received</p>
+                    <p className="text-gray-600 text-sm">Typically 5-7 business days after product received, may vary by bank</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">

@@ -73,7 +73,7 @@ export default function TermsOfService() {
               <h2 className="text-2xl font-bold mb-4">6. Returns and Refunds</h2>
               <ul className="list-disc pl-6 space-y-3 text-gray-700">
                 <li><strong>Return Policy:</strong> Due to the nature of our organic products, we only accept returns for damaged or defective items. You must notify us within 48 hours of delivery with photographic evidence.</li>
-                <li><strong>Refunds:</strong> Approved refunds will be processed within 5-7 business days to your original payment method.</li>
+                <li><strong>Refunds:</strong> Approved refunds will typically be processed within 5-7 business days to your original payment method, or may take longer depending on your bank and payment method.</li>
                 <li><strong>Cancellations:</strong> Orders can be cancelled before shipment. Once shipped, the order cannot be cancelled and the return policy will apply.</li>
               </ul>
             </section>

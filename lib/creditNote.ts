@@ -360,7 +360,7 @@ export async function generateCreditNotePDF(
             );
             doc.moveDown(0.5);
             doc.text(
-                "The refund amount will be credited to your original payment method within 5-7 business days.",
+                "The refund amount will typically be credited to your original payment method within 5-7 business days or may be more depending on your bank and payment method.",
                 { align: "center" }
             );
             doc.moveDown(0.5);

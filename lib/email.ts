@@ -183,7 +183,7 @@ export async function sendRefundInitiated(email: string, orderId: string, amount
     html: `
       <h2>Refund Initiated</h2>
       <p>A refund of <strong>₹${amount.toFixed(2)}</strong> has been initiated for your order <strong>#${escapeHtml(orderId)}</strong>.</p>
-      <p>The amount will be credited to your original payment method within 5-7 business days.</p>
+      <p>The amount will typically be credited to your original payment method within 5-7 business days or may be more depending on your bank and payment method.</p>
       <br/>
       <p>Thank you for shopping with Trishikha Organics!</p>
     `,
@@ -211,7 +211,7 @@ export async function sendReturnRequestConfirmation(
       <h3>What to Expect</h3>
       <ul>
         <li>Return pickup: 2-3 business days</li>
-        <li>Refund processing: 5-7 business days after we receive the items</li>
+        <li>Refund processing: typically 5-7 business days after we receive the items, or may be more depending on your bank and payment method</li>
       </ul>
       <br/>
       <p>Please ensure the product is unused, unopened, and in its original packaging.</p>
@@ -267,7 +267,7 @@ export async function sendReturnRefundProcessed(
       <p>Amount Refunded: <strong>₹${refundAmount.toFixed(2)}</strong></p>
       ${refundId ? `<p>Refund ID: ${escapeHtml(refundId)}</p>` : ''}
       <br/>
-      <p>The amount will be credited to your original payment method within 5-7 business days, depending on your bank's processing time.</p>
+      <p>The amount will typically be credited to your original payment method within 5-7 business days or may be more depending on your bank and payment method.</p>
       <br/>
       <p>We apologize for any inconvenience caused. We hope to serve you better in the future!</p>
       <br/>
@@ -296,7 +296,7 @@ export async function sendCreditNote(
         <p>Your refund of <strong>₹${refundAmount.toFixed(2)}</strong> for order <strong>#${escapeHtml(orderId)}</strong> has been processed.</p>
         <p>Please find the attached Credit Note (<strong>${escapeHtml(creditNoteNumber)}</strong>) for your reference.</p>
         <br/>
-        <p>The amount should reflect in your account within 5-7 business days.</p>
+        <p>The amount typically reflects in your account within 5-7 business days or may be more depending on your bank and payment method.</p>
         <br/>
         <p>Thank you,</p>
         <p>Trishikha Organics Team</p>

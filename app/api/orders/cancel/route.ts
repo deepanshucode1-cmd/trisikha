@@ -425,6 +425,7 @@ export async function POST(req: Request) {
           return_order_id: returnResult.order_id?.toString() || null,
           return_shipment_id: returnResult.shipment_id?.toString() || null,
           return_pickup_awb: returnResult.awb_code || null,
+          return_courier_name: returnResult.courier_name || null,
           return_refund_amount: refundAmount,
           return_pickup_scheduled_at: new Date().toISOString(),
         }).eq("id", orderId);

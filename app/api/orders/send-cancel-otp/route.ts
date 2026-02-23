@@ -6,7 +6,6 @@ import { otpRequestSchema } from "@/lib/validation";
 import { otpRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logOrder, trackSecurityEvent, logSecurityEvent } from "@/lib/logger";
-import { getReturnShippingRate } from "@/utils/shiprocket";
 
 export async function POST(req: Request) {
   try {
@@ -37,20 +36,31 @@ export async function POST(req: Request) {
     // Parse and validate input
     const body = await req.json();
     const validatedData = otpRequestSchema.parse(body);
-    const { orderId, emailOrPhone } = validatedData;
+    const { orderId, email } = validatedData;
 
     // Get order from database with additional fields for return detection
     const supabase = createServiceClient();
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, guest_email, otp_locked_until, order_status, shipping_cost, shipping_pincode, total_amount")
+      .select("id, guest_email, otp_locked_until, order_status")
       .eq("id", orderId)
       .single();
 
     if (orderError || !order) {
       logSecurityEvent("otp_request_invalid_order", {
         orderId,
-        emailOrPhone,
+        email,
+        ip,
+      });
+      // Generic error — don't reveal whether order exists
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    // Verify email matches the order — return same generic error to prevent oracle
+    if (order.guest_email !== email) {
+      logSecurityEvent("otp_request_email_mismatch", {
+        orderId,
+        providedEmail: email,
         ip,
       });
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
@@ -65,55 +75,13 @@ export async function POST(req: Request) {
       });
 
       return NextResponse.json(
-        {
-          error: "Too many failed attempts. Please try again later.",
-          lockedUntil: order.otp_locked_until,
-        },
+        { error: "Too many failed attempts. Please try again later." },
         { status: 429 }
-      );
-    }
-
-    // Verify email/phone matches the order
-    if (order.guest_email !== emailOrPhone) {
-      logSecurityEvent("otp_request_email_mismatch", {
-        orderId,
-        providedEmail: emailOrPhone,
-        ip,
-      });
-      return NextResponse.json(
-        { error: "Email does not match order" },
-        { status: 403 }
       );
     }
 
     // Detect if this is a return request
     const isReturn = order.order_status === "PICKED_UP" || order.order_status === "DELIVERED";
-
-    // Calculate deductions for returns
-    let forwardShippingCost = 0;
-    let returnShippingCost = 0;
-    let estimatedRefund = 0;
-
-    if (isReturn) {
-      forwardShippingCost = order.shipping_cost || 0;
-      const warehousePincode = process.env.WAREHOUSE_PINCODE || "382721";
-
-      try {
-        returnShippingCost = await getReturnShippingRate({
-          pickupPincode: order.shipping_pincode || "",
-          deliveryPincode: warehousePincode,
-          weight: 0.5,
-        });
-      } catch (rateError) {
-        logError(rateError as Error, { context: "return_rate_estimate_failed", orderId });
-        return NextResponse.json(
-          { error: "We could not fetch the return shipping rate. Please try again in a few minutes, or file a grievance if the issue persists." },
-          { status: 503 }
-        );
-      }
-
-      estimatedRefund = Math.max(0, order.total_amount - forwardShippingCost - returnShippingCost);
-    }
 
     // Generate secure OTP
     const otp = crypto.randomInt(100000, 999999).toString();
@@ -147,10 +115,10 @@ export async function POST(req: Request) {
     });
 
     if (isReturn) {
-      // Return-specific email
+      // Return-specific email — no financial data, direct to return policy
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
-        to: emailOrPhone,
+        to: email,
         subject: "TrishikhaOrganics: Your OTP for Order Return",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -161,29 +129,19 @@ export async function POST(req: Request) {
               ${otp}
             </div>
             <p>This OTP is valid for <strong>10 minutes</strong>.</p>
-            
-            <div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #856404;">Refund Summary</h3>
-              <p style="margin: 5px 0;">Order Total: <strong>₹${order.total_amount?.toFixed(2)}</strong></p>
-              <p style="margin: 5px 0;">Forward Shipping: <strong>-₹${forwardShippingCost.toFixed(2)}</strong></p>
-              <p style="margin: 5px 0;">Return Shipping: <strong>-₹${returnShippingCost.toFixed(2)}</strong></p>
-              <hr style="border: none; border-top: 1px solid #ffc107; margin: 10px 0;">
-              <p style="margin: 5px 0; font-size: 18px;">Estimated Refund: <strong style="color: #28a745;">₹${estimatedRefund.toFixed(2)}</strong></p>
-            </div>
-            
-            <p style="color: #666;">Refund will be processed after we receive the returned items.</p>
+            <p style="color: #666;">Please review our <a href="${process.env.NEXT_PUBLIC_SITE_URL || "https://trishikhaorganic.com"}/return-policy">return policy</a> for details on refund calculations and shipping deductions.</p>
             <p>If you did not request this, please ignore this email.</p>
             <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
             <p style="color: #888; font-size: 12px;">Thank you,<br>TrishikhaOrganics Team</p>
           </div>
         `,
-        text: `Hi,\n\nYour OTP for returning order ${orderId} is: ${otp}. It is valid for 10 minutes.\n\nRefund Summary:\nOrder Total: ₹${order.total_amount}\nForward Shipping: -₹${forwardShippingCost}\nReturn Shipping: -₹${returnShippingCost}\nEstimated Refund: ₹${estimatedRefund}\n\nRefund will be processed after we receive the returned items.\n\nIf you did not request this, please ignore this email.\n\nThank you,\nTrishikhaOrganics Team`,
+        text: `Hi,\n\nYour OTP for returning order ${orderId} is: ${otp}. It is valid for 10 minutes.\n\nPlease review our return policy for details on refund calculations and shipping deductions.\n\nIf you did not request this, please ignore this email.\n\nThank you,\nTrishikhaOrganics Team`,
       });
     } else {
       // Cancellation email (original)
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
-        to: emailOrPhone,
+        to: email,
         subject: "TrishikhaOrganics: Your OTP for Order Cancellation",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -205,36 +163,16 @@ export async function POST(req: Request) {
 
     logOrder("otp_sent", {
       orderId,
-      email: emailOrPhone,
+      email: email,
       expiresAt: expiresAt.toISOString(),
       isReturn,
     });
 
-    // Return response with deduction info for returns
-    const response: {
-      success: boolean;
-      expiresAt: string;
-      isReturn?: boolean;
-      orderStatus?: string;
-      originalAmount?: number;
-      forwardShippingCost?: number;
-      returnShippingCost?: number;
-      estimatedRefund?: number;
-    } = {
+    return NextResponse.json({
       success: true,
       expiresAt: expiresAt.toISOString(),
-    };
-
-    if (isReturn) {
-      response.isReturn = true;
-      response.orderStatus = order.order_status;
-      response.originalAmount = order.total_amount;
-      response.forwardShippingCost = forwardShippingCost;
-      response.returnShippingCost = returnShippingCost;
-      response.estimatedRefund = estimatedRefund;
-    }
-
-    return NextResponse.json(response);
+      isReturn: isReturn || undefined,
+    });
   } catch (error) {
     return handleApiError(error, {
       endpoint: "/api/orders/send-cancel-otp",
