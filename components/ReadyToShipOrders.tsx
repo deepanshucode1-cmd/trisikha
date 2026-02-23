@@ -21,6 +21,17 @@ type Order = {
   shiprocket_manifest_generated?: boolean | null;
   shiprocket_manifest_url?: string | null;
   pickup_scheduled_at?: string | null;
+  // Return fields
+  return_status?: string | null;
+  return_reason?: string | null;
+  return_refund_amount?: number | null;
+  return_requested_at?: string | null;
+  return_pickup_awb?: string | null;
+  return_admin_note?: string | null;
+  return_deduction_amount?: number | null;
+  return_deduction_reason?: string | null;
+  guest_email?: string | null;
+  items?: { product_name: string; quantity: number; unit_price: number; sku?: string }[];
 };
 
 /**
@@ -93,14 +104,25 @@ export default function OrderManagement() {
   const { csrfFetch, getCsrfHeaders } = useCsrf();
 
   // --- Tab State ---
-  const [activeMainTab, setActiveMainTab] = useState<"shipping" | "cancellation_failed">("shipping");
+  const [activeMainTab, setActiveMainTab] = useState<"shipping" | "cancellation_failed" | "returns">("shipping");
   const [activeShippingStage, setActiveShippingStage] = useState<ShippingStage>("new");
 
   // --- Shared State ---
   const [orders, setOrders] = useState<Order[]>([]);
   const [cancellationFailedOrders, setCancellationFailedOrders] = useState<Order[]>([]);
+  const [returnOrders, setReturnOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // --- Process Return Refund Modal State ---
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
+  const [refundMaxAmount, setRefundMaxAmount] = useState(0);
+  const [productCondition, setProductCondition] = useState<"good_condition" | "damaged" | "used">("good_condition");
+  const [adminNote, setAdminNote] = useState("");
+  const [deductionAmount, setDeductionAmount] = useState(0);
+  const [refundPhotos, setRefundPhotos] = useState<File[]>([]);
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
 
   // --- Selection State ---
   const [selected, setSelected] = useState<string[]>([]);
@@ -168,9 +190,10 @@ export default function OrderManagement() {
       setError(null);
 
       try {
-        const [shippingRes, cancellationRes] = await Promise.all([
+        const [shippingRes, cancellationRes, returnsRes] = await Promise.all([
           fetch("/api/orders/get-new-orders"),
           fetch("/api/orders/get-cancellation-failed"),
+          fetch("/api/admin/orders/returns"),
         ]);
 
         if (!shippingRes.ok) throw new Error("Failed to fetch shipping orders");
@@ -184,6 +207,13 @@ export default function OrderManagement() {
           const cancellationJson = await cancellationRes.json();
           if (mounted) {
             setCancellationFailedOrders(cancellationJson.orders || []);
+          }
+        }
+
+        if (returnsRes.ok) {
+          const returnsJson = await returnsRes.json();
+          if (mounted) {
+            setReturnOrders(returnsJson.orders || []);
           }
         }
       } catch (err) {
@@ -392,6 +422,93 @@ export default function OrderManagement() {
       alert(message);
     } finally {
       setActionLoading((s) => ({ ...s, [orderId]: false }));
+    }
+  };
+
+  // --- Return Actions ---
+
+  const markReturnReceived = async (orderId: string) => {
+    if (!confirm("Mark this return as received at warehouse?")) return;
+
+    try {
+      setActionLoading((s) => ({ ...s, [orderId]: true }));
+
+      const res = await csrfFetch(`/api/admin/orders/${orderId}/mark-return-received`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to mark as received");
+
+      alert("Return marked as received.");
+      window.location.reload();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to mark return received";
+      alert(message);
+    } finally {
+      setActionLoading((s) => ({ ...s, [orderId]: false }));
+    }
+  };
+
+  const openRefundModal = (order: Order) => {
+    setRefundOrderId(order.id);
+    setRefundMaxAmount(order.return_refund_amount || 0);
+    setProductCondition("good_condition");
+    setAdminNote("");
+    setDeductionAmount(0);
+    setRefundPhotos([]);
+    setShowRefundModal(true);
+  };
+
+  const handleProcessRefund = async () => {
+    if (!refundOrderId) return;
+
+    const hasDeduction = productCondition !== "good_condition";
+    if (hasDeduction && adminNote.trim().length < 10) {
+      alert("Admin note is required (min 10 characters) when product is not in good condition.");
+      return;
+    }
+    if (hasDeduction && refundPhotos.length === 0) {
+      alert("At least 1 photo is required when applying a deduction.");
+      return;
+    }
+    if (deductionAmount > refundMaxAmount) {
+      alert(`Deduction cannot exceed ₹${refundMaxAmount}`);
+      return;
+    }
+
+    if (!confirm(`Process refund of ₹${(refundMaxAmount - deductionAmount).toFixed(2)}?`)) return;
+
+    setRefundSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("product_condition", productCondition);
+      if (hasDeduction) {
+        formData.append("admin_note", adminNote);
+        formData.append("deduction_amount", deductionAmount.toString());
+      }
+      for (const photo of refundPhotos) {
+        formData.append("photos", photo);
+      }
+
+      const res = await csrfFetch(`/api/admin/orders/${refundOrderId}/process-return-refund`, {
+        method: "POST",
+        headers: { ...getCsrfHeaders() },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to process refund");
+
+      alert(`Refund of ₹${data.refundAmount} processed successfully.`);
+      setShowRefundModal(false);
+      window.location.reload();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to process refund";
+      alert(message);
+    } finally {
+      setRefundSubmitting(false);
     }
   };
 
@@ -620,6 +737,16 @@ export default function OrderManagement() {
             Shipping ({orders.length})
           </button>
           <button
+            onClick={() => setActiveMainTab("returns")}
+            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeMainTab === "returns"
+                ? "border-orange-500 text-orange-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            Returns ({returnOrders.length})
+          </button>
+          <button
             onClick={() => setActiveMainTab("cancellation_failed")}
             className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeMainTab === "cancellation_failed"
@@ -733,6 +860,141 @@ export default function OrderManagement() {
             </>
           )}
 
+          {/* RETURNS TAB */}
+          {activeMainTab === "returns" && (
+            <>
+              {returnOrders.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-8 text-center py-12">
+                    <p className="text-gray-500 text-lg">No return orders to process.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {returnOrders.map((order) => {
+                    const formattedDate = order.return_requested_at
+                      ? new Date(order.return_requested_at).toLocaleDateString("en-IN", {
+                          year: "numeric", month: "short", day: "numeric",
+                        })
+                      : "N/A";
+                    const isLoading = actionLoading[order.id];
+                    const canMarkReceived = order.return_status === "RETURN_PICKUP_SCHEDULED" || order.return_status === "RETURN_IN_TRANSIT";
+                    const canProcessRefund = order.return_status === "RETURN_DELIVERED";
+                    const isReturnFailed = order.return_status === "RETURN_FAILED";
+
+                    const statusColors: Record<string, string> = {
+                      RETURN_REQUESTED: "bg-yellow-100 text-yellow-800",
+                      RETURN_PICKUP_SCHEDULED: "bg-blue-100 text-blue-800",
+                      RETURN_IN_TRANSIT: "bg-indigo-100 text-indigo-800",
+                      RETURN_DELIVERED: "bg-green-100 text-green-800",
+                      RETURN_REFUND_INITIATED: "bg-purple-100 text-purple-800",
+                      RETURN_FAILED: "bg-red-100 text-red-800",
+                    };
+
+                    const statusLabels: Record<string, string> = {
+                      RETURN_REQUESTED: "Return Requested",
+                      RETURN_PICKUP_SCHEDULED: "Pickup Scheduled",
+                      RETURN_IN_TRANSIT: "In Transit",
+                      RETURN_DELIVERED: "Delivered to Warehouse",
+                      RETURN_REFUND_INITIATED: "Refund Initiated",
+                      RETURN_FAILED: "Return Failed",
+                    };
+
+                    return (
+                      <div
+                        key={order.id}
+                        className="bg-white hover:shadow-lg transition-shadow border border-orange-200 rounded-lg overflow-hidden"
+                      >
+                        <div className="p-4 pb-3 flex justify-between items-start">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              statusColors[order.return_status || ""] || "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {statusLabels[order.return_status || ""] || order.return_status}
+                          </span>
+                        </div>
+                        <div className="p-4 pt-0 space-y-3">
+                          <div>
+                            <p className="text-2xl font-bold text-gray-900">
+                              ₹{order.total_amount?.toLocaleString("en-IN")}
+                            </p>
+                            {order.shipping_first_name && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                {order.shipping_first_name} {order.shipping_last_name || ""}
+                              </p>
+                            )}
+                          </div>
+                          <div className="space-y-1 text-xs text-gray-500">
+                            <p>Return requested: {formattedDate}</p>
+                            {order.return_refund_amount != null && (
+                              <p>Refund amount: <span className="font-medium text-gray-700">₹{order.return_refund_amount.toLocaleString("en-IN")}</span></p>
+                            )}
+                            {order.return_reason && (
+                              <p>Reason: {order.return_reason}</p>
+                            )}
+                            {order.return_pickup_awb && (
+                              <p className="font-mono">Return AWB: {order.return_pickup_awb}</p>
+                            )}
+                          </div>
+                          {order.items && order.items.length > 0 && (
+                            <div className="text-xs text-gray-500">
+                              <p className="font-medium text-gray-600 mb-1">Items:</p>
+                              {order.items.map((item, i) => (
+                                <p key={i}>{item.product_name} x{item.quantity}</p>
+                              ))}
+                            </div>
+                          )}
+                          <Link
+                            href={`/seller/orders/${order.id}`}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            View Details →
+                          </Link>
+                        </div>
+                        <div className="p-4 border-t border-gray-100 space-y-2">
+                          {canMarkReceived && (
+                            <button
+                              onClick={() => markReturnReceived(order.id)}
+                              disabled={isLoading}
+                              className="w-full px-4 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex justify-center items-center font-medium"
+                            >
+                              {isLoading && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              )}
+                              Mark as Received
+                            </button>
+                          )}
+                          {canProcessRefund && (
+                            <button
+                              onClick={() => openRefundModal(order)}
+                              disabled={isLoading}
+                              className="w-full px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex justify-center items-center font-medium"
+                            >
+                              Process Refund
+                            </button>
+                          )}
+                          {isReturnFailed && (
+                            <button
+                              onClick={() => retryCancellation(order.id)}
+                              disabled={isLoading}
+                              className="w-full px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex justify-center items-center font-medium"
+                            >
+                              {isLoading && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              )}
+                              Retry Return Pickup
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
           {/* CANCELLATION FAILED TAB */}
           {activeMainTab === "cancellation_failed" && (
             <>
@@ -750,6 +1012,118 @@ export default function OrderManagement() {
             </>
           )}
         </>
+      )}
+
+      {/* Process Return Refund Modal */}
+      {showRefundModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Process Return Refund</h2>
+              <p className="text-sm text-gray-600 mb-2">
+                Max refund: <span className="font-bold">₹{refundMaxAmount.toLocaleString("en-IN")}</span>
+              </p>
+              <p className="text-sm text-green-700 font-medium mb-6">
+                Final refund: ₹{Math.max(0, refundMaxAmount - deductionAmount).toLocaleString("en-IN")}
+              </p>
+
+              <div className="space-y-4">
+                {/* Product Condition */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Condition</label>
+                  <select
+                    value={productCondition}
+                    onChange={(e) => {
+                      setProductCondition(e.target.value as "good_condition" | "damaged" | "used");
+                      if (e.target.value === "good_condition") {
+                        setDeductionAmount(0);
+                        setAdminNote("");
+                        setRefundPhotos([]);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="good_condition">Good Condition (Full Refund)</option>
+                    <option value="damaged">Damaged</option>
+                    <option value="used">Used</option>
+                  </select>
+                </div>
+
+                {/* Fields shown only when condition is not good */}
+                {productCondition !== "good_condition" && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Admin Note <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={adminNote}
+                        onChange={(e) => setAdminNote(e.target.value)}
+                        placeholder="Describe the product condition (min 10 characters)..."
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Deduction Amount (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={refundMaxAmount}
+                        step="0.01"
+                        value={deductionAmount}
+                        onChange={(e) => setDeductionAmount(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Inspection Photos <span className="text-red-500">*</span> (1-3, JPEG/PNG, max 5MB each)
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        multiple
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []).slice(0, 3);
+                          setRefundPhotos(files);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                      {refundPhotos.length > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">{refundPhotos.length} file(s) selected</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+              <button
+                onClick={() => setShowRefundModal(false)}
+                disabled={refundSubmitting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProcessRefund}
+                disabled={refundSubmitting}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-md flex items-center"
+              >
+                {refundSubmitting && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                )}
+                Process Refund
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Dimension Input Modal */}

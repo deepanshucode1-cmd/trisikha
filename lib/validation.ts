@@ -130,3 +130,17 @@ export const reviewSubmitSchema = z.object({
 export const reviewRemovalSchema = z.object({
   reason: z.string().max(500, "Reason too long").trim().optional(),
 });
+
+// Mark return as received (admin)
+export const markReturnReceivedSchema = z.object({
+  orderId: z.uuid("Invalid order ID"),
+});
+
+// Process return refund (admin) — file uploads validated separately
+export const processReturnRefundSchema = z.object({
+  product_condition: z.enum(["good_condition", "damaged", "used"], {
+    error: "Product condition must be good_condition, damaged, or used",
+  }),
+  admin_note: z.string().min(10, "Note must be at least 10 characters").max(1000, "Note too long").trim().optional(),
+  deduction_amount: z.coerce.number().min(0, "Deduction cannot be negative").optional().default(0),
+});

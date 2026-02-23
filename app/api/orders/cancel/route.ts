@@ -537,11 +537,22 @@ export async function POST(req: Request) {
       .eq("id", orderId)
       .is("refund_status", null)
       .eq("payment_status", "paid")   // 👈 CRITICAL
+      .eq("return_status", "NOT_REQUESTED") // Only cancellations, not returns
       .select("*");
 
-    if (refund_fetch_error || !lockResult || lockResult.length === 0) {
-      logOrder("refund_lock_failed", { orderId, error: refund_fetch_error?.message });
-      return NextResponse.json({ error: "Unable to initiate refund" }, { status: 400 });
+    if (refund_fetch_error) {
+      logOrder("refund_lock_db_error", { orderId, error: refund_fetch_error.message });
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    if (!lockResult || lockResult.length === 0) {
+      // The conditional UPDATE matched no rows — the order is either already
+      // refunded, not paid, or was concurrently claimed by another request.
+      logOrder("refund_lock_not_acquired", { orderId });
+      return NextResponse.json(
+        { error: "Refund could not be initiated. The order may already be refunded or is not eligible for a refund at this time." },
+        { status: 400 }
+      );
     }
 
     logOrder("refund_initiated", { orderId, amount: lockResult[0].total_amount });
