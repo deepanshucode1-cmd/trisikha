@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/utils/supabase/server";
+import shiprocket from "@/utils/shiprocket";
 import { sendOrderDelivered, sendOrderShipped } from "@/lib/email";
 import { trackSecurityEvent, logOrder, logError } from "@/lib/logger";
 
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
 
       const { data: order_data, error: order_error } = await supabase
         .from("orders")
-        .select("id, guest_email, tracking_url")
+        .select("id, guest_email, track_url")
         .eq("shiprocket_awb_code", awb)
         .single();
 
@@ -145,7 +146,34 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Order not found" }, { status: 200 });
       }
 
-      await sendOrderShipped(order_data.guest_email, order_data.id, order_data.tracking_url);
+      let trackingUrl = order_data.track_url;
+
+      if (!trackingUrl) {
+        try {
+          const token = await shiprocket.login();
+          if (token) {
+            const trackRes = await fetch(
+              `https://apiv2.shiprocket.in/v1/external/courier/track/awb/${awb}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (trackRes.ok) {
+              const trackData = await trackRes.json();
+              const fetchedUrl = trackData?.tracking_data?.track_url;
+              if (fetchedUrl) {
+                trackingUrl = fetchedUrl;
+                await supabase
+                  .from("orders")
+                  .update({ track_url: fetchedUrl })
+                  .eq("id", order_data.id);
+              }
+            }
+          }
+        } catch (trackErr) {
+          logError(trackErr as Error, { orderId: order_data.id, step: "fetch_tracking_url_on_pickup" });
+        }
+      }
+
+      await sendOrderShipped(order_data.guest_email, order_data.id, trackingUrl ?? undefined);
       logOrder("order_shipped", { orderId: order_data.id, awb });
 
     } else {

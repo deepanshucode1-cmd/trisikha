@@ -6,10 +6,16 @@ import { handleApiError } from "@/lib/errors";
 import { logOrder, logError, trackSecurityEvent, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
 import { apiRateLimit, getClientIp } from "@/lib/rate-limit";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchForwardTracking(order: any, orderId: string) {
-  const base = { stage: "AWB_ASSIGNED", courier_name: order.courier_name || null };
+async function fetchForwardTracking(order: any, orderId: string, supabase: SupabaseClient) {
+  const base = {
+    stage: "AWB_ASSIGNED",
+    courier_name: order.courier_name || null,
+    awb_code: order.shiprocket_awb_code,
+    tracking_url: order.track_url || null,
+  };
 
   try {
     const token = await shiprocket.login();
@@ -34,7 +40,24 @@ async function fetchForwardTracking(order: any, orderId: string) {
     }
 
     const tracking = await trackingRes.json();
-    return { ...base, tracking: tracking.tracking_data || {} };
+    const trackingData = tracking.tracking_data || {};
+
+    // Lazily save track_url to DB if not already stored
+    if (trackingData.track_url && !order.track_url) {
+      void (async () => {
+        try {
+          const { error: saveErr } = await supabase
+            .from("orders")
+            .update({ track_url: trackingData.track_url })
+            .eq("id", orderId);
+          if (saveErr) logError(new Error(saveErr.message), { orderId, step: "save_tracking_url" });
+        } catch (err) {
+          logError(err as Error, { orderId, step: "save_tracking_url" });
+        }
+      })();
+    }
+
+    return { ...base, tracking_url: trackingData.track_url || order.track_url || null, tracking: trackingData };
   } catch (shiprocketError) {
     logError(shiprocketError as Error, { orderId, step: "shiprocket_tracking" });
     return { ...base, error: "Tracking data temporarily unavailable" };
@@ -78,7 +101,7 @@ export async function GET(req: Request) {
     const supabase = createServiceClient();
     const { data: order, error } = await supabase
       .from("orders")
-      .select("id, guest_email, payment_status, shiprocket_awb_code, courier_name, return_status, return_pickup_awb, return_courier_name, created_at, paid_at")
+      .select("id, guest_email, payment_status, shiprocket_awb_code, courier_name, return_status, return_pickup_awb, return_courier_name, return_track_url, created_at, paid_at, track_url")
       .eq("id", validatedData.order_id)
       .single();
 
@@ -145,7 +168,8 @@ export async function GET(req: Request) {
       };
 
       // Fetch live return tracking if AWB exists
-      let returnTracking = null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let returnTracking: Record<string, any> | null = null;
       if (order.return_pickup_awb) {
         try {
           const token = await shiprocket.login();
@@ -167,8 +191,26 @@ export async function GET(req: Request) {
         }
       }
 
+      // Lazily save return_track_url to DB if not already stored
+      if (returnTracking?.track_url && !order.return_track_url) {
+        const returnTrackUrl = returnTracking.track_url as string;
+        void (async () => {
+          try {
+            const { error: saveErr } = await supabase
+              .from("orders")
+              .update({ return_track_url: returnTrackUrl })
+              .eq("id", validatedData.order_id);
+            if (saveErr) logError(new Error(saveErr.message), { orderId: validatedData.order_id, step: "save_return_track_url" });
+          } catch (err) {
+            logError(err as Error, { orderId: validatedData.order_id, step: "save_return_track_url" });
+          }
+        })();
+      }
+
+      returnInfo.return_track_url = returnTracking?.track_url || order.return_track_url || null;
+
       // Include forward tracking alongside return info
-      const forwardData = await fetchForwardTracking(order, validatedData.order_id);
+      const forwardData = await fetchForwardTracking(order, validatedData.order_id, supabase);
       return NextResponse.json({
         ...forwardData,
         returnInfo,
@@ -177,7 +219,7 @@ export async function GET(req: Request) {
     }
 
     // Forward-only tracking
-    const forwardData = await fetchForwardTracking(order, validatedData.order_id);
+    const forwardData = await fetchForwardTracking(order, validatedData.order_id, supabase);
     return NextResponse.json(forwardData);
 
   } catch (error) {

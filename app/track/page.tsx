@@ -170,6 +170,21 @@ function TrackOrderContent() {
       });
     }
 
+    // AWB assigned but Shiprocket may not have activities yet
+    if (result?.stage === "AWB_ASSIGNED" && !(result?.tracking?.shipment_track_activities?.length > 0)) {
+      activities.push({
+        srStatusLabel: "MANIFEST GENERATED",
+        status: "Courier Assigned",
+        detail: result?.courier_name
+          ? `AWB assigned. Courier: ${result.courier_name}. Waiting for pickup.`
+          : "AWB assigned. Waiting for pickup scheduling.",
+        location: null,
+        originalDate: new Date(),
+        time: "",
+        isDone: true,
+      });
+    }
+
     if (result?.tracking?.shipment_track_activities?.length > 0) {
       const mappedActivities = result.tracking.shipment_track_activities.map((item: any) => ({
         srStatusLabel: item["sr-status-label"],
@@ -229,10 +244,10 @@ function TrackOrderContent() {
   const isDelivered = currentStageIndex === -1;
   const currentStatus = isDelivered ? "Delivered" : steps[currentStageIndex]?.title || "In Progress";
 
-  // Helper: Get tracking number safely from Shiprocket tracking data
-  const trackingNumber = result?.tracking?.awb_code;
+  // Helper: Get tracking number — prefer Shiprocket live data, fallback to DB AWB
+  const trackingNumber = result?.tracking?.awb_code || result?.awb_code;
   const hasTrackingNumber = !!trackingNumber;
-  const trackUrl = result?.tracking?.track_url;
+  const trackUrl = result?.tracking?.track_url || result?.tracking_url;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2c2b20] via-[#3d3c30] to-[#464433] text-[#e0dbb5]">
@@ -474,9 +489,9 @@ function TrackOrderContent() {
                         Courier: {result.returnInfo.return_courier_name}
                       </p>
                     )}
-                    {result.returnTracking?.track_url && sanitizeUrl(result.returnTracking.track_url) && (
+                    {sanitizeUrl(result.returnTracking?.track_url || result.returnInfo?.return_track_url) && (
                       <a
-                        href={sanitizeUrl(result.returnTracking.track_url)}
+                        href={sanitizeUrl(result.returnTracking?.track_url || result.returnInfo?.return_track_url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 underline underline-offset-2 transition-colors"
