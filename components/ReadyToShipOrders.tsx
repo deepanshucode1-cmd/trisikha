@@ -121,6 +121,7 @@ export default function OrderManagement() {
   const [productCondition, setProductCondition] = useState<"good_condition" | "damaged" | "used">("good_condition");
   const [adminNote, setAdminNote] = useState("");
   const [deductionAmount, setDeductionAmount] = useState(0);
+  const [deductionInput, setDeductionInput] = useState("0");
   const [refundPhotos, setRefundPhotos] = useState<File[]>([]);
   const [refundSubmitting, setRefundSubmitting] = useState(false);
 
@@ -457,6 +458,7 @@ export default function OrderManagement() {
     setProductCondition("good_condition");
     setAdminNote("");
     setDeductionAmount(0);
+    setDeductionInput("0");
     setRefundPhotos([]);
     setShowRefundModal(true);
   };
@@ -1037,6 +1039,7 @@ export default function OrderManagement() {
                       setProductCondition(e.target.value as "good_condition" | "damaged" | "used");
                       if (e.target.value === "good_condition") {
                         setDeductionAmount(0);
+                        setDeductionInput("0");
                         setAdminNote("");
                         setRefundPhotos([]);
                       }
@@ -1074,8 +1077,11 @@ export default function OrderManagement() {
                         min="0"
                         max={refundMaxAmount}
                         step="0.01"
-                        value={deductionAmount}
-                        onChange={(e) => setDeductionAmount(parseFloat(e.target.value) || 0)}
+                        value={deductionInput}
+                        onChange={(e) => {
+                          setDeductionInput(e.target.value);
+                          setDeductionAmount(parseFloat(e.target.value) || 0);
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>

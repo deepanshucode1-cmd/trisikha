@@ -129,7 +129,7 @@ export async function POST(req: Request) {
       await supabase
         .from("orders")
         .update({
-          shiprocket_status: statusLabel,
+          shiprocket_status: "PICKED_UP",
           order_status: "PICKED_UP",
           picked_up_at: new Date().toISOString(),
         })
@@ -137,7 +137,7 @@ export async function POST(req: Request) {
 
       const { data: order_data, error: order_error } = await supabase
         .from("orders")
-        .select("id, guest_email, track_url")
+        .select("id, guest_email, tracking_url")
         .eq("shiprocket_awb_code", awb)
         .single();
 
@@ -146,7 +146,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Order not found" }, { status: 200 });
       }
 
-      let trackingUrl = order_data.track_url;
+      let trackingUrl = order_data.tracking_url;
 
       if (!trackingUrl) {
         try {
@@ -163,7 +163,7 @@ export async function POST(req: Request) {
                 trackingUrl = fetchedUrl;
                 await supabase
                   .from("orders")
-                  .update({ track_url: fetchedUrl })
+                  .update({ tracking_url: fetchedUrl })
                   .eq("id", order_data.id);
               }
             }
