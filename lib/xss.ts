@@ -22,8 +22,20 @@ export function escapeHtml(unsafe: string | null | undefined): string {
  * Called on every invocation so the env var can be changed between tests.
  */
 function getAllowedDomains(): Set<string> {
-  const raw = process.env.ALLOWED_URL_DOMAINS || "";
-  return new Set(raw.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean));
+  const raw = process.env.NEXT_PUBLIC_ALLOWED_URL_DOMAINS || process.env.ALLOWED_URL_DOMAINS || "";
+  return new Set(
+    raw.split(",").map((d) => {
+      const trimmed = d.trim().toLowerCase();
+      try {
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+          return new URL(trimmed).hostname;
+        }
+        return trimmed;
+      } catch {
+        return trimmed;
+      }
+    }).filter(Boolean)
+  );
 }
 
 /**

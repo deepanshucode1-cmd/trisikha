@@ -35,10 +35,10 @@ function TrackOrderContent() {
   const orderId = searchParams.get("order_id");
   const emailParam = searchParams.get("email");
 
-  if(orderId && !input){
+  if (orderId && !input) {
     setInput(orderId);
   }
-  if(emailParam && !email){
+  if (emailParam && !email) {
     setEmail(emailParam);
   }
 
@@ -92,6 +92,7 @@ function TrackOrderContent() {
       } else {
         setTrackingData(data);
         setResult(data);
+        //console.log(sanitizeUrl(result.tracking_url));
       }
     } catch (err) {
       console.error(err);
@@ -125,8 +126,8 @@ function TrackOrderContent() {
   const timelineActivities = useMemo(() => {
     let activities: any[] = [];
 
-    if(result === null) return activities;
-    if(result.stage === "PAYMENT_NOT_CONFIRMED"){
+    if (result === null) return activities;
+    if (result.stage === "PAYMENT_NOT_CONFIRMED") {
       const orderDate = result.created_at ? new Date(result.created_at) : new Date();
       activities.push({
         srStatusLabel: "PAYMENT NOT CONFIRMED",
@@ -141,7 +142,7 @@ function TrackOrderContent() {
         isDone: false,
       });
     }
-    if(result.stage === "PAYMENT_CONFIRMED_AWB_NOT_ASSIGNED"){
+    if (result.stage === "PAYMENT_CONFIRMED_AWB_NOT_ASSIGNED") {
       const orderDate = result.created_at ? new Date(result.created_at) : new Date();
       const paidDate = result.paid_at ? new Date(result.paid_at) : orderDate;
       activities.push({
@@ -205,7 +206,7 @@ function TrackOrderContent() {
     return activities
       .filter(activity => activity.srStatusLabel !== 'NA')
       .sort((a, b) => a.originalDate.getTime() - b.originalDate.getTime()) // Use originalDate for sorting
-      .filter((activity, index, self) => 
+      .filter((activity, index, self) =>
         index === self.findIndex(a => a.srStatusLabel === activity.srStatusLabel)
       ); // Dedupe if multiple same status
   }, [result, trackingData]);
@@ -252,7 +253,7 @@ function TrackOrderContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#2c2b20] via-[#3d3c30] to-[#464433] text-[#e0dbb5]">
       <Header />
-      
+
       {/* Hero Section */}
       <section className="py-16 px-4 text-center">
         <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-[#d1cd9f] to-[#e0dbb5] bg-clip-text text-transparent">
@@ -278,11 +279,10 @@ function TrackOrderContent() {
                 value={input}
                 onChange={(e) => setInput(e.target.value.trim())}
                 onBlur={() => handleBlur("orderId", input)}
-                className={`w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:border-transparent outline-none transition-all duration-300 ${
-                  touched.orderId && fieldErrors.orderId
-                    ? "border-red-500 focus:ring-red-500/50"
-                    : "border-[#6a684d]/30 focus:ring-[#d1cd9f]/50"
-                }`}
+                className={`w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:border-transparent outline-none transition-all duration-300 ${touched.orderId && fieldErrors.orderId
+                  ? "border-red-500 focus:ring-red-500/50"
+                  : "border-[#6a684d]/30 focus:ring-[#d1cd9f]/50"
+                  }`}
                 onKeyDown={(e) => e.key === "Enter" && handleTrack()}
               />
             </div>
@@ -310,11 +310,10 @@ function TrackOrderContent() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value.trim())}
                 onBlur={() => handleBlur("email", email)}
-                className={`w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:border-transparent outline-none transition-all duration-300 ${
-                  touched.email && fieldErrors.email
-                    ? "border-red-500 focus:ring-red-500/50"
-                    : "border-[#6a684d]/30 focus:ring-[#d1cd9f]/50"
-                }`}
+                className={`w-full pl-12 pr-4 py-4 bg-[#3d3c30]/50 border rounded-2xl text-[#e0dbb5] placeholder-[#6a684d]/70 focus:ring-2 focus:border-transparent outline-none transition-all duration-300 ${touched.email && fieldErrors.email
+                  ? "border-red-500 focus:ring-red-500/50"
+                  : "border-[#6a684d]/30 focus:ring-[#d1cd9f]/50"
+                  }`}
                 onKeyDown={(e) => e.key === "Enter" && handleTrack()}
               />
             </div>
@@ -335,11 +334,10 @@ function TrackOrderContent() {
           <button
             onClick={handleTrack}
             disabled={loading || !isFormValid()}
-            className={`w-full py-4 rounded-2xl font-semibold text-lg transition-all duration-300 transform ${
-              loading || !isFormValid()
-                ? "bg-[#6a684d]/50 cursor-not-allowed"
-                : "bg-gradient-to-r from-[#d1cd9f] to-[#e0dbb5] text-[#2c2b20] hover:from-[#e0dbb5] hover:to-[#d1cd9f] hover:shadow-lg hover:scale-[1.02]"
-            }`}
+            className={`w-full py-4 rounded-2xl font-semibold text-lg transition-all duration-300 transform ${loading || !isFormValid()
+              ? "bg-[#6a684d]/50 cursor-not-allowed"
+              : "bg-gradient-to-r from-[#d1cd9f] to-[#e0dbb5] text-[#2c2b20] hover:from-[#e0dbb5] hover:to-[#d1cd9f] hover:shadow-lg hover:scale-[1.02]"
+              }`}
           >
             {loading ? (
               <span className="flex items-center justify-center">
@@ -371,9 +369,9 @@ function TrackOrderContent() {
             <div className="mb-8 relative">
               {/* Vertical line for connection */}
               <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-[#6a684d]/50 to-transparent transform -translate-x-1/2"></div>
-              
+
               <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-6 md:space-y-0 md:gap-0">
-                
+
               </div>
 
               {/* Mobile Vertical Connectors */}
@@ -428,12 +426,10 @@ function TrackOrderContent() {
                     const stepIndex = statusToStepIndex[activity.srStatusLabel as keyof typeof statusToStepIndex] ?? 0;
                     const matchingStep = baseSteps[stepIndex];
                     return (
-                      <div key={i} className={`flex items-start space-x-4 p-4 bg-[#3d3c30]/30 rounded-xl border-l-4 ${
-                        matchingStep ? 'border-green-400/50' : 'border-[#d1cd9f]/30'
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mt-1 flex-shrink-0 shadow-md ${
-                          matchingStep ? 'bg-green-400' : 'bg-[#d1cd9f]/20'
+                      <div key={i} className={`flex items-start space-x-4 p-4 bg-[#3d3c30]/30 rounded-xl border-l-4 ${matchingStep ? 'border-green-400/50' : 'border-[#d1cd9f]/30'
                         }`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mt-1 flex-shrink-0 shadow-md ${matchingStep ? 'bg-green-400' : 'bg-[#d1cd9f]/20'
+                          }`}>
                           {matchingStep ? (
                             <matchingStep.icon className="w-4 h-4 text-[#2c2b20]" />
                           ) : (
@@ -556,7 +552,7 @@ function TrackOrderContent() {
       )}
 
       <Footer />
-      
+
       <style jsx global>{`
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(10px); }

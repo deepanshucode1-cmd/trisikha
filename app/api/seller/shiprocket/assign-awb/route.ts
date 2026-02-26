@@ -87,6 +87,7 @@ export async function POST(request: Request) {
         shipmentId: order_data.shiprocket_shipment_id,
         orderId: order_id,
         shiprocket_order_id: order_data.shiprocket_order_id,
+        courierId: order_data.courier_id,
         supabase: supabase
       });
 
@@ -232,6 +233,7 @@ export async function POST(request: Request) {
       shipmentId: orderResponse.shipment_id,
       orderId: order_id,
       shiprocket_order_id: orderResponse.order_id,
+      courierId: order_data.courier_id,
       supabase: supabase
     });
 

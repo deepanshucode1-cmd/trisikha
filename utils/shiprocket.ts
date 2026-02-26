@@ -129,6 +129,7 @@ interface RetryAssignAWBParams {
   shipmentId: number;
   orderId: string;
   shiprocket_order_id: string;
+  courierId?: number | null;
   maxRetries?: number;
   supabase: SupabaseClient;
 }
@@ -145,12 +146,16 @@ export async function retryAssignAWB({
   maxRetries = 3,
   orderId,
   shiprocket_order_id,
+  courierId,
   supabase
 }: RetryAssignAWBParams): Promise<AWBResult> {
   let attempt = 0;
 
   while (attempt < maxRetries) {
     try {
+      const awbPayload: Record<string, unknown> = { shipment_id: [shipmentId] };
+      if (courierId) awbPayload.courier_id = courierId;
+
       const res = await fetch(
         "https://apiv2.shiprocket.in/v1/external/courier/assign/awb",
         {
@@ -159,7 +164,7 @@ export async function retryAssignAWB({
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`
           },
-          body: JSON.stringify({ shipment_id: [shipmentId] }),
+          body: JSON.stringify(awbPayload),
         }
       );
 

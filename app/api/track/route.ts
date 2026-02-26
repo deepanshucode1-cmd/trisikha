@@ -14,7 +14,7 @@ async function fetchForwardTracking(order: any, orderId: string, supabase: Supab
     stage: "AWB_ASSIGNED",
     courier_name: order.courier_name || null,
     awb_code: order.shiprocket_awb_code,
-    tracking_url: order.track_url || null,
+    tracking_url: order.tracking_url || null,
   };
 
   try {
@@ -41,14 +41,15 @@ async function fetchForwardTracking(order: any, orderId: string, supabase: Supab
 
     const tracking = await trackingRes.json();
     const trackingData = tracking.tracking_data || {};
+    console.log(tracking);
 
     // Lazily save track_url to DB if not already stored
-    if (trackingData.track_url && !order.track_url) {
+    if (trackingData.track_url && !order.tracking_url) {
       void (async () => {
         try {
           const { error: saveErr } = await supabase
             .from("orders")
-            .update({ track_url: trackingData.track_url })
+            .update({ tracking_url: trackingData.track_url })
             .eq("id", orderId);
           if (saveErr) logError(new Error(saveErr.message), { orderId, step: "save_tracking_url" });
         } catch (err) {
@@ -57,7 +58,7 @@ async function fetchForwardTracking(order: any, orderId: string, supabase: Supab
       })();
     }
 
-    return { ...base, tracking_url: trackingData.track_url || order.track_url || null, tracking: trackingData };
+    return { ...base, tracking_url: trackingData.track_url || order.tracking_url || null, tracking: trackingData };
   } catch (shiprocketError) {
     logError(shiprocketError as Error, { orderId, step: "shiprocket_tracking" });
     return { ...base, error: "Tracking data temporarily unavailable" };
@@ -101,9 +102,11 @@ export async function GET(req: Request) {
     const supabase = createServiceClient();
     const { data: order, error } = await supabase
       .from("orders")
-      .select("id, guest_email, payment_status, shiprocket_awb_code, courier_name, return_status, return_pickup_awb, return_courier_name, return_track_url, created_at, paid_at, track_url")
+      .select("id, guest_email, payment_status, shiprocket_awb_code, courier_name, return_status, return_pickup_awb, return_courier_name, return_track_url, created_at, paid_at, tracking_url")
       .eq("id", validatedData.order_id)
       .single();
+
+    console.log(error);
 
     if (error) {
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });

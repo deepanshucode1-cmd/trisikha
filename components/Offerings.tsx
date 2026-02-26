@@ -148,7 +148,7 @@ export default function Offerings() {
                   <h3 className="text-xl font-bold text-gray-800 mb-1 group-hover:text-[#3d3c30] transition-colors">
                     {product.name}
                   </h3>
-                  {product.review_count > 0 ? (
+                  {(product.review_count ?? 0) > 0 ? (
                     <div className="mb-2">
                       <StarRating
                         rating={product.avg_rating || 0}
