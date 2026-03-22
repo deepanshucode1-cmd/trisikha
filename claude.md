@@ -927,7 +927,7 @@ app.get('/api/user/export-data', authenticate, async (req, res) => {
 - payment_id, payment_status (text)
   → 'initiated' | 'paid' | 'failed' | 'refunded'
 - razorpay_order_id, refund_id (text)
-- refund_status → 'initiated' | 'processing' | 'completed' | 'failed'
+- refund_status → NULL | 'REFUND_INITIATED' | 'REFUND_COMPLETED' | 'REFUND_FAILED'
 - order_status → 'CHECKED_OUT' | 'CONFIRMED' | 'CANCELLATION_REQUESTED' | 'CANCELLED'
 - cancellation_status → 'OTP_SENT' | 'CANCELLATION_REQUESTED' | 'CANCELLED'
 - shiprocket_order_id, shiprocket_awb_code, shiprocket_status (text)

@@ -102,7 +102,7 @@ export async function GET(req: Request) {
     const supabase = createServiceClient();
     const { data: order, error } = await supabase
       .from("orders")
-      .select("id, guest_email, payment_status, shiprocket_awb_code, courier_name, return_status, return_pickup_awb, return_courier_name, return_track_url, created_at, paid_at, tracking_url")
+      .select("id, guest_email, payment_status, shiprocket_awb_code, courier_name, return_status, refund_status, return_pickup_awb, return_courier_name, return_track_url, created_at, paid_at, tracking_url")
       .eq("id", validatedData.order_id)
       .single();
 
@@ -158,14 +158,23 @@ export async function GET(req: Request) {
         RETURN_PICKUP_SCHEDULED: "Return pickup scheduled. Keep the package ready.",
         RETURN_IN_TRANSIT: "Your return is on its way to our warehouse.",
         RETURN_DELIVERED: "Return received. Your refund is being processed.",
-        RETURN_REFUND_INITIATED: "Refund initiated. It typically reflects within 5-7 business days or may be more depending on your bank and payment method.",
-        RETURN_REFUND_COMPLETED: "Your refund has been processed to your original payment method.",
+        RETURN_COMPLETED: "Your return is complete and refund has been processed to your original payment method.",
         RETURN_FAILED: "There was an issue with your return pickup. Our team is working on it.",
       };
 
+      // Refine RETURN_DELIVERED message based on refund_status
+      let returnMessage = returnStatusMessages[order.return_status] || "Return in progress.";
+      if (order.return_status === "RETURN_DELIVERED") {
+        if (order.refund_status === "REFUND_INITIATED") {
+          returnMessage = "Refund initiated. It typically reflects within 5-7 business days or may be more depending on your bank and payment method.";
+        } else if (order.refund_status === "REFUND_FAILED") {
+          returnMessage = "There was an issue processing your refund. Our team is working on it.";
+        }
+      }
+
       const returnInfo: Record<string, unknown> = {
         return_status: order.return_status,
-        return_message: returnStatusMessages[order.return_status] || "Return in progress.",
+        return_message: returnMessage,
         return_pickup_awb: order.return_pickup_awb,
         return_courier_name: order.return_courier_name,
       };

@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import shiprocket, { createReturnOrder, getReturnShippingRate } from "@/utils/shiprocket";
-import nodemailer from "nodemailer";
 import { requireRole, handleAuthError } from "@/lib/auth";
 import { requireCsrf } from "@/lib/csrf";
 import { handleApiError } from "@/lib/errors";
@@ -10,7 +9,8 @@ import { logOrder, logPayment, logAuth, logError } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
 import { getClientIp } from "@/lib/rate-limit";
 import { generateCreditNoteNumber, generateCreditNotePDF } from "@/lib/creditNote";
-import { sendCreditNote } from "@/lib/email";
+import { sendCreditNote, sendRefundInitiated } from "@/lib/email";
+import { createServiceClient } from "@/utils/supabase/service";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -26,7 +26,8 @@ export async function POST(req: Request) {
     }
 
     // Require admin role for retry operations
-    const { supabase, user } = await requireRole("admin");
+    const { user } = await requireRole("admin");
+    const supabase = createServiceClient();
 
     const { orderId } = await req.json();
 
@@ -36,21 +37,25 @@ export async function POST(req: Request) {
 
     logAuth("admin_cancel_retry", { userId: user.id, orderId });
 
-    // 1️⃣ Fetch latest order
+    // 1. Fetch latest order
     const { data: order, error } = await supabase
       .from("orders")
       .select("*")
       .eq("id", orderId)
       .single();
 
-    if (error || !order) {
-      logError(new Error("Order not found for retry"), { orderId, userId: user.id });
+    if (error) {
+      logError(new Error(error.message), { context: "retry_order_fetch_error", orderId, userId: user.id });
+      return NextResponse.json({ error: "Database error while fetching order" }, { status: 500 });
+    }
+
+    if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
     // Allow retry for ongoing cancellation OR return
     const isReturnOrder = order.order_status === "RETURN_REQUESTED";
-    const isCancellationOrder = order.cancellation_status === "CANCELLATION_REQUESTED";
+    const isCancellationOrder = order.order_status === "CANCELLATION_REQUESTED";
 
     if (!isReturnOrder && !isCancellationOrder) {
       return NextResponse.json({ error: "Order is not in cancellation or return state" }, { status: 400 });
@@ -79,33 +84,15 @@ export async function POST(req: Request) {
         const warehousePincode = process.env.WAREHOUSE_PINCODE || "382721";
 
         // Determine package dimensions
-        const isSingleItem = orderItems.length === 1;
-        let packageWeight: number, packageLength: number, packageBreadth: number, packageHeight: number;
-
-        // Default dimensions from env (fallback values)
         const defaultWeight = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT || "1");
         const defaultLength = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH || "20");
         const defaultBreadth = parseFloat(process.env.DEFAULT_PACKAGE_BREADTH || "15");
         const defaultHeight = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT || "10");
 
-        if (order.package_weight && order.package_length) {
-          packageWeight = order.package_weight;
-          packageLength = order.package_length;
-          packageBreadth = order.package_breadth || defaultBreadth;
-          packageHeight = order.package_height || defaultHeight;
-        } else if (isSingleItem) {
-          const item = orderItems[0];
-          const itemWeight = (item.weight || 0) * item.quantity;
-          packageWeight = itemWeight > 0 ? itemWeight : defaultWeight;
-          packageLength = item.length || defaultLength;
-          packageBreadth = item.breadth || defaultBreadth;
-          packageHeight = item.height || defaultHeight;
-        } else {
-          packageWeight = defaultWeight;
-          packageLength = defaultLength;
-          packageBreadth = defaultBreadth;
-          packageHeight = defaultHeight;
-        }
+        const packageWeight = orderItems.reduce((sum: number, item: any) => sum + (item.weight || 0) * item.quantity, 0) || defaultWeight;
+        const packageLength = Math.max(...orderItems.map((item: any) => item.length || 0)) || defaultLength;
+        const packageBreadth = Math.max(...orderItems.map((item: any) => item.breadth || 0)) || defaultBreadth;
+        const packageHeight = Math.max(...orderItems.map((item: any) => item.height || 0)) || defaultHeight;
 
         let returnShippingCost = 80; // fallback
         try {
@@ -113,6 +100,9 @@ export async function POST(req: Request) {
             pickupPincode: order.shipping_pincode || "",
             deliveryPincode: warehousePincode,
             weight: packageWeight,
+            length: packageLength,
+            breadth: packageBreadth,
+            height: packageHeight,
           });
         } catch (e) {
           logError(e as Error, { context: "retry_return_shipping_rate_failed" });
@@ -157,7 +147,7 @@ export async function POST(req: Request) {
             shipping_pincode: warehouseAddress.pincode,
             shipping_email: warehouseAddress.email,
             shipping_phone: warehouseAddress.phone,
-            order_items: orderItems.map((item) => ({
+            order_items: orderItems.map((item: any) => ({
               name: item.product_name,
               sku: item.sku || `SKU-${item.product_id}`,
               units: item.quantity,
@@ -194,20 +184,38 @@ export async function POST(req: Request) {
       // /api/admin/orders/[id]/process-return-refund endpoint (with inspection + deductions).
 
       // Scenario 3: Return refund failed - retry refund
-      if (order.return_status === "RETURN_REFUND_INITIATED" && order.refund_status === "REFUND_FAILED") {
+      if (order.return_status === "RETURN_DELIVERED" && order.refund_status === "REFUND_FAILED") {
         logOrder("return_refund_retry_start", { orderId, adminId: user.id });
 
-        // Use stored refund amount (already calculated with Shiprocket rate) or calculate
+        // Use stored refund amount (already calculated with Shiprocket rate) or recalculate
         let refundAmount = order.return_refund_amount;
         if (!refundAmount) {
+          const { data: refundItems } = await supabase
+            .from("order_items")
+            .select("*")
+            .eq("order_id", orderId);
+
+          const defaultWeight = parseFloat(process.env.DEFAULT_PACKAGE_WEIGHT || "1");
+          const defaultLength = parseFloat(process.env.DEFAULT_PACKAGE_LENGTH || "20");
+          const defaultBreadth = parseFloat(process.env.DEFAULT_PACKAGE_BREADTH || "15");
+          const defaultHeight = parseFloat(process.env.DEFAULT_PACKAGE_HEIGHT || "10");
+
+          const items = refundItems || [];
+          const weightForRate = items.reduce((sum: number, item: any) => sum + (item.weight || 0) * item.quantity, 0) || defaultWeight;
+          const lengthForRate = items.length > 0 ? Math.max(...items.map((item: any) => item.length || 0)) || defaultLength : defaultLength;
+          const breadthForRate = items.length > 0 ? Math.max(...items.map((item: any) => item.breadth || 0)) || defaultBreadth : defaultBreadth;
+          const heightForRate = items.length > 0 ? Math.max(...items.map((item: any) => item.height || 0)) || defaultHeight : defaultHeight;
+
           const forwardShippingCost = order.shipping_cost || 0;
-          const weightForRate = order.package_weight || 1;
           let returnShippingCost = 80;
           try {
             returnShippingCost = await getReturnShippingRate({
               pickupPincode: order.shipping_pincode || "",
               deliveryPincode: process.env.WAREHOUSE_PINCODE || "382721",
               weight: weightForRate,
+              length: lengthForRate,
+              breadth: breadthForRate,
+              height: heightForRate,
             });
           } catch (e) {
             logError(e as Error, { context: "return_refund_retry_shipping_rate_failed" });
@@ -224,19 +232,42 @@ export async function POST(req: Request) {
             const actualRefundAmount = result.amount / 100;
 
             await supabase.from("orders").update({
-              return_status: "RETURN_REFUND_COMPLETED",
+              return_status: "RETURN_COMPLETED",
               refund_status: "REFUND_COMPLETED",
               payment_status: "refunded",
               order_status: "RETURNED",
               refund_id: result.id,
               refund_amount: actualRefundAmount,
+              refund_attempted_at: new Date().toISOString(),
               refund_completed_at: new Date().toISOString(),
             }).eq("id", orderId);
 
             logPayment("return_refund_retry_success", { orderId, refundId: result.id, amount: actualRefundAmount, adminId: user.id });
             return NextResponse.json({ success: true, refundAmount: actualRefundAmount, refundId: result.id });
           }
+
+          // Non-processed status (pending/created) — refund queued, webhook will finalize
+          await supabase.from("orders").update({
+            refund_id: result.id,
+            refund_attempted_at: new Date().toISOString(),
+          }).eq("id", orderId);
+
+          logPayment("return_refund_retry_pending", { orderId, refundId: result.id, status: result.status, adminId: user.id });
+          return NextResponse.json({
+            success: true,
+            pending: true,
+            refundId: result.id,
+            message: "Refund queued with Razorpay. You will be notified when it is processed.",
+          });
         } catch (refundErr: any) {
+          await supabase.from("orders").update({
+            refund_status: "REFUND_FAILED",
+            refund_attempted_at: new Date().toISOString(),
+            refund_error_code: refundErr?.error?.code ?? "UNKNOWN",
+            refund_error_reason: refundErr?.error?.reason ?? "",
+            refund_error_description: refundErr?.error?.description ?? "",
+          }).eq("id", orderId);
+
           logPayment("return_refund_retry_failed", { orderId, error: refundErr?.error?.description, adminId: user.id });
           return NextResponse.json({ error: "Return refund retry failed" }, { status: 500 });
         }
@@ -248,9 +279,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // ======== CANCELLATION RETRY LOGIC (existing) ========
+    // ======== CANCELLATION RETRY LOGIC ========
 
-    // 2️⃣ Retry Shiprocket Cancellation (IF FAILED EARLIER)
+    // 2. Retry Shiprocket Cancellation (IF FAILED EARLIER)
     if (
       order.shiprocket_order_id &&
       order.shiprocket_status === "SHIPPING_CANCELLATION_FAILED"
@@ -302,8 +333,34 @@ export async function POST(req: Request) {
       logOrder("shiprocket_cancel_retry_success", { orderId, shiprocketOrderId: order.shiprocket_order_id });
     }
 
-    // Re-fetch after possible ship cancel update
-    const { data: fresh, error: refund_fetch_error } = await supabase
+    // 3. Re-fetch after possible shiprocket cancel, then check eligibility before locking
+    const { data: freshOrder, error: freshError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", orderId)
+      .single();
+
+    if (freshError || !freshOrder) {
+      logError(new Error("Unable to re-fetch order for refund retry"), { orderId });
+      return NextResponse.json({ error: "Unable to fetch order" }, { status: 500 });
+    }
+
+    // Check eligibility: must be a cancellation (not return), paid, and shipping resolved
+    const isEligibleForRefund =
+      freshOrder.cancellation_status === "CANCELLATION_REQUESTED" &&
+      freshOrder.payment_status === "paid" &&
+      (freshOrder.shiprocket_status === "SHIPPING_CANCELLED" || freshOrder.shiprocket_status === "NOT_SHIPPED") &&
+      (freshOrder.refund_status === null || freshOrder.refund_status === "REFUND_FAILED");
+
+    if (!isEligibleForRefund) {
+      return NextResponse.json({
+        message: "Retry processed",
+        state: { cancellation_status: freshOrder.cancellation_status, shiprocket_status: freshOrder.shiprocket_status },
+      });
+    }
+
+    // Atomic lock — only proceed if refund_status is still null or REFUND_FAILED
+    const { data: locked, error: lockError } = await supabase
       .from("orders")
       .update({
         refund_status: "REFUND_INITIATED",
@@ -312,114 +369,171 @@ export async function POST(req: Request) {
         refund_initiated_at: new Date().toISOString(),
       })
       .eq("id", orderId)
-      .is("refund_status", null)
+      .in("refund_status", ["REFUND_FAILED"])
       .eq("payment_status", "paid")
       .select("*");
 
-    if (refund_fetch_error || !fresh || fresh.length === 0) {
-      logError(new Error("Unable to initiate refund retry"), { orderId, error: refund_fetch_error?.message });
+    // If REFUND_FAILED lock didn't match, try null (first-time refund after shiprocket cancel)
+    let lockResult = locked;
+    let lockErr = lockError;
+    if (!lockError && (!locked || locked.length === 0)) {
+      const { data: nullLock, error: nullLockError } = await supabase
+        .from("orders")
+        .update({
+          refund_status: "REFUND_INITIATED",
+          otp_code: null,
+          otp_expires_at: null,
+          refund_initiated_at: new Date().toISOString(),
+        })
+        .eq("id", orderId)
+        .is("refund_status", null)
+        .eq("payment_status", "paid")
+        .select("*");
+      lockResult = nullLock;
+      lockErr = nullLockError;
+    }
+
+    if (lockErr || !lockResult || lockResult.length === 0) {
+      logError(new Error("Unable to acquire refund lock for retry"), { orderId, error: lockErr?.message });
       return NextResponse.json({ error: "Unable to initiate refund" }, { status: 400 });
     }
 
     logPayment("refund_retry_initiated", { orderId, adminId: user.id });
 
-    // 3️⃣ Retry REFUND
-    if (
-      fresh[0].cancellation_status === "CANCELLATION_REQUESTED" &&
-      fresh[0].payment_status === "paid" &&
-      (
-        fresh[0].shiprocket_status === "SHIPPING_CANCELLED" ||
-        fresh[0].refund_status === "REFUND_FAILED" ||
-        fresh[0].shiprocket_status === "NOT_SHIPPED"
-      )
-    ) {
-      try {
-        const result = await razorpay.payments.refund(fresh[0].payment_id, {
-          amount: fresh[0].total_amount * 100,
-        });
+    // 4. Process Razorpay refund
+    try {
+      const result = await razorpay.payments.refund(lockResult[0].payment_id, {
+        amount: lockResult[0].total_amount * 100,
+      });
 
-        if (result.status === "processed") {
-          const refund_amount = result.amount ? result.amount / 100 : 0;
+      if (result.status === "processed") {
+        const refund_amount = result.amount ? result.amount / 100 : 0;
 
-          await supabase.from("orders")
-            .update({
-              refund_status: "REFUND_COMPLETED",
-              payment_status: "refunded",
-              order_status: "CANCELLED",
-              cancellation_status: "CANCELLED",
-              refund_id: result.id,
-              refund_amount: refund_amount,
-              refund_initiated_at: new Date().toISOString(),
-              refund_completed_at: new Date().toISOString(),
-            })
-            .eq("id", orderId);
-
-          logPayment("refund_retry_success", {
-            orderId,
-            refundId: result.id,
-            amount: refund_amount,
-            adminId: user.id,
-          });
-
-          // DPDP Audit: Log admin-initiated refund
-          const ip = getClientIp(req);
-          await logDataAccess({
-            tableName: "orders",
-            operation: "UPDATE",
-            userId: user.id,
-            userRole: "admin",
-            ip,
-            queryType: "single",
-            rowCount: 1,
-            endpoint: "/api/orders/cancel/retry",
-            reason: "Admin retry - order cancelled and refund processed",
-            oldData: { orderId, previousStatus: order.order_status },
-            newData: { orderId, newStatus: "CANCELLED", refundAmount: refund_amount },
-          });
-
-          // Send refund email
-          const transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 587,
-            secure: false,
-            auth: {
-              user: process.env.EMAIL_USER,
-              pass: process.env.EMAIL_PASS,
-            },
-          });
-
-          await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: order.guest_email,
-            subject: "TrishikhaOrganics: Order Cancelled - Refund Processed",
-            text: `Hi,\n\nYour order with Order ID: ${orderId} has been successfully cancelled and refunded.\n\nRefund Amount: ₹${refund_amount}\n\nThe amount typically reflects within 5-7 business days or may be more depending on your bank and payment method.\n\nWe apologize for any inconvenience caused. If you have any questions, feel free to reach out to our support team.\n\nThank you,\nTrishikhaOrganics Team`,
-          });
-
-          return NextResponse.json({ success: true, refundAmount: refund_amount });
+        // Generate credit note
+        let creditNoteNo: string | null = null;
+        try {
+          creditNoteNo = await generateCreditNoteNumber();
+        } catch (e) {
+          logError(e as Error, { context: "retry_credit_note_gen_failed", orderId });
         }
-      } catch (err: any) {
-        await supabase.from("orders")
-          .update({
-            refund_status: "REFUND_FAILED",
-            refund_error_code: err?.error?.code ?? "UNKNOWN",
-            refund_error_reason: err?.error?.reason ?? "",
-            refund_error_description: err?.error?.description ?? "",
-          })
-          .eq("id", orderId);
 
-        logPayment("refund_retry_failed", {
+        const { data: updatedOrder } = await supabase.from("orders")
+          .update({
+            refund_status: "REFUND_COMPLETED",
+            payment_status: "refunded",
+            order_status: "CANCELLED",
+            cancellation_status: "CANCELLED",
+            refund_id: result.id,
+            refund_amount: refund_amount,
+            refund_initiated_at: new Date().toISOString(),
+            refund_attempted_at: new Date().toISOString(),
+            refund_completed_at: new Date().toISOString(),
+            credit_note_number: creditNoteNo,
+          })
+          .eq("id", orderId)
+          .select("*");
+
+        logPayment("refund_retry_success", {
           orderId,
-          error: err?.error?.description || err?.message,
+          refundId: result.id,
+          amount: refund_amount,
           adminId: user.id,
         });
 
-        return NextResponse.json({ error: "Refund retry failed" }, { status: 500 });
+        // DPDP Audit: Log admin-initiated refund
+        const ip = getClientIp(req);
+        await logDataAccess({
+          tableName: "orders",
+          operation: "UPDATE",
+          userId: user.id,
+          userRole: "admin",
+          ip,
+          queryType: "single",
+          rowCount: 1,
+          endpoint: "/api/orders/cancel/retry",
+          reason: "Admin retry - order cancelled and refund processed",
+          oldData: { orderId, previousStatus: order.order_status },
+          newData: { orderId, newStatus: "CANCELLED", refundAmount: refund_amount },
+        });
+
+        // Send credit note email
+        if (creditNoteNo && updatedOrder && updatedOrder[0]) {
+          try {
+            const { data: orderItems } = await supabase
+              .from("order_items")
+              .select("*")
+              .eq("order_id", orderId);
+
+            if (orderItems && orderItems.length > 0) {
+              const pdfBuffer = await generateCreditNotePDF(updatedOrder[0], orderItems);
+              const emailSent = await sendCreditNote(
+                updatedOrder[0].guest_email,
+                orderId,
+                creditNoteNo,
+                refund_amount,
+                pdfBuffer
+              );
+
+              if (emailSent) {
+                await supabase
+                  .from("orders")
+                  .update({ credit_note_sent_at: new Date().toISOString() })
+                  .eq("id", orderId);
+              }
+            }
+          } catch (cnErr) {
+            logError(cnErr as Error, { context: "retry_credit_note_email_failed", orderId });
+          }
+        }
+
+        // Send refund notification email
+        try {
+          await sendRefundInitiated(order.guest_email, orderId, refund_amount);
+        } catch (emailErr) {
+          logError(emailErr as Error, { context: "retry_refund_email_failed", orderId });
+        }
+
+        return NextResponse.json({ success: true, refundAmount: refund_amount });
       }
+
+      // Non-processed status (pending/created) — refund queued, webhook will finalize
+      await supabase.from("orders")
+        .update({
+          refund_id: result.id,
+          refund_attempted_at: new Date().toISOString(),
+        })
+        .eq("id", orderId);
+
+      logPayment("refund_retry_pending", { orderId, refundId: result.id, status: result.status, adminId: user.id });
+      return NextResponse.json({
+        success: true,
+        pending: true,
+        refundId: result.id,
+        message: "Refund queued with Razorpay. You will be notified when it is processed.",
+      });
+    } catch (err: any) {
+      await supabase.from("orders")
+        .update({
+          refund_status: "REFUND_FAILED",
+          refund_attempted_at: new Date().toISOString(),
+          refund_error_code: err?.error?.code ?? "UNKNOWN",
+          refund_error_reason: err?.error?.reason ?? "",
+          refund_error_description: err?.error?.description ?? "",
+        })
+        .eq("id", orderId);
+
+      logPayment("refund_retry_failed", {
+        orderId,
+        error: err?.error?.description || err?.message,
+        adminId: user.id,
+      });
+
+      return NextResponse.json({ error: "Refund retry failed" }, { status: 500 });
     }
 
     return NextResponse.json({
       message: "Retry processed",
-      state: fresh[0],
+      state: { cancellation_status: freshOrder.cancellation_status, shiprocket_status: freshOrder.shiprocket_status },
     });
 
   } catch (error) {

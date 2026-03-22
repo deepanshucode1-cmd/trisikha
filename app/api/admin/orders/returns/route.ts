@@ -8,7 +8,7 @@ import { logError } from "@/lib/logger";
  * GET /api/admin/orders/returns
  *
  * Fetch all unresolved return orders for admin management.
- * Excludes NOT_REQUESTED, RETURN_REFUND_COMPLETED, and RETURN_CANCELLED.
+ * Excludes NOT_REQUESTED, RETURN_COMPLETED, and RETURN_CANCELLED.
  */
 export async function GET() {
   try {
@@ -41,7 +41,7 @@ export async function GET() {
         refund_status,
         created_at
       `)
-      .not("return_status", "in", "(NOT_REQUESTED,RETURN_REFUND_COMPLETED,RETURN_CANCELLED)")
+      .not("return_status", "in", "(NOT_REQUESTED,RETURN_COMPLETED,RETURN_CANCELLED)")
       .order("return_requested_at", { ascending: false });
 
     if (error) {

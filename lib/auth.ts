@@ -61,7 +61,7 @@ export async function getUserProfile(userId: string) {
 /**
  * Require specific role or throw 403
  */
-export async function requireRole(role: "admin" | "customer") {
+export async function requireRole(role: "admin") {
   const { user, supabase } = await requireAuth();
   const profile = await getUserProfile(user.id);
 

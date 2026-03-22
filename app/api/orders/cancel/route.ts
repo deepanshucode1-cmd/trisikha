@@ -599,6 +599,7 @@ export async function POST(req: Request) {
             refund_id: razorpay_refund_result.id,
             refund_amount: refund_amount,
             refund_initiated_at: new Date().toISOString(),
+            refund_attempted_at: new Date().toISOString(),
             refund_completed_at: new Date().toISOString(),
             reason_for_cancellation: reason,
             otp_code: null,
@@ -676,11 +677,30 @@ export async function POST(req: Request) {
           }
         }
 
-        return NextResponse.json({ success: true, refundId: razorpay_refund_result.id });
+        // Razorpay returned a non-processed status (pending/created) — refund is queued
+        // Save refund_id so the webhook can match it later
+        await supabase.from("orders").update({
+          refund_id: razorpay_refund_result.id,
+          refund_attempted_at: new Date().toISOString(),
+        }).eq("id", orderId);
+
+        logPayment("refund_pending", {
+          orderId,
+          refundId: razorpay_refund_result.id,
+          status: razorpay_refund_result.status,
+        });
+
+        return NextResponse.json({
+          success: true,
+          pending: true,
+          refundId: razorpay_refund_result.id,
+          message: "Refund initiated. It will be processed shortly.",
+        });
 
       } catch (err) {
         await supabase.from("orders").update({
           refund_status: "REFUND_FAILED",
+          refund_attempted_at: new Date().toISOString(),
           refund_error_code: (err as any).error?.code || "UNKNOWN_ERROR",
           refund_error_reason: (err as any).error?.reason || "No reason",
           refund_error_description: (err as any).error?.description || "No description",

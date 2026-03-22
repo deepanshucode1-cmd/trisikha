@@ -105,7 +105,7 @@ export async function POST(
 
     const supabase = createServiceClient();
 
-    // Fetch order and guard status
+    // Fetch order — must be RETURN_DELIVERED with no active refund (or a failed one to retry)
     const { data: order, error: fetchError } = await supabase
       .from("orders")
       .select("*")
@@ -115,7 +115,7 @@ export async function POST(
 
     if (fetchError || !order) {
       return NextResponse.json(
-        { error: "Order not found or not in RETURN_DELIVERED status." },
+        { error: "Order not found or not eligible for refund processing." },
         { status: 400 }
       );
     }
@@ -151,6 +151,16 @@ export async function POST(
       photoCount: uploadedPaths.length,
     });
 
+    // Save inspection data and mark refund as initiated before calling Razorpay
+    await supabase.from("orders").update({
+      refund_status: "REFUND_INITIATED",
+      refund_initiated_at: new Date().toISOString(),
+      return_admin_note: admin_note || null,
+      return_deduction_amount: deduction_amount,
+      return_deduction_reason: hasDeduction ? product_condition : null,
+      return_inspection_photos: uploadedPaths.length > 0 ? uploadedPaths : null,
+    }).eq("id", orderId);
+
     // Initiate Razorpay refund
     let razorpayResult: any;
     try {
@@ -158,17 +168,12 @@ export async function POST(
         amount: Math.round(finalRefundAmount * 100), // paise
       });
     } catch (refundErr: any) {
-      // Mark as refund initiated so retry is possible
       await supabase.from("orders").update({
-        return_status: "RETURN_REFUND_INITIATED",
         refund_status: "REFUND_FAILED",
+        refund_attempted_at: new Date().toISOString(),
         refund_error_code: refundErr?.error?.code ?? "UNKNOWN",
         refund_error_reason: refundErr?.error?.reason ?? "",
         refund_error_description: refundErr?.error?.description ?? "",
-        return_admin_note: admin_note || null,
-        return_deduction_amount: deduction_amount,
-        return_deduction_reason: hasDeduction ? product_condition : null,
-        return_inspection_photos: uploadedPaths.length > 0 ? uploadedPaths : null,
       }).eq("id", orderId);
 
       logPayment("return_refund_failed", {
@@ -180,24 +185,36 @@ export async function POST(
       return NextResponse.json({ error: "Razorpay refund failed. Retry via cancellation retry." }, { status: 500 });
     }
 
-    if (!razorpayResult || razorpayResult.status !== "processed" || !razorpayResult.amount) {
-      // Unexpected state — save what we can
+    if (!razorpayResult) {
       await supabase.from("orders").update({
-        return_status: "RETURN_REFUND_INITIATED",
         refund_status: "REFUND_FAILED",
-        return_admin_note: admin_note || null,
-        return_deduction_amount: deduction_amount,
-        return_deduction_reason: hasDeduction ? product_condition : null,
-        return_inspection_photos: uploadedPaths.length > 0 ? uploadedPaths : null,
+        refund_attempted_at: new Date().toISOString(),
       }).eq("id", orderId);
 
-      logPayment("return_refund_unexpected_status", {
+      logPayment("return_refund_no_result", { orderId, adminId: user.id });
+      return NextResponse.json({ error: "Razorpay returned no result." }, { status: 500 });
+    }
+
+    // Razorpay returned a non-processed status (pending/created) — refund is queued
+    if (razorpayResult.status !== "processed" || !razorpayResult.amount) {
+      await supabase.from("orders").update({
+        refund_id: razorpayResult.id,
+        refund_attempted_at: new Date().toISOString(),
+      }).eq("id", orderId);
+
+      logPayment("return_refund_pending", {
         orderId,
-        status: razorpayResult?.status,
+        refundId: razorpayResult.id,
+        status: razorpayResult.status,
         adminId: user.id,
       });
 
-      return NextResponse.json({ error: "Refund status unexpected. Please check Razorpay dashboard." }, { status: 500 });
+      return NextResponse.json({
+        success: true,
+        pending: true,
+        refundId: razorpayResult.id,
+        message: "Refund initiated and queued with Razorpay. You will be notified when it is processed.",
+      });
     }
 
     const actualRefundAmount = razorpayResult.amount / 100;
@@ -212,18 +229,14 @@ export async function POST(
 
     // Update order with all return refund details
     const { data: updatedOrder, error: updateError } = await supabase.from("orders").update({
-      return_status: "RETURN_REFUND_COMPLETED",
+      return_status: "RETURN_COMPLETED",
       refund_status: "REFUND_COMPLETED",
       payment_status: "refunded",
       order_status: "RETURNED",
       refund_id: razorpayResult.id,
       refund_amount: actualRefundAmount,
-      refund_initiated_at: new Date().toISOString(),
+      refund_attempted_at: new Date().toISOString(),
       refund_completed_at: new Date().toISOString(),
-      return_admin_note: admin_note || null,
-      return_deduction_amount: deduction_amount,
-      return_deduction_reason: hasDeduction ? product_condition : null,
-      return_inspection_photos: uploadedPaths.length > 0 ? uploadedPaths : null,
       credit_note_number: creditNoteNo,
     }).eq("id", orderId).select("*");
 

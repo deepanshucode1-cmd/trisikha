@@ -30,6 +30,7 @@ type Order = {
   return_admin_note?: string | null;
   return_deduction_amount?: number | null;
   return_deduction_reason?: string | null;
+  refund_status?: string | null;
   guest_email?: string | null;
   items?: { product_name: string; quantity: number; unit_price: number; sku?: string }[];
 };
@@ -881,7 +882,7 @@ export default function OrderManagement() {
                       : "N/A";
                     const isLoading = actionLoading[order.id];
                     const canMarkReceived = order.return_status === "RETURN_PICKUP_SCHEDULED" || order.return_status === "RETURN_IN_TRANSIT";
-                    const canProcessRefund = order.return_status === "RETURN_DELIVERED";
+                    const canProcessRefund = order.return_status === "RETURN_DELIVERED" && (!order.refund_status || order.refund_status === "REFUND_FAILED");
                     const isReturnFailed = order.return_status === "RETURN_FAILED";
 
                     const statusColors: Record<string, string> = {
@@ -889,7 +890,7 @@ export default function OrderManagement() {
                       RETURN_PICKUP_SCHEDULED: "bg-blue-100 text-blue-800",
                       RETURN_IN_TRANSIT: "bg-indigo-100 text-indigo-800",
                       RETURN_DELIVERED: "bg-green-100 text-green-800",
-                      RETURN_REFUND_INITIATED: "bg-purple-100 text-purple-800",
+                      RETURN_COMPLETED: "bg-green-100 text-green-800",
                       RETURN_FAILED: "bg-red-100 text-red-800",
                     };
 
@@ -898,7 +899,7 @@ export default function OrderManagement() {
                       RETURN_PICKUP_SCHEDULED: "Pickup Scheduled",
                       RETURN_IN_TRANSIT: "In Transit",
                       RETURN_DELIVERED: "Delivered to Warehouse",
-                      RETURN_REFUND_INITIATED: "Refund Initiated",
+                      RETURN_COMPLETED: "Return Completed",
                       RETURN_FAILED: "Return Failed",
                     };
 

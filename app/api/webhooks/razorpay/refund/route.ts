@@ -117,15 +117,25 @@ export async function POST(req: Request) {
     // We'll update: refund_status, payment_status, cancellation_status, razorpay_refund_id, refund error fields
     const updates: Record<string, any> = { refund_id: refundId || order.refund_id };
 
+    const isReturnRefund = order.return_status === "RETURN_DELIVERED";
+
     if (status === "created") {
       updates.refund_status = "REFUND_INITIATED"; // refund created in Razorpay
     } else if (status === "processed" || status === "completed" || status === "succeeded") {
       // processed = refund successful
       updates.refund_status = "REFUND_COMPLETED";
       updates.payment_status = "refunded";
-      updates.cancellation_status = "CANCELLED";
-      updates.order_status = "CANCELLED";
+      updates.refund_attempted_at = new Date().toISOString();
+      updates.refund_completed_at = new Date().toISOString();
       if (refundAmount) updates.refund_amount = refundAmount;
+
+      if (isReturnRefund) {
+        updates.return_status = "RETURN_COMPLETED";
+        updates.order_status = "RETURNED";
+      } else {
+        updates.cancellation_status = "CANCELLED";
+        updates.order_status = "CANCELLED";
+      }
 
       // Generate and send credit note if not already sent
       if (!order.credit_note_sent_at) {
@@ -174,6 +184,7 @@ export async function POST(req: Request) {
 
     } else if (status === "failed") {
       updates.refund_status = "REFUND_FAILED";
+      updates.refund_attempted_at = new Date().toISOString();
       updates.refund_error_reason = errorReason || null;
       updates.refund_error_description = errorDescription || null;
     } else {
