@@ -49,21 +49,31 @@ export default function SellerOrderDetails({ params }: any) {
   };
 
   const generateLabel = async () => {
-    await csrfFetch("/api/seller/shiprocket/generate-label", {
+    const res = await csrfFetch("/api/seller/shiprocket/generate-label", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
       body: JSON.stringify({ orderId: order.id }),
     });
-    alert("Label generated");
+    const data = await res.json();
+    if (data.label_url) {
+      window.open(data.label_url, "_blank");
+    } else {
+      alert(data.error || "Label generation failed");
+    }
   };
 
   const generateManifest = async () => {
-    await csrfFetch("/api/seller/shiprocket/generate-manifest-batch", {
+    const res = await csrfFetch("/api/seller/shiprocket/generate-manifest-batch", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
       body: JSON.stringify({ order_ids: [order.id] }),
     });
-    alert("Manifest generated");
+    const data = await res.json();
+    if (data.manifest?.manifest_url) {
+      window.open(data.manifest.manifest_url, "_blank");
+    } else {
+      alert(data.error || "Manifest generation failed");
+    }
   };
 
   const schedulePickup = async () => {

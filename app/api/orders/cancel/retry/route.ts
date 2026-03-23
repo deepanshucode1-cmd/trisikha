@@ -248,8 +248,9 @@ export async function POST(req: Request) {
 
           // Non-processed status (pending/created) — refund queued, webhook will finalize
           await supabase.from("orders").update({
+            refund_status: "REFUND_INITIATED",
+            refund_initiated_at: new Date().toISOString(),
             refund_id: result.id,
-            refund_attempted_at: new Date().toISOString(),
           }).eq("id", orderId);
 
           logPayment("return_refund_retry_pending", { orderId, refundId: result.id, status: result.status, adminId: user.id });
@@ -314,10 +315,6 @@ export async function POST(req: Request) {
       );
 
       if (!srRes.ok) {
-        await supabase.from("orders")
-          .update({ shiprocket_status: "SHIPPING_CANCELLATION_FAILED" })
-          .eq("id", orderId);
-
         logOrder("shiprocket_cancel_retry_failed", { orderId, shiprocketOrderId: order.shiprocket_order_id });
         return NextResponse.json(
           { error: "Shiprocket cancellation retry failed" },
@@ -359,8 +356,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // Atomic lock — only proceed if refund_status is still null or REFUND_FAILED
-    const { data: locked, error: lockError } = await supabase
+    // Atomic lock — only proceed if refund_status is null or REFUND_FAILED
+    const { data: lockResult, error: lockErr } = await supabase
       .from("orders")
       .update({
         refund_status: "REFUND_INITIATED",
@@ -369,29 +366,9 @@ export async function POST(req: Request) {
         refund_initiated_at: new Date().toISOString(),
       })
       .eq("id", orderId)
-      .in("refund_status", ["REFUND_FAILED"])
+      .or("refund_status.is.null,refund_status.eq.REFUND_FAILED")
       .eq("payment_status", "paid")
       .select("*");
-
-    // If REFUND_FAILED lock didn't match, try null (first-time refund after shiprocket cancel)
-    let lockResult = locked;
-    let lockErr = lockError;
-    if (!lockError && (!locked || locked.length === 0)) {
-      const { data: nullLock, error: nullLockError } = await supabase
-        .from("orders")
-        .update({
-          refund_status: "REFUND_INITIATED",
-          otp_code: null,
-          otp_expires_at: null,
-          refund_initiated_at: new Date().toISOString(),
-        })
-        .eq("id", orderId)
-        .is("refund_status", null)
-        .eq("payment_status", "paid")
-        .select("*");
-      lockResult = nullLock;
-      lockErr = nullLockError;
-    }
 
     if (lockErr || !lockResult || lockResult.length === 0) {
       logError(new Error("Unable to acquire refund lock for retry"), { orderId, error: lockErr?.message });
@@ -499,8 +476,9 @@ export async function POST(req: Request) {
       // Non-processed status (pending/created) — refund queued, webhook will finalize
       await supabase.from("orders")
         .update({
+          refund_status: "REFUND_INITIATED",
+          refund_initiated_at: new Date().toISOString(),
           refund_id: result.id,
-          refund_attempted_at: new Date().toISOString(),
         })
         .eq("id", orderId);
 

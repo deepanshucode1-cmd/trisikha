@@ -675,13 +675,21 @@ export async function POST(req: Request) {
               // Don't set credit_note_sent_at - allows retry
             }
           }
+
+          return NextResponse.json({
+            success: true,
+            refundAmount: refund_amount,
+            refundId: razorpay_refund_result.id,
+            creditNoteNumber: creditNoteNo,
+          });
         }
 
         // Razorpay returned a non-processed status (pending/created) — refund is queued
         // Save refund_id so the webhook can match it later
         await supabase.from("orders").update({
+          refund_status: "REFUND_INITIATED",
+          refund_initiated_at: new Date().toISOString(),
           refund_id: razorpay_refund_result.id,
-          refund_attempted_at: new Date().toISOString(),
         }).eq("id", orderId);
 
         logPayment("refund_pending", {

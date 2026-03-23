@@ -198,8 +198,9 @@ export async function POST(
     // Razorpay returned a non-processed status (pending/created) — refund is queued
     if (razorpayResult.status !== "processed" || !razorpayResult.amount) {
       await supabase.from("orders").update({
+        refund_status: "REFUND_INITIATED",
+        refund_initiated_at: new Date().toISOString(),
         refund_id: razorpayResult.id,
-        refund_attempted_at: new Date().toISOString(),
       }).eq("id", orderId);
 
       logPayment("return_refund_pending", {

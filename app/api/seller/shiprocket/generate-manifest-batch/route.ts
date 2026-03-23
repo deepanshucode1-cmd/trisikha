@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     // 1. Fetch orders
     const { data: orders } = await supabase
       .from("orders")
-      .select("id, shiprocket_awb_code, shiprocket_manifest_generated,shiprocket_shipment_id")
+      .select("id, shiprocket_awb_code, shiprocket_manifest_generated, shiprocket_shipment_id, shiprocket_manifest_batch_id")
       .in("id", order_ids);
 
     if (!orders?.length) {
@@ -81,8 +81,24 @@ export async function POST(req: Request) {
     }
 
     if (shipment_ids.length === 0) {
+      // All orders already manifested — return the existing manifest URL
+      const manifestedOrder = orders.find(o => o.shiprocket_manifest_generated);
+      if (manifestedOrder?.shiprocket_manifest_batch_id) {
+        const { data: existingBatch } = await supabase
+          .from("manifest_batches")
+          .select("*")
+          .eq("id", manifestedOrder.shiprocket_manifest_batch_id)
+          .single();
+
+        if (existingBatch?.manifest_url) {
+          return NextResponse.json({
+            success: true,
+            manifest: existingBatch,
+          });
+        }
+      }
       return NextResponse.json(
-        { error: "All selected orders already manifested." },
+        { error: "All selected orders already manifested but manifest URL not found." },
         { status: 400 }
       );
     }

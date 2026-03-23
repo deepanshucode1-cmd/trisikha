@@ -14,3 +14,7 @@
 - Return a generic 429 with remaining cooldown time
 
 **Priority:** Medium — not exploitable for data access, but can harass customers via email flooding.
+
+Tracking on courier website from awb has to be verified for return shipment
+verify the courier user selected is the one which is assigned
+verify return flow

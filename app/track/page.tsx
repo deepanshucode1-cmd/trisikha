@@ -160,7 +160,7 @@ function TrackOrderContent() {
       activities.push({
         srStatusLabel: "PAYMENT CONFIRMED",
         status: "Payment Confirmed",
-        detail: "Payment verified. Waiting for courier assignment by seller.",
+        detail: "Payment verified. Waiting for courier assignment by our team.",
         location: null,
         originalDate: paidDate,
         time: paidDate.toLocaleString('en-IN', {
