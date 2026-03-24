@@ -234,7 +234,6 @@ export async function POST(req: Request) {
             await supabase.from("orders").update({
               return_status: "RETURN_COMPLETED",
               refund_status: "REFUND_COMPLETED",
-              payment_status: "refunded",
               order_status: "RETURNED",
               refund_id: result.id,
               refund_amount: actualRefundAmount,
@@ -397,7 +396,6 @@ export async function POST(req: Request) {
         const { data: updatedOrder } = await supabase.from("orders")
           .update({
             refund_status: "REFUND_COMPLETED",
-            payment_status: "refunded",
             order_status: "CANCELLED",
             cancellation_status: "CANCELLED",
             refund_id: result.id,

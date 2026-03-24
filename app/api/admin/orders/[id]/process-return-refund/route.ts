@@ -232,7 +232,6 @@ export async function POST(
     const { data: updatedOrder, error: updateError } = await supabase.from("orders").update({
       return_status: "RETURN_COMPLETED",
       refund_status: "REFUND_COMPLETED",
-      payment_status: "refunded",
       order_status: "RETURNED",
       refund_id: razorpayResult.id,
       refund_amount: actualRefundAmount,

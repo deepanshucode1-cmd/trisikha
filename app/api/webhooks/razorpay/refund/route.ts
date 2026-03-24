@@ -124,7 +124,6 @@ export async function POST(req: Request) {
     } else if (status === "processed" || status === "completed" || status === "succeeded") {
       // processed = refund successful
       updates.refund_status = "REFUND_COMPLETED";
-      updates.payment_status = "refunded";
       updates.refund_attempted_at = new Date().toISOString();
       updates.refund_completed_at = new Date().toISOString();
       if (refundAmount) updates.refund_amount = refundAmount;

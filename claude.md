@@ -925,7 +925,7 @@ app.get('/api/user/export-data', authenticate, async (req, res) => {
 - guest_email, guest_phone (text)
 - total_amount, currency (numeric, text)
 - payment_id, payment_status (text)
-  → 'initiated' | 'paid' | 'failed' | 'refunded'
+  → 'initiated' | 'paid' | 'failed'
 - razorpay_order_id, refund_id (text)
 - refund_status → NULL | 'REFUND_INITIATED' | 'REFUND_COMPLETED' | 'REFUND_FAILED'
 - order_status → 'CHECKED_OUT' | 'CONFIRMED' | 'CANCELLATION_REQUESTED' | 'CANCELLED'

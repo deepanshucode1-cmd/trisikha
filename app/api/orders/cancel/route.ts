@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     }
 
     if (order.cancellation_status === "CANCELLED") {
-      return NextResponse.json({ message: "Order already cancelled" });
+      return NextResponse.json({ success: true, message: "Order already cancelled" });
     }
 
     if (order.order_status === "CHECKED_OUT") {
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
 
     // ✅ Block duplicate final cancellation
     if (order.order_status === "CANCELLED") {
-      return NextResponse.json({ message: "Order already cancelled" });
+      return NextResponse.json({ success: true, message: "Order already cancelled" });
     }
 
     // Check if this is a return request (post-pickup or delivered)
@@ -119,6 +119,7 @@ export async function POST(req: Request) {
       // Check if return already requested
       if (order.return_status && order.return_status !== "NOT_REQUESTED") {
         return NextResponse.json({
+          success: true,
           message: "Return already requested",
           returnStatus: order.return_status
         });
@@ -134,11 +135,11 @@ export async function POST(req: Request) {
     }
 
     if (order.refund_status === "REFUND_INITIATED") {
-      return NextResponse.json({ message: "Refund already in process" });
+      return NextResponse.json({ success: true, message: "Refund already in process" });
     }
 
     if (order.refund_status === "REFUND_COMPLETED") {
-      return NextResponse.json({ message: "Order already refunded" });
+      return NextResponse.json({ success: true, message: "Order already refunded" });
     }
 
     // ✅ 2. OTP Verification with attempt tracking
@@ -593,7 +594,6 @@ export async function POST(req: Request) {
           // Step 2: Update order with refund details (credit_note_sent_at set later after email)
           const { data: refund_update_data, error: refund_update_error } = await supabase.from("orders").update({
             refund_status: "REFUND_COMPLETED",
-            payment_status: "refunded",
             order_status: "CANCELLED",
             cancellation_status: "CANCELLED",
             refund_id: razorpay_refund_result.id,
@@ -728,6 +728,7 @@ export async function POST(req: Request) {
 
     // ✅ 7. If nothing matched, return safe state response
     return NextResponse.json({
+      success: true,
       message: "Cancellation already in progress",
       status: freshOrder.cancellation_status,
     }, { status: 200 });
