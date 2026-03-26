@@ -12,11 +12,11 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("orders")
-      .select("id, shiprocket_status, created_at, total_amount, shipping_first_name, shipping_last_name")
+      .select("id, shiprocket_status, refund_status, created_at, total_amount, shipping_first_name, shipping_last_name")
       .eq("payment_status", "paid")
       .eq("order_status", "CANCELLATION_REQUESTED")
       .eq("cancellation_status", "CANCELLATION_REQUESTED")
-      .or("shiprocket_status.eq.SHIPPING_CANCELLATION_FAILED,refund_status.eq.REFUND_FAILED");
+      .or("refund_status.eq.REFUND_FAILED,and(shiprocket_status.eq.SHIPPING_CANCELLATION_FAILED,refund_status.is.null)");
 
     if (error) {
       logError(new Error(error.message), {

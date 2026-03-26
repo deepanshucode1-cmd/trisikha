@@ -316,15 +316,27 @@ export default function OrderManagement() {
         throw new Error(result.error || "Failed to ship order");
       }
 
-      alert("Order shipped successfully! Label and manifest generated.");
-
-      // Open label in new tab if available (sanitized to prevent XSS)
-      const safeLabelUrl = sanitizeUrl(result.label_url);
-      if (safeLabelUrl) {
-        window.open(safeLabelUrl, "_blank");
+      // Download label via separate API call
+      const labelRes = await csrfFetch("/api/seller/shiprocket/generate-label", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ orderId }),
+      });
+      const labelData = await labelRes.json();
+      if (labelData.label_url) {
+        window.open(sanitizeUrl(labelData.label_url), "_blank");
       }
 
-      window.location.reload();
+      // Download manifest via separate API call
+      const manifestRes = await csrfFetch("/api/seller/shiprocket/generate-manifest-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ order_ids: [orderId] }),
+      });
+      const manifestData = await manifestRes.json();
+      if (manifestData.manifest?.manifest_url) {
+        window.open(sanitizeUrl(manifestData.manifest.manifest_url), "_blank");
+      }
     } catch (err: unknown) {
       console.error("Ship order error:", err);
       const message = err instanceof Error ? err.message : "Failed to ship order";

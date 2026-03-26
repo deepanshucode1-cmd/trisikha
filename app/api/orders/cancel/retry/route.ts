@@ -356,18 +356,25 @@ export async function POST(req: Request) {
     }
 
     // Atomic lock — only proceed if refund_status is null or REFUND_FAILED
-    const { data: lockResult, error: lockErr } = await supabase
+    let lockQuery = supabase
       .from("orders")
       .update({
         refund_status: "REFUND_INITIATED",
+        otp_status: null,
         otp_code: null,
         otp_expires_at: null,
         refund_initiated_at: new Date().toISOString(),
       })
       .eq("id", orderId)
-      .or("refund_status.is.null,refund_status.eq.REFUND_FAILED")
-      .eq("payment_status", "paid")
-      .select("*");
+      .eq("payment_status", "paid");
+
+    if (freshOrder.refund_status === null) {
+      lockQuery = lockQuery.is("refund_status", null);
+    } else {
+      lockQuery = lockQuery.eq("refund_status", "REFUND_FAILED");
+    }
+
+    const { data: lockResult, error: lockErr } = await lockQuery.select("*");
 
     if (lockErr || !lockResult || lockResult.length === 0) {
       logError(new Error("Unable to acquire refund lock for retry"), { orderId, error: lockErr?.message });
