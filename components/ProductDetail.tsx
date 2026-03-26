@@ -161,7 +161,7 @@ export default function ProductDetail(product: Product) {
     <div className="min-h-screen bg-white text-gray-800">
 
       {/* Header */}
-      <Header/>
+      <Header />
 
 
       {/* Product Section */}
@@ -181,7 +181,7 @@ export default function ProductDetail(product: Product) {
         <div className="md:w-1/2 flex flex-col gap-4">
           <h1 className="text-2xl font-bold">{product.name}</h1>
 
-          {/* Rating summary - temporarily commented out
+          {/* Rating summary - clickable to scroll to reviews */}
           {(product.reviewCount ?? 0) > 0 ? (
             <a href="#reviews" className="flex items-center gap-2 hover:opacity-80 transition-opacity w-fit">
               <StarRating rating={product.avgRating || 0} size="sm" showCount count={product.reviewCount} />
@@ -190,7 +190,7 @@ export default function ProductDetail(product: Product) {
             <a href="#reviews" className="text-sm text-gray-400 hover:text-gray-600 transition-colors w-fit">
               No ratings yet — be the first to review!
             </a>
-          )} */}
+          )}
 
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold text-green-700">Rs {product.price.toFixed(2)}</span>
@@ -213,11 +213,10 @@ export default function ProductDetail(product: Product) {
             <button
               onClick={handleAddToCart}
               disabled={isOutOfStock}
-              className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                isOutOfStock
+              className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${isOutOfStock
                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   : 'bg-white border-2 border-green-700 text-green-700 hover:bg-green-50'
-              }`}
+                }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -227,11 +226,10 @@ export default function ProductDetail(product: Product) {
             <button
               onClick={handleBuyNow}
               disabled={isOutOfStock}
-              className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-                isOutOfStock
+              className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${isOutOfStock
                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   : 'bg-green-700 text-white hover:bg-green-800'
-              }`}
+                }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -332,7 +330,7 @@ export default function ProductDetail(product: Product) {
       </section>
 
       {/* Footer */}
-      <Footer/>
+      <Footer />
     </div>
   );
 }
