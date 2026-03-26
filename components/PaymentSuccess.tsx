@@ -157,7 +157,7 @@ export default function PaymentSuccessPage() {
           <div className="p-6 border-t border-[#6a684d]/30">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Link
-                href={`/track?order_id=${order.id}`}
+                href={`/track?order_id=${order.id}${guestEmail ? `&email=${encodeURIComponent(guestEmail)}` : ""}`}
                 className="flex items-center justify-center gap-2 bg-[#e0dbb5] text-[#3d3c30] px-6 py-3.5 rounded-xl font-semibold hover:bg-white transition-all duration-300 shadow-lg hover:shadow-xl"
               >
                 <MapPin className="w-4 h-4" />

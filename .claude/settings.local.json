@@ -46,7 +46,8 @@
       "Bash(npx vitest run:*)",
       "Bash(git -C /home/nishant/Desktop/trisikha/trisikha log --oneline -5)",
       "Bash(git -C /home/nishant/Desktop/trisikha/trisikha add:*)",
-      "Bash(git -C /home/nishant/Desktop/trisikha/trisikha push origin selling)"
+      "Bash(git -C /home/nishant/Desktop/trisikha/trisikha push origin selling)",
+      "WebFetch(domain:apidocs.shiprocket.in)"
     ]
   }
 }

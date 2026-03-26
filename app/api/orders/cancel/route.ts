@@ -74,21 +74,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid order" }, { status: 400 });
     }
 
-    if (order.cancellation_status === null) {
+    if (order.otp_status === null) {
       return NextResponse.json({ error: "Cancellation not initiated" }, { status: 400 });
     }
 
-    if (order.cancellation_status === "CANCELLED") {
+    if (order.cancellation_status === "CANCELLED" || order.order_status === "CANCELLED") {
       return NextResponse.json({ success: true, message: "Order already cancelled" });
     }
 
     if (order.order_status === "CHECKED_OUT") {
       return NextResponse.json({ error: "Order not confirmed yet" }, { status: 400 });
-    }
-
-    // ✅ Block duplicate final cancellation
-    if (order.order_status === "CANCELLED") {
-      return NextResponse.json({ success: true, message: "Order already cancelled" });
     }
 
     // Check if this is a return request (post-pickup or delivered)
@@ -143,7 +138,7 @@ export async function POST(req: Request) {
     }
 
     // ✅ 2. OTP Verification with attempt tracking
-    if (order.cancellation_status === "OTP_SENT") {
+    if (order.otp_status === "SENT") {
       // Check if OTP is locked
       if (order.otp_locked_until && new Date(order.otp_locked_until) > new Date()) {
         logSecurityEvent("otp_verification_locked", {
@@ -225,6 +220,7 @@ export async function POST(req: Request) {
           return_status: "RETURN_REQUESTED",
           return_requested_at: new Date().toISOString(),
           return_reason: reason,
+          otp_status: "VERIFIED",
           otp_code: null,
           otp_expires_at: null,
           otp_attempts: 0,
@@ -236,6 +232,7 @@ export async function POST(req: Request) {
         await supabase.from("orders").update({
           order_status: "CANCELLATION_REQUESTED",
           cancellation_status: "CANCELLATION_REQUESTED",
+          otp_status: "VERIFIED",
           otp_code: null,
           otp_expires_at: null,
           otp_attempts: 0,
@@ -485,6 +482,7 @@ export async function POST(req: Request) {
       if (!token) {
         await supabase.from("orders").update({
           shiprocket_status: "SHIPPING_CANCELLATION_FAILED",
+          otp_status: null,
           otp_code: null,
           otp_expires_at: null,
         }).eq("id", orderId);
@@ -510,6 +508,7 @@ export async function POST(req: Request) {
       if (!srRes.ok) {
         await supabase.from("orders").update({
           shiprocket_status: "SHIPPING_CANCELLATION_FAILED",
+          otp_status: null,
           otp_code: null,
           otp_expires_at: null,
         }).eq("id", orderId);
@@ -520,6 +519,7 @@ export async function POST(req: Request) {
 
       await supabase.from("orders").update({
         shiprocket_status: "SHIPPING_CANCELLED",
+        otp_status: null,
         otp_code: null,
         otp_expires_at: null,
       }).eq("id", orderId);
@@ -532,6 +532,7 @@ export async function POST(req: Request) {
       .from("orders")
       .update({
         refund_status: "REFUND_INITIATED",
+        otp_status: null,
         otp_code: null,
         otp_expires_at: null,
         refund_initiated_at: new Date().toISOString(),
@@ -602,6 +603,7 @@ export async function POST(req: Request) {
             refund_attempted_at: new Date().toISOString(),
             refund_completed_at: new Date().toISOString(),
             reason_for_cancellation: reason,
+            otp_status: null,
             otp_code: null,
             otp_expires_at: null,
             otp_attempts: 0,
@@ -712,6 +714,7 @@ export async function POST(req: Request) {
           refund_error_code: (err as any).error?.code || "UNKNOWN_ERROR",
           refund_error_reason: (err as any).error?.reason || "No reason",
           refund_error_description: (err as any).error?.description || "No description",
+          otp_status: null,
           otp_code: null,
           otp_expires_at: null,
         }).eq("id", orderId);

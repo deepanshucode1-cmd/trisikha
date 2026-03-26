@@ -20,7 +20,7 @@ export interface Product {
 const SellProducts = () => {
   const addToCart = useCartStore((state) => state.addToCart);
 
- const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,12 +94,12 @@ const SellProducts = () => {
             </p>
           </div>
 
-                {/* Loader */}
-      {loading && (
-        <div className="flex justify-center items-center py-20">
-          <div className="h-12 w-12 border-4 border-[#e0dbb5] border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
+          {/* Loader */}
+          {loading && (
+            <div className="flex justify-center items-center py-20">
+              <div className="h-12 w-12 border-4 border-[#e0dbb5] border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
 
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
@@ -128,7 +128,7 @@ const SellProducts = () => {
                   <h3 className="text-xl font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-green-700 transition-colors">
                     {product.name}
                   </h3>
-                  {product.review_count > 0 ? (
+                  {(product.review_count ?? 0) > 0 ? (
                     <div className="mb-2">
                       <StarRating
                         rating={product.avg_rating || 0}

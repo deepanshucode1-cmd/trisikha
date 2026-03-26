@@ -178,7 +178,8 @@ function baseOrder(overrides: Record<string, any> = {}) {
   return {
     id: UUID,
     order_status: "CONFIRMED",
-    cancellation_status: "OTP_SENT",
+    cancellation_status: null,
+    otp_status: "SENT",
     return_status: "NOT_REQUESTED",
     payment_status: "paid",
     refund_status: null,

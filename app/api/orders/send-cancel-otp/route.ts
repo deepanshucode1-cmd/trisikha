@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     const { error: updateError } = await supabase
       .from("orders")
       .update({
-        cancellation_status: "OTP_SENT",
+        otp_status: "SENT",
         otp_code: otp,
         otp_expires_at: expiresAt.toISOString(),
         otp_attempts: 0,

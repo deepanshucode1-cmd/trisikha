@@ -887,8 +887,8 @@ function OrderSummary({
         {items.map((item) => (
           <div key={item.id} className="flex gap-4">
             <div className="relative w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-              {item.image ? (
-                <Image src={item.image} alt={item.name} fill className="object-cover" />
+              {item.image_url ? (
+                <Image src={item.image_url} alt={item.name} fill className="object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-400">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
