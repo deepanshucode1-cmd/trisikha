@@ -7,7 +7,7 @@ import { Leaf, Award, Lightbulb, ArrowRight, Users, Target, Heart } from 'lucide
 export default function AboutUs() {
   return (
     <div className="min-h-screen bg-[#f5f5f0] text-[#3d3c30]">
-      <Header/>
+      <Header />
 
       <main>
         {/* Hero Section */}
@@ -39,23 +39,6 @@ export default function AboutUs() {
             <div className="w-6 h-10 border-2 border-white/40 rounded-full flex justify-center pt-2">
               <div className="w-1.5 h-3 bg-white/60 rounded-full" />
             </div>
-          </div>
-        </section>
-
-        {/* Stats Section */}
-        <section className="bg-[#3d3c30] py-12">
-          <div className="max-w-6xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { number: '3+', label: 'Years Experience' },
-              { number: '5000+', label: 'Happy Farmers' },
-              { number: '100%', label: 'Organic Products' },
-              { number: '15+', label: 'States Covered' },
-            ].map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-3xl md:text-4xl font-bold text-[#e0dbb5] mb-1">{stat.number}</div>
-                <div className="text-sm text-[#c5c0a0]">{stat.label}</div>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -134,7 +117,7 @@ export default function AboutUs() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
               {[
                 {
                   icon: Leaf,
@@ -146,16 +129,9 @@ export default function AboutUs() {
                 {
                   icon: Award,
                   title: 'Quality',
-                  description: 'Delivering premium, nutrient-rich organic products backed by rigorous testing.',
+                  description: 'Delivering premium, nutrient-rich organic products.',
                   color: 'bg-amber-500/20',
                   iconColor: 'text-amber-400'
-                },
-                {
-                  icon: Lightbulb,
-                  title: 'Innovation',
-                  description: 'Continuously improving our processes to meet evolving agricultural needs.',
-                  color: 'bg-blue-500/20',
-                  iconColor: 'text-blue-400'
                 }
               ].map((value, index) => (
                 <div
@@ -207,7 +183,7 @@ export default function AboutUs() {
         </section>
       </main>
 
-      <Footer/>
+      <Footer />
     </div>
   );
 }

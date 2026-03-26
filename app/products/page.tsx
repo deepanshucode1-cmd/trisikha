@@ -3,7 +3,7 @@ import Header from '@/components/Header';
 import SellProducts from '@/components/Products';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Leaf, Shield, Recycle, Truck, BadgeCheck, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Leaf, Shield, Recycle, Truck, BadgeCheck, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function Products() {
   return (
@@ -23,11 +23,7 @@ export default function Products() {
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30" />
 
           <div className="absolute text-center text-white z-10 px-6">
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 mb-6 animate-fade-in-up">
-              <Sparkles className="w-4 h-4 text-[#e0dbb5]" />
-              <span className="text-sm font-medium">Premium Quality</span>
-            </div>
-            <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 tracking-tight animate-fade-in-up animation-delay-100">
+<h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 tracking-tight animate-fade-in-up animation-delay-100">
               Our <span className="text-[#e0dbb5]">Products</span>
             </h1>
             <p className="text-lg md:text-xl max-w-2xl mx-auto font-light text-gray-200 animate-fade-in-up animation-delay-200">
@@ -37,10 +33,6 @@ export default function Products() {
               <div className="flex items-center gap-2 text-sm text-white/80">
                 <CheckCircle2 className="w-4 h-4 text-green-400" />
                 100% Organic
-              </div>
-              <div className="flex items-center gap-2 text-sm text-white/80">
-                <CheckCircle2 className="w-4 h-4 text-green-400" />
-                Lab Tested
               </div>
             </div>
           </div>
@@ -75,7 +67,7 @@ export default function Products() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
               {[
                 {
                   icon: Leaf,
@@ -99,25 +91,11 @@ export default function Products() {
                   iconColor: 'text-emerald-400'
                 },
                 {
-                  icon: BadgeCheck,
-                  title: 'Lab Tested',
-                  description: 'Every batch is rigorously tested for quality and nutrient content.',
-                  color: 'bg-amber-500/20',
-                  iconColor: 'text-amber-400'
-                },
-                {
                   icon: Truck,
                   title: 'Pan-India Delivery',
                   description: 'Fast and reliable shipping to all corners of the country.',
                   color: 'bg-purple-500/20',
                   iconColor: 'text-purple-400'
-                },
-                {
-                  icon: Sparkles,
-                  title: 'Premium Quality',
-                  description: 'Carefully crafted products that deliver exceptional results.',
-                  color: 'bg-rose-500/20',
-                  iconColor: 'text-rose-400'
                 }
               ].map((benefit, index) => (
                 <div
