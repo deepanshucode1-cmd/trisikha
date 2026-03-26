@@ -181,7 +181,7 @@ export default function ProductDetail(product: Product) {
         <div className="md:w-1/2 flex flex-col gap-4">
           <h1 className="text-2xl font-bold">{product.name}</h1>
 
-          {/* Rating summary - clickable to scroll to reviews */}
+          {/* Rating summary - temporarily commented out
           {(product.reviewCount ?? 0) > 0 ? (
             <a href="#reviews" className="flex items-center gap-2 hover:opacity-80 transition-opacity w-fit">
               <StarRating rating={product.avgRating || 0} size="sm" showCount count={product.reviewCount} />
@@ -190,7 +190,7 @@ export default function ProductDetail(product: Product) {
             <a href="#reviews" className="text-sm text-gray-400 hover:text-gray-600 transition-colors w-fit">
               No ratings yet — be the first to review!
             </a>
-          )}
+          )} */}
 
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold text-green-700">Rs {product.price.toFixed(2)}</span>
