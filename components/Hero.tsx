@@ -36,9 +36,9 @@ const Hero = () => {
           </div>
 
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] drop-shadow-lg animate-fade-in-up animation-delay-100">
-            Empower Your <br className="hidden sm:block" />
+            Help Your <br className="hidden sm:block" />
             <span className="sm:hidden"> </span>
-            <span className="text-[#e0dbb5]">Farming</span>
+            <span className="text-[#e0dbb5]">Garden become full of life</span>
           </h1>
           <p className="mt-4 sm:mt-6 text-base sm:text-lg md:text-xl text-gray-100/90 max-w-xl lg:max-w-2xl leading-relaxed drop-shadow-md animate-fade-in-up animation-delay-200">
             Our all-natural formula is packed with organic goodness, enriching the soil and fostering a flourishing ecosystem for your beloved plants.

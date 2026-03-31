@@ -83,7 +83,7 @@ export default function Offerings() {
               Our Products
             </h2>
             <p className="text-[#c5c0a0] mt-3 max-w-md">
-              Discover our range of premium organic manure products for healthier crops.
+              We offer our product in two weight varinants.
             </p>
           </div>
           <Link

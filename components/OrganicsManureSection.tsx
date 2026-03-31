@@ -59,13 +59,13 @@ const OrganicManureSection = () => {
           <div className="bg-[#464433] rounded-2xl p-8 shadow-md hover:shadow-xl hover:scale-105 transition-transform">
             <Globe2 className="mx-auto mb-4 w-10 h-10" />
             <h3 className="text-xl font-semibold mb-2">Eco-Friendly</h3>
-            <p>Supports sustainable, chemical-free agriculture.</p>
+            <p>Supports sustainable agriculture.</p>
           </div>
         </div>
 
         {/* Closing Line */}
         <div className="text-center mt-20">
-          <p className="text-2xl italic font-light tracking-wide">
+          <p className="text-2xl font-bold tracking-wide">
             “Healthy Soil, Healthy Future.”
           </p>
         </div>

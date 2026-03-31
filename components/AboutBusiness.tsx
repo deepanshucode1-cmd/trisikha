@@ -11,7 +11,7 @@ const AboutBusiness = () => {
             Driving a Sustainable Tomorrow
           </h2>
           <p className='text-base sm:text-lg lg:text-xl mb-6 sm:mb-8 text-center lg:text-left max-w-lg mx-auto lg:mx-0 leading-relaxed text-[#c5c0a0]'>
-            Trishikhaorganics is dedicated to promoting sustainable agricultural practices through our high-quality organic manure products.
+            Trishikhaorganics is dedicated to promote sustainable agricultural practices through our high-quality organic manure products.
           </p>
 
           {/* Small Image - Hidden on mobile, shown on tablet+ */}
