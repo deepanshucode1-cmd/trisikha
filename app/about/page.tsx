@@ -47,10 +47,7 @@ export default function AboutUs() {
           <div className="max-w-6xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="order-2 lg:order-1">
-                <span className="inline-flex items-center gap-2 text-[#6a684d] text-sm font-medium mb-4">
-                  <Heart className="w-4 h-4" />
-                  Our Journey
-                </span>
+
                 <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">
                   Our <span className="text-[#6a684d]">Story</span>
                 </h2>
