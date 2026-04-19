@@ -23,11 +23,11 @@ export default function Products() {
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30" />
 
           <div className="absolute text-center text-white z-10 px-6">
-<h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 tracking-tight animate-fade-in-up animation-delay-100">
+            <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 tracking-tight animate-fade-in-up animation-delay-100">
               Our <span className="text-[#e0dbb5]">Products</span>
             </h1>
             <p className="text-lg md:text-xl max-w-2xl mx-auto font-light text-gray-200 animate-fade-in-up animation-delay-200">
-              Discover our high-quality organic manure products designed for sustainable agriculture.
+              Discover our high-quality organic manure products aimed to improve soil fertility.
             </p>
             <div className="flex flex-wrap justify-center gap-4 mt-8 animate-fade-in-up animation-delay-300">
               <div className="flex items-center gap-2 text-sm text-white/80">
@@ -130,7 +130,7 @@ export default function Products() {
                   Elevate Your Farming
                 </h2>
                 <p className="text-xl text-[#c5c0a0] mb-10 max-w-2xl mx-auto">
-                  Experience the difference with our premium organic solutions. Transform your soil, transform your harvest.
+                  Experience the difference with our premium organic solutions. Transform your soil, transform your harvest or may be your garden.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link

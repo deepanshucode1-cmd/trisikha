@@ -119,7 +119,7 @@ export default function AboutUs() {
                 {
                   icon: Leaf,
                   title: 'Sustainability',
-                  description: 'Promoting eco-friendly farming to preserve the planet for future generations.',
+                  description: 'Promoting eco-friendly farming and gardening to preserve the planet for future generations.',
                   color: 'bg-green-500/20',
                   iconColor: 'text-green-400'
                 },

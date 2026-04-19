@@ -19,13 +19,6 @@ interface ReturnInfo {
   isReturn: boolean;
 }
 
-interface CancelResult {
-  refundAmount?: number;
-  refundId?: string;
-  creditNoteNumber?: string;
-  pending?: boolean;
-}
-
 // Validation rules based on backend schema
 const validation = {
   orderId: {
@@ -57,7 +50,6 @@ export default function CancelOrderPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [returnResult, setReturnResult] = useState<ReturnResult | null>(null);
-  const [cancelResult, setCancelResult] = useState<CancelResult | null>(null);
   const [returnInfo, setReturnInfo] = useState<ReturnInfo | null>(null); // Return info before confirmation
 
   // Validation state
@@ -183,7 +175,6 @@ export default function CancelOrderPage() {
     if (otpError || reasonError) return;
 
     setError(null);
-    setInfo(null);
     setLoading(true);
 
     try {
@@ -209,19 +200,6 @@ export default function CancelOrderPage() {
           originalAmount: data.originalAmount,
           shippingDeduction: data.shippingDeduction,
         });
-      } else if (data.refundAmount || data.refundId || data.pending) {
-        // Cancellation with refund data (completed or pending)
-        setCancelResult({
-          refundAmount: data.refundAmount,
-          refundId: data.refundId,
-          creditNoteNumber: data.creditNoteNumber,
-          pending: data.pending,
-        });
-      }
-
-      // Show info message for idempotent responses (e.g. "Order already cancelled", "Refund already in process")
-      if (data.message) {
-        setInfo(data.message);
       }
 
       setStep("DONE");
@@ -260,7 +238,7 @@ export default function CancelOrderPage() {
             <StepConnector completed={step !== "FORM"} />
             <StepIndicator number={2} label="Verify" active={step === "OTP"} completed={step === "DONE"} />
             <StepConnector completed={step === "DONE"} />
-            <StepIndicator number={3} label="Done" active={step === "DONE"} completed={step === "DONE"} />
+            <StepIndicator number={3} label="Done" active={step === "DONE"} completed={false} />
           </div>
         </div>
 
@@ -276,16 +254,6 @@ export default function CancelOrderPage() {
                 <p className="text-sm font-medium text-red-800">Error</p>
                 <p className="text-sm text-red-600">{error}</p>
               </div>
-            </div>
-          )}
-
-          {/* Info Message */}
-          {info && !error && (
-            <div className="mx-6 mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-              <svg className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-sm text-blue-700">{info}</p>
             </div>
           )}
 
@@ -496,22 +464,12 @@ export default function CancelOrderPage() {
           {/* Step 3: Success */}
           {step === "DONE" && (
             <div className="p-6 text-center">
-              {/* Icon */}
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
-                info && !returnResult?.isReturn && !cancelResult ? "bg-blue-100" : "bg-green-100"
-              }`}>
-                {info && !returnResult?.isReturn && !cancelResult ? (
-                  <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
 
-              {/* 1. Return scheduled */}
               {returnResult?.isReturn ? (
                 <>
                   <h2 className="text-2xl font-bold text-gray-800 mb-2">Return Scheduled</h2>
@@ -519,6 +477,7 @@ export default function CancelOrderPage() {
                     Your return pickup has been scheduled. Our courier partner will contact you shortly.
                   </p>
 
+                  {/* Refund Breakdown */}
                   <div className="bg-[#f5f5f0] rounded-lg p-4 mb-6 text-left">
                     <h3 className="font-semibold text-gray-800 mb-3">Refund Breakdown</h3>
                     <div className="space-y-2 text-sm">
@@ -549,70 +508,21 @@ export default function CancelOrderPage() {
                     </div>
                   </div>
                 </>
-
-              ) : cancelResult && !cancelResult.pending ? (
-                /* 2. Refund completed */
-                <>
-                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Cancelled &amp; Refunded</h2>
-                  <p className="text-gray-600 mb-6 max-w-sm mx-auto">
-                    Your order has been cancelled and a refund of <span className="font-semibold text-gray-800">₹{cancelResult.refundAmount?.toFixed(2)}</span> has been processed.
-                  </p>
-
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-left">
-                    <div className="flex items-start gap-2 text-sm text-green-800">
-                      <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div>
-                        <p className="font-medium">Refund processed</p>
-                        <p className="mt-1">The amount will reflect in your account within 5-7 business days depending on your bank and payment method.</p>
-                        {cancelResult.creditNoteNumber && (
-                          <p className="mt-1">Credit note <span className="font-medium">{cancelResult.creditNoteNumber}</span> has been emailed to you.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </>
-
-              ) : cancelResult?.pending ? (
-                /* 3. Refund pending */
+              ) : (
                 <>
                   <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Cancelled</h2>
                   <p className="text-gray-600 mb-6 max-w-sm mx-auto">
-                    Your order has been successfully cancelled.
+                    Your order has been successfully cancelled. If your payment was already processed, the refund will be initiated automatically.
                   </p>
 
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
-                    <div className="flex items-start gap-2 text-sm text-amber-800">
-                      <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="bg-[#f5f5f0] rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                      <svg className="w-5 h-5 text-[#3d3c30]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <div>
-                        <p className="font-medium">Refund initiated</p>
-                        <p className="mt-1">
-                          A refund of <span className="font-semibold">₹{cancelResult.refundAmount?.toFixed(2)}</span> has been initiated and will be processed shortly. This typically takes 5-7 business days depending on your bank and payment method.
-                        </p>
-                      </div>
+                      Refund typically takes 5-7 business days or more depending on your bank
                     </div>
                   </div>
-                </>
-
-              ) : info ? (
-                /* 4. Idempotent responses (already cancelled, already refunded, etc.) */
-                <>
-                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Request Processed</h2>
-                  <p className="text-gray-600 mb-6 max-w-sm mx-auto">
-                    {info}
-                  </p>
-                </>
-
-              ) : (
-                /* 5. Default — cancelled, no refund (e.g. unpaid order) */
-                <>
-                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Order Cancelled</h2>
-                  <p className="text-gray-600 mb-6 max-w-sm mx-auto">
-                    Your order has been successfully cancelled.
-                  </p>
                 </>
               )}
 

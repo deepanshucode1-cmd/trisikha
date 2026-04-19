@@ -8,7 +8,7 @@ const AboutBusiness = () => {
         {/* Text Content */}
         <div className="text-[#e0dbb5] flex flex-col justify-center order-2 lg:order-1">
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 text-center lg:text-left leading-tight">
-            Driving a Sustainable Tomorrow
+            Enriching gardens and fields
           </h2>
           <p className='text-base sm:text-lg lg:text-xl mb-6 sm:mb-8 text-center lg:text-left max-w-lg mx-auto lg:mx-0 leading-relaxed text-[#c5c0a0]'>
             Trishikhaorganics is dedicated to promote sustainable agricultural practices through our high-quality organic manure products.
@@ -31,7 +31,7 @@ const AboutBusiness = () => {
         <div className="order-1 lg:order-2">
           <div className="relative w-full aspect-[4/3] sm:aspect-[16/10] lg:aspect-[4/3] overflow-hidden rounded-xl shadow-lg transition-transform duration-300 hover:scale-[1.02] hover:shadow-xl">
             <Image
-              src="/about_business2.jpg"
+              src="/garden.jpg"
               alt="Sustainable farm field"
               fill
               className='object-cover'
