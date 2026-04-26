@@ -24,7 +24,7 @@ export default function AboutUs() {
                 <div className="absolute text-center text-white z-10">
                   <h1 className="text-5xl md:text-6xl font-bold mb-6">About Trishikha Organics</h1>
                   <p className="text-xl max-w-3xl mx-auto mb-8">
-                    Pioneering sustainable agriculture with premium organic manure solutions. Rooted in nature, committed to a greener future.
+                    Promoting sustainable agriculture with premium organic manure solutions. Rooted in nature, committed to a greener future.
                   </p>
                 </div>
               </section>
