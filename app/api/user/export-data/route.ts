@@ -48,7 +48,6 @@ export async function GET(request: Request) {
         total_amount,
         currency,
         payment_status,
-        shipping_status,
         shipping_first_name,
         shipping_last_name,
         shipping_address_line1,

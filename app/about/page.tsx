@@ -55,7 +55,7 @@ export default function AboutUs() {
                   Founded in 2022, Trishikha Organics began as a small family farm dedicated to eco-friendly practices. Today, we&apos;re a leading provider of high-quality organic manure, helping farmers nationwide nurture their soil naturally.
                 </p>
                 <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-                  Our journey is driven by a passion for sustainability, innovation, and community empowerment. We believe in giving back to the earth what we take from it.
+                  Our journey is driven by a passion for sustainability. We believe in giving back to the earth what we take from it.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm">

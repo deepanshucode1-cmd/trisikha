@@ -12,7 +12,6 @@ type Order = {
   total_amount: number;
   currency: string;
   payment_status: string;
-  shipping_status: string;
   order_status: string;
   shipping_first_name: string;
   shipping_last_name: string;
@@ -202,7 +201,7 @@ export default function MyDataPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to submit deletion request");
+        throw new Error(data.details || data.error || "Failed to submit deletion request");
       }
 
       // Update state with new pending deletion
@@ -240,7 +239,7 @@ export default function MyDataPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to send OTP");
+        throw new Error(data.details || data.error || "Failed to send OTP");
       }
 
       setCancelOtpSent(true);
@@ -272,7 +271,7 @@ export default function MyDataPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to cancel deletion request");
+        throw new Error(data.details || data.error || "Failed to cancel deletion request");
       }
 
       setPendingDeletion(null);
@@ -286,6 +285,24 @@ export default function MyDataPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const isSessionExpiredError = (msg: string) => /session/i.test(msg);
+
+  const handleLoginAgain = () => {
+    setStep("email");
+    setSessionToken("");
+    setOtp("");
+    setOrders([]);
+    setPendingDeletion(null);
+    setShowDeleteConfirm(false);
+    setShowCancelConfirm(false);
+    setDeletePhrase("");
+    setCancelOtp("");
+    setCancelOtpSent(false);
+    setCancelPhrase("");
+    setError("");
+    setSuccess("");
   };
 
   const formatDate = (dateStr: string) => {
@@ -320,9 +337,17 @@ export default function MyDataPage() {
         </div>
 
         {/* Error/Success Messages */}
-        {error && (
+        {error && !showDeleteConfirm && !showCancelConfirm && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-700">{error}</p>
+            {step === "data" && isSessionExpiredError(error) && (
+              <button
+                onClick={handleLoginAgain}
+                className="mt-2 text-sm text-red-700 underline hover:text-red-900"
+              >
+                Log in again
+              </button>
+            )}
           </div>
         )}
         {success && (
@@ -560,13 +585,13 @@ export default function MyDataPage() {
                             {formatCurrency(order.total_amount)}
                           </p>
                           <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${
-                            order.shipping_status === "delivered"
+                            order.order_status === "DELIVERED"
                               ? "bg-green-100 text-green-700"
-                              : order.shipping_status === "cancelled"
+                              : order.order_status === "CANCELLED" || order.order_status === "RETURNED"
                               ? "bg-red-100 text-red-700"
                               : "bg-yellow-100 text-yellow-700"
                           }`}>
-                            {order.shipping_status}
+                            {order.order_status.toLowerCase().replace(/_/g, " ")}
                           </span>
                         </div>
                       </div>
@@ -641,11 +666,26 @@ export default function MyDataPage() {
                 />
               </div>
 
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-700 text-sm">{error}</p>
+                  {step === "data" && isSessionExpiredError(error) && (
+                    <button
+                      onClick={handleLoginAgain}
+                      className="mt-2 text-sm text-red-700 underline hover:text-red-900"
+                    >
+                      Log in again
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
                     setShowDeleteConfirm(false);
                     setDeletePhrase("");
+                    setError("");
                   }}
                   className="flex-1 py-2 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
                 >
@@ -676,6 +716,20 @@ export default function MyDataPage() {
                   Your data will be kept safe after cancellation. You can request deletion again at any time.
                 </p>
               </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-700 text-sm">{error}</p>
+                  {step === "data" && isSessionExpiredError(error) && (
+                    <button
+                      onClick={handleLoginAgain}
+                      className="mt-2 text-sm text-red-700 underline hover:text-red-900"
+                    >
+                      Log in again
+                    </button>
+                  )}
+                </div>
+              )}
 
               {!cancelOtpSent ? (
                 <>
@@ -740,6 +794,7 @@ export default function MyDataPage() {
                   setCancelOtp("");
                   setCancelOtpSent(false);
                   setCancelPhrase("");
+                  setError("");
                 }}
                 className="w-full mt-3 py-2 text-gray-600 hover:text-gray-800"
               >

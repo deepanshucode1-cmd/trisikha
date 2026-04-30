@@ -63,12 +63,12 @@ export async function POST(request: Request) {
     // Use service client for database operations
     const supabase = createServiceClient();
 
-    // Check for active orders that cannot be deleted
+    // Block account deletion while any order is in an active fulfillment state.
     const { data: activeOrders } = await supabase
       .from("orders")
-      .select("id, shipping_status, payment_status")
+      .select("id, order_status, payment_status")
       .or(`user_id.eq.${userId},guest_email.eq.${userEmail}`)
-      .in("shipping_status", ["pending", "booked", "shipped"]);
+      .in("order_status", ["CONFIRMED", "PICKED_UP", "RETURN_REQUESTED", "CANCELLATION_REQUESTED"]);
 
     if (activeOrders && activeOrders.length > 0) {
       return NextResponse.json(

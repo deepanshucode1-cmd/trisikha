@@ -12,7 +12,7 @@ import {
 import { sendDeletionRequestConfirmation } from "@/lib/email";
 
 const requestSchema = z.object({
-  email: z.email({ message: "Invalid email address" }),
+  email: z.email({ message: "Invalid email address" }).max(255, "Email too long").trim(),
   sessionToken: z.string().min(1, "Session token required").max(100).trim(),
   confirmPhrase: z.literal("DELETE MY DATA", {
     message: "Please type 'DELETE MY DATA' to confirm",
@@ -84,12 +84,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check for active orders (pending, booked, shipped)
+    // Block deletion while any order is in an active fulfillment state.
     const { data: activeOrders, error: activeError } = await supabase
       .from("orders")
-      .select("id, shipping_status")
+      .select("id, order_status")
       .eq("guest_email", normalizedEmail)
-      .in("shipping_status", ["pending", "booked", "shipped"]);
+      .in("order_status", ["CONFIRMED", "PICKED_UP", "RETURN_REQUESTED", "CANCELLATION_REQUESTED"]);
 
     if (activeError) {
       throw new Error("Failed to check active orders");

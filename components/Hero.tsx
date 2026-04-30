@@ -62,21 +62,7 @@ const Hero = () => {
           </div>
 
           {/* Trust indicators */}
-          <div className="flex items-center gap-6 mt-10 animate-fade-in-up animation-delay-400">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                <Leaf className="w-5 h-5 text-green-400" />
-              </div>
-              <span className="text-sm text-white/80">Eco-Friendly</span>
-            </div>
-            <div className="w-px h-8 bg-white/20" />
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-[#e0dbb5]/20 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-[#e0dbb5]" />
-              </div>
-              <span className="text-sm text-white/80">Premium Quality</span>
-            </div>
-          </div>
+
         </div>
       </div>
 

@@ -345,3 +345,12 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 - [EY - Transforming Data Privacy DPDP Rules 2025](https://www.ey.com/en_in/insights/cybersecurity/transforming-data-privacy-digital-personal-data-protection-rules-2025)
 - [Official PIB Notification](https://static.pib.gov.in/WriteReadData/specificdocs/documents/2025/nov/doc20251117695301.pdf)
 - [MeitY - DPDP Rules 2025](https://www.meity.gov.in/documents/act-and-policies/digital-personal-data-protection-rules-2025-gDOxUjMtQWa)
+
+
+## ITEM 1 VIOLATIONS
+
+Section 4: Purpose Limitation
+
+Processing for incompatible purpose
+Excessive data collection
+Retention beyond necessity

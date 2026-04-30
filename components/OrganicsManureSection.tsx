@@ -17,12 +17,7 @@ const OrganicManureSection = () => {
               nutrients, boosts microbial life, and promotes sustainable farming
               — keeping both crops and nature healthy.
             </p>
-            <a
-              href="/about"
-              className="inline-block bg-[#4f4d3e] hover:bg-[#6a684d] text-[#e0dbb5] px-6 py-3 rounded-full font-medium transition"
-            >
-              Learn More
-            </a>
+
           </div>
 
           <div className="flex justify-center">

@@ -931,7 +931,6 @@ app.get('/api/user/export-data', authenticate, async (req, res) => {
 - order_status → 'CHECKED_OUT' | 'CONFIRMED' | 'CANCELLATION_REQUESTED' | 'CANCELLED'
 - cancellation_status → 'OTP_SENT' | 'CANCELLATION_REQUESTED' | 'CANCELLED'
 - shiprocket_order_id, shiprocket_awb_code, shiprocket_status (text)
-- shipping_status → 'pending' | 'booked' | 'shipped' | 'delivered' | 'cancelled'
 - tracking_url (text)
 - shipping_address (name, line1, line2, city, state, pincode, country)
 - billing_address (same fields)
