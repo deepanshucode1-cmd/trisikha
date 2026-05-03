@@ -353,4 +353,5 @@ Section 4: Purpose Limitation
 
 Processing for incompatible purpose
 Excessive data collection
-Retention beyond necessity
+Retention beyond necessity 
+orders deletion on users request working as expected

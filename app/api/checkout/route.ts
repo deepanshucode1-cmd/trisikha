@@ -16,6 +16,7 @@ import {
   TAX_CONFIG,
 } from "@/lib/tax-config";
 import { sanitizeObject } from "@/lib/xss";
+import { scrubRazorpayNotes } from "@/lib/razorpay-server";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID || '',
@@ -57,6 +58,42 @@ export async function POST(req: Request) {
     // Calculate total amount from cart items
     // Use service client to bypass RLS for guest checkout
     const supabase = createServiceClient();
+
+    // Roll back any pending CHECKED_OUT order for this email so a single
+    // customer can have at most one active checkout at a time. Failed
+    // payments are intentionally left alone — they have their own lifecycle.
+    const { data: stalePending } = await supabase
+      .from("orders")
+      .select("id, razorpay_order_id, order_items(product_id, quantity)")
+      .eq("guest_email", guest_email)
+      .eq("order_status", "CHECKED_OUT")
+      .eq("payment_status", "initiated");
+
+    if (stalePending && stalePending.length > 0) {
+      for (const stale of stalePending) {
+        const items = (stale.order_items || []) as Array<{ product_id: string; quantity: number }>;
+        for (const item of items) {
+          const { error: restockError } = await supabase.rpc("increment_stock", {
+            product_id: item.product_id,
+            quantity: item.quantity,
+          });
+          if (restockError) {
+            logError(new Error(restockError.message), {
+              context: "checkout_rollback_restock_failed",
+              orderId: stale.id,
+              productId: item.product_id,
+            });
+          }
+        }
+        await scrubRazorpayNotes(stale.razorpay_order_id);
+        await supabase.from("orders").delete().eq("id", stale.id);
+      }
+      logSecurityEvent("checkout_rolled_back_pending", {
+        email: guest_email,
+        rolledBackOrderIds: stalePending.map((o) => o.id),
+        count: stalePending.length,
+      });
+    }
 
     // Fetch products
     const productIds = cart_items.map((item) => item.id);

@@ -7,6 +7,7 @@ import { logSecurityEvent } from "@/lib/logger";
 import {
   createDeletionRequest,
   DELETION_WINDOW_DAYS,
+  executeDeletionRequest,
   markReminderSent,
 } from "@/lib/deletion-request";
 import { sendDeletionRequestConfirmation } from "@/lib/email";
@@ -122,6 +123,31 @@ export async function POST(req: Request) {
       userAgent,
       ordersCount: orderCount,
     });
+
+    // Test-only bypass: skip the 14-day window and admin approval, executing
+    // the deletion immediately. Refuses to run in production.
+    if (process.env.NODE_ENV !== "production") {
+      logSecurityEvent("deletion_instant_execute_bypass", {
+        requestId: result.requestId,
+        email: normalizedEmail,
+        ip,
+      });
+
+      const exec = await executeDeletionRequest(result.requestId);
+
+      return NextResponse.json({
+        success: exec.success,
+        message: exec.message,
+        details: {
+          requestId: result.requestId,
+          scheduledDeletionDate: new Date().toISOString(),
+          windowPeriodDays: 0,
+          ordersToBeAnonymized: exec.ordersDeleted,
+          cancelInstructions: "Already executed (test mode).",
+          note: exec.message,
+        },
+      });
+    }
 
     // Send confirmation email (non-blocking)
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";

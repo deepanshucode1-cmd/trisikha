@@ -1032,6 +1032,72 @@ export async function sendDeletionCancelled(params: {
 }
 
 /**
+ * Day-1 abandoned-cart recovery email with a resume link.
+ * Separate from the day-5 DPDP pre-erasure notice — this one is recovery-only.
+ */
+export async function sendCartRecoveryEmail(params: {
+  email: string;
+  resumeUrl: string;
+  items: Array<{ product_name: string; quantity: number; unit_price: number }>;
+  total: number;
+}): Promise<boolean> {
+  const { email, resumeUrl, items, total } = params;
+
+  const itemsHtml = items
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${escapeHtml(item.product_name)}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">Rs ${(item.unit_price * item.quantity).toFixed(2)}</td>
+      </tr>`
+    )
+    .join("");
+
+  return sendEmail({
+    to: email,
+    subject: "You left items in your cart at TrishikhaOrganics",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #3d3c30;">Your cart is waiting for you</h2>
+        <p>Hi,</p>
+        <p>You started a checkout at TrishikhaOrganics but didn't complete your payment. Your items are still reserved — pick up right where you left off.</p>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <thead>
+            <tr style="background-color: #f4f4f4;">
+              <th style="padding: 10px; text-align: left;">Product</th>
+              <th style="padding: 10px; text-align: center;">Qty</th>
+              <th style="padding: 10px; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHtml}</tbody>
+          <tfoot>
+            <tr style="background-color: #f9f9f9; font-weight: bold;">
+              <td colspan="2" style="padding: 12px; text-align: right;">Total:</td>
+              <td style="padding: 12px; text-align: right;">Rs ${total.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p style="text-align: center; margin: 30px 0;">
+          <a href="${escapeHtml(sanitizeUrl(resumeUrl))}" style="background-color: #3d3c30; color: white; padding: 14px 36px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">Resume Your Checkout</a>
+        </p>
+
+        <p style="font-size: 13px; color: #666;">
+          This link is valid for 7 days. If you no longer want these items, you can ignore this email — your cart and personal data will be deleted automatically after 7 days in line with our data retention policy.
+        </p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Thank you for considering Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
  * Send 48-hour pre-erasure notification
  * DPDP Act: notify before automatic data deletion
  * Used for: abandoned checkouts (7-day cleanup) and deferred legal expiry

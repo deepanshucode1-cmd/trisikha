@@ -14,13 +14,49 @@
 import { createServiceClient } from "@/utils/supabase/service";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
-import { sendPreErasureNotification, sendDeletionCompleted } from "@/lib/email";
+import {
+  sendPreErasureNotification,
+  sendDeletionCompleted,
+  sendCartRecoveryEmail,
+} from "@/lib/email";
 import { subDays, subHours, addDays } from "date-fns";
+import { generateResumeToken, buildResumeUrl } from "@/lib/resume-token";
+import { scrubRazorpayNotes } from "@/lib/razorpay-server";
 
 // Constants
+const ABANDONED_CHECKOUT_RECOVERY_DAYS = 1;
 const ABANDONED_CHECKOUT_NOTIFY_DAYS = 5;
 const ABANDONED_CHECKOUT_DELETE_DAYS = 7;
+const ABANDONED_CHECKOUT_DELETE_CUSHION_HOURS = 48;
 const DEFERRED_EXPIRY_NOTIFY_DAYS = 2;
+
+function getAbandonedRecoveryDays(): number {
+  if (process.env.NODE_ENV !== "production" && process.env.ABANDONED_RECOVERY_DAYS_OVERRIDE) {
+    return Number(process.env.ABANDONED_RECOVERY_DAYS_OVERRIDE);
+  }
+  return ABANDONED_CHECKOUT_RECOVERY_DAYS;
+}
+
+function getAbandonedNotifyDays(): number {
+  if (process.env.NODE_ENV !== "production" && process.env.ABANDONED_NOTIFY_DAYS_OVERRIDE) {
+    return Number(process.env.ABANDONED_NOTIFY_DAYS_OVERRIDE);
+  }
+  return ABANDONED_CHECKOUT_NOTIFY_DAYS;
+}
+
+function getAbandonedDeleteDays(): number {
+  if (process.env.NODE_ENV !== "production" && process.env.ABANDONED_DELETE_DAYS_OVERRIDE) {
+    return Number(process.env.ABANDONED_DELETE_DAYS_OVERRIDE);
+  }
+  return ABANDONED_CHECKOUT_DELETE_DAYS;
+}
+
+function getAbandonedDeleteCushionHours(): number {
+  if (process.env.NODE_ENV !== "production" && process.env.ABANDONED_DELETE_CUSHION_HOURS_OVERRIDE) {
+    return Number(process.env.ABANDONED_DELETE_CUSHION_HOURS_OVERRIDE);
+  }
+  return ABANDONED_CHECKOUT_DELETE_CUSHION_HOURS;
+}
 
 interface CleanupResult {
   notified: number;
@@ -35,6 +71,96 @@ interface DeletionResult {
 // ─── Abandoned Checkout Cleanup ────────────────────────────────────────────
 
 /**
+ * Day-1 cart recovery email with a resume link.
+ * Issues a single resume token per order; the same token is later reused by
+ * the day-5 DPDP notice if the cart still hasn't been paid.
+ */
+export async function sendAbandonedCartRecovery(): Promise<CleanupResult> {
+  const supabase = createServiceClient();
+  const result: CleanupResult = { notified: 0, errors: 0 };
+
+  try {
+    const cutoffDate = subDays(new Date(), getAbandonedRecoveryDays());
+
+    const { data: orders, error } = await supabase
+      .from("orders")
+      .select("id, guest_email, total_amount")
+      .eq("order_status", "CHECKED_OUT")
+      .neq("payment_status", "paid")
+      .lt("created_at", cutoffDate.toISOString())
+      .is("resume_email_sent_at", null);
+
+    if (error) {
+      logError(error as Error, { context: "auto_cleanup_recovery_query" });
+      return { notified: 0, errors: 1 };
+    }
+
+    if (!orders || orders.length === 0) return result;
+
+    for (const order of orders) {
+      try {
+        const { data: items } = await supabase
+          .from("order_items")
+          .select("product_name, quantity, unit_price")
+          .eq("order_id", order.id);
+
+        const { rawToken, hash, expiresAt } = generateResumeToken();
+
+        const { error: tokenError } = await supabase
+          .from("orders")
+          .update({
+            resume_token_hash: hash,
+            resume_token_expires_at: expiresAt.toISOString(),
+            resume_email_sent_at: new Date().toISOString(),
+          })
+          .eq("id", order.id);
+
+        if (tokenError) {
+          logError(tokenError as Error, {
+            context: "auto_cleanup_recovery_token_update",
+            orderId: order.id,
+          });
+          result.errors++;
+          continue;
+        }
+
+        const sent = await sendCartRecoveryEmail({
+          email: order.guest_email,
+          resumeUrl: buildResumeUrl(rawToken),
+          items: items || [],
+          total: order.total_amount,
+        });
+
+        if (sent) {
+          await logDataAccess({
+            tableName: "orders",
+            operation: "UPDATE",
+            queryType: "single",
+            rowCount: 1,
+            endpoint: "auto-cleanup",
+            reason: `Sent day-1 cart recovery email to ${order.guest_email}`,
+          });
+          result.notified++;
+        }
+      } catch (err) {
+        logError(err instanceof Error ? err : new Error(String(err)), {
+          context: "auto_cleanup_recovery_per_order",
+          orderId: order.id,
+        });
+        result.errors++;
+      }
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_recovery",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
+/**
  * Send 48-hour pre-erasure email for abandoned checkouts (5+ days old, not yet notified)
  */
 export async function notifyAbandonedCheckouts(): Promise<CleanupResult> {
@@ -42,7 +168,7 @@ export async function notifyAbandonedCheckouts(): Promise<CleanupResult> {
   const result: CleanupResult = { notified: 0, errors: 0 };
 
   try {
-    const cutoffDate = subDays(new Date(), ABANDONED_CHECKOUT_NOTIFY_DAYS);
+    const cutoffDate = subDays(new Date(), getAbandonedNotifyDays());
 
     // Find abandoned checkouts that haven't been notified
     const { data: orders, error } = await supabase
@@ -126,13 +252,13 @@ export async function deleteAbandonedCheckouts(): Promise<DeletionResult> {
   const result: DeletionResult = { deleted: 0, errors: 0 };
 
   try {
-    const ageCutoff = subDays(new Date(), ABANDONED_CHECKOUT_DELETE_DAYS);
-    const noticeCutoff = subHours(new Date(), 48);
+    const ageCutoff = subDays(new Date(), getAbandonedDeleteDays());
+    const noticeCutoff = subHours(new Date(), getAbandonedDeleteCushionHours());
 
     // Find orders eligible for deletion: old enough + notified 48hr+ ago
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("id, guest_email")
+      .select("id, guest_email, razorpay_order_id")
       .eq("order_status", "CHECKED_OUT")
       .neq("payment_status", "paid")
       .lt("created_at", ageCutoff.toISOString())
@@ -147,6 +273,8 @@ export async function deleteAbandonedCheckouts(): Promise<DeletionResult> {
     if (!orders || orders.length === 0) return result;
 
     const orderIds = orders.map((o) => o.id);
+
+    await Promise.all(orders.map((o) => scrubRazorpayNotes(o.razorpay_order_id)));
 
     // Delete orders (order_items cascade via FK ON DELETE CASCADE)
     const { error: deleteError } = await supabase

@@ -131,6 +131,7 @@ export async function POST(req: Request) {
         payment_id: razorpay_payment_id,
         paid_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        resume_token_used_at: new Date().toISOString(),
       })
       .eq("id", order_id)
       .eq("payment_status", "initiated") // Prevent double-processing

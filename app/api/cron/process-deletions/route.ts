@@ -8,6 +8,7 @@ import {
 } from "@/lib/deletion-request";
 import { sendDeletionReminder } from "@/lib/email";
 import {
+  sendAbandonedCartRecovery,
   notifyAbandonedCheckouts,
   deleteAbandonedCheckouts,
   notifyDeferredExpiry,
@@ -161,12 +162,22 @@ export async function POST(req: Request) {
 
     // ─── Auto-Cleanup: Abandoned Checkouts ──────────────────────────────────
     const autoCleanup = {
+      abandonedRecoveryEmailsSent: 0,
       abandonedNotified: 0,
       abandonedDeleted: 0,
       deferredNotified: 0,
       deferredExecuted: 0,
       autoCleanupErrors: 0,
     };
+
+    try {
+      const recoveryResult = await sendAbandonedCartRecovery();
+      autoCleanup.abandonedRecoveryEmailsSent = recoveryResult.notified;
+      autoCleanup.autoCleanupErrors += recoveryResult.errors;
+    } catch (err) {
+      autoCleanup.autoCleanupErrors++;
+      logError(err as Error, { context: "cron_send_abandoned_cart_recovery" });
+    }
 
     try {
       const notifyResult = await notifyAbandonedCheckouts();
