@@ -401,7 +401,7 @@ export async function executeDeletionRequest(
   // Re-check for paid orders (data may have changed since request was created)
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, payment_status, created_at")
+    .select("id, payment_status, created_at, total_amount")
     .eq("guest_email", email);
 
   const paidOrders = orders?.filter((o) => o.payment_status === "paid") || [];
@@ -424,8 +424,17 @@ export async function executeDeletionRequest(
     }
   }
 
-  // CASE 1: Has paid orders - cannot delete, only clear OTP and defer
+  // CASE 1: Has paid orders - cannot delete, only anonymize PII and defer
   if (hasPaidOrders) {
+    const RECIPIENT_DETAILS_THRESHOLD = 50000;
+    const allPaidOrderIds = paidOrders.map((o) => o.id);
+    const lowValueOrderIds = paidOrders
+      .filter((o) => Number(o.total_amount) < RECIPIENT_DETAILS_THRESHOLD)
+      .map((o) => o.id);
+    const highValueOrderIds = paidOrders
+      .filter((o) => Number(o.total_amount) >= RECIPIENT_DETAILS_THRESHOLD)
+      .map((o) => o.id);
+
     // Clear OTP fields only (not tax-relevant)
     const { error: otpError } = await supabase
       .from("orders")
@@ -453,6 +462,67 @@ export async function executeDeletionRequest(
         retentionEndDate: null,
         message: "Failed to clear OTP data",
       };
+    }
+
+    const anonymizedEmail = `deleted-${requestId}@anonymized.local`;
+    const { error: emailPhoneError } = await supabase
+      .from("orders")
+      .update({
+        guest_email: anonymizedEmail,
+        guest_phone: "0000000000",
+      })
+      .in("id", allPaidOrderIds);
+
+    if (emailPhoneError) {
+      logError(emailPhoneError as Error, {
+        context: "execute_deletion_anonymize_email_phone_failed",
+        requestId,
+        email,
+      });
+      return {
+        success: false,
+        status: "failed",
+        ordersDeleted: 0,
+        otpCleared: true,
+        hasPaidOrders: true,
+        paidOrdersCount: paidOrders.length,
+        retentionEndDate: null,
+        message: "Failed to anonymize order email/phone",
+      };
+    }
+
+    if (lowValueOrderIds.length > 0) {
+      const { error: anonymizeAddressError } = await supabase
+        .from("orders")
+        .update({
+          shipping_first_name: "Deleted",
+          shipping_last_name: "User",
+          shipping_address_line1: "Address Removed",
+          shipping_address_line2: null,
+          billing_first_name: "Deleted",
+          billing_last_name: "User",
+          billing_address_line1: "Address Removed",
+          billing_address_line2: null,
+        })
+        .in("id", lowValueOrderIds);
+
+      if (anonymizeAddressError) {
+        logError(anonymizeAddressError as Error, {
+          context: "execute_deletion_anonymize_address_failed",
+          requestId,
+          email,
+        });
+        return {
+          success: false,
+          status: "failed",
+          ordersDeleted: 0,
+          otpCleared: true,
+          hasPaidOrders: true,
+          paidOrdersCount: paidOrders.length,
+          retentionEndDate: null,
+          message: "Failed to anonymize order address PII",
+        };
+      }
     }
 
     // Anonymize review data (DPDP compliance)
@@ -525,13 +595,15 @@ export async function executeDeletionRequest(
       rowCount: paidOrders.length,
       userId: adminId,
       endpoint: "/api/admin/deletion-requests/execute",
-      reason: `DPDP deletion deferred - OTP cleared, review data anonymized for ${paidOrders.length} paid orders. Tax retention until ${retentionEndDate?.toISOString().split("T")[0]}`,
+      reason: `DPDP deletion deferred - OTP cleared, email and phone anonymized on ${allPaidOrderIds.length} paid order(s), names and address lines anonymized on ${lowValueOrderIds.length} order(s) below ₹50,000, ${highValueOrderIds.length} order(s) at or above ₹50,000 retained full recipient PII, review data anonymized. Tax retention until ${retentionEndDate?.toISOString().split("T")[0]}`,
     });
 
     logSecurityEvent("deletion_request_deferred", {
       requestId,
       email,
       paidOrdersCount: paidOrders.length,
+      ordersFullyAnonymized: lowValueOrderIds.length,
+      ordersEmailPhoneOnlyAnonymized: highValueOrderIds.length,
       unpaidOrdersDeleted: unpaidDeleted,
       reviewTokensAnonymized: !tokenAnonymizeError,
       reviewTextsAnonymized: !reviewAnonymizeError,
@@ -548,7 +620,7 @@ export async function executeDeletionRequest(
       hasPaidOrders: true,
       paidOrdersCount: paidOrders.length,
       retentionEndDate,
-      message: `Deletion deferred due to tax compliance. ${paidOrders.length} paid order(s) retained until ${retentionEndDate?.toISOString().split("T")[0]}. OTP data cleared. Review data anonymized. ${unpaidDeleted} unpaid order(s) deleted.`,
+      message: `Deletion deferred due to tax compliance. ${paidOrders.length} paid order(s) retained until ${retentionEndDate?.toISOString().split("T")[0]}. OTP, email and phone anonymized; ${lowValueOrderIds.length} order(s) below ₹50,000 had names and address lines anonymized; ${highValueOrderIds.length} order(s) at or above ₹50,000 retain full recipient details. Review data anonymized. ${unpaidDeleted} unpaid order(s) deleted.`,
     };
   }
 

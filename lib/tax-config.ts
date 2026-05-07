@@ -38,7 +38,6 @@ const STATE_CODE_MAP: Record<string, string> = {
   "24": "Gujarat",
   "26": "Dadra & Nagar Haveli and Daman & Diu",
   "27": "Maharashtra",
-  "28": "Andhra Pradesh (Old)",
   "29": "Karnataka",
   "30": "Goa",
   "31": "Lakshadweep",
@@ -119,13 +118,15 @@ function roundToTwo(num: number): number {
 }
 
 /**
- * Get state code from state name
+ * Get state code from state name. Returns null when the name is unrecognized
+ * so callers fail-fast — "99" is reserved for OIDAR / foreign and must not be
+ * used as an unknown sentinel.
  */
-export function getStateCode(stateName: string): string {
-  if (!stateName) return "99"; // Unknown
+export function getStateCode(stateName: string): string | null {
+  if (!stateName) return null;
 
   const normalized = stateName.toLowerCase().trim();
-  return STATE_NAME_MAP[normalized] || "99"; // 99 for unknown
+  return STATE_NAME_MAP[normalized] || null;
 }
 
 /**

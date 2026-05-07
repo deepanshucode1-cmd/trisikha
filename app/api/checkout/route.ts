@@ -237,6 +237,13 @@ export async function POST(req: Request) {
 
     // Calculate GST tax breakdown for the subtotal (prices are tax-inclusive)
     const customerStateCode = getStateCode(shipping_address.state);
+    const billingStateCode = getStateCode(billing_address.state);
+    if (!customerStateCode || !billingStateCode) {
+      return NextResponse.json(
+        { error: "Unsupported shipping or billing state" },
+        { status: 400 }
+      );
+    }
     const taxBreakdown = calculateTaxBreakdown(calculatedTotal, customerStateCode);
 
     logOrder("tax_calculated", {
@@ -280,6 +287,7 @@ export async function POST(req: Request) {
         shipping_address_line2: shipping_address.address_line2 || '',
         shipping_city: shipping_address.city,
         shipping_state: shipping_address.state,
+        shipping_state_code: customerStateCode,
         shipping_pincode: shipping_address.pincode,
         shipping_country: shipping_address.country,
         billing_first_name: billing_address.first_name,
@@ -288,6 +296,7 @@ export async function POST(req: Request) {
         billing_address_line2: billing_address.address_line2 || '',
         billing_city: billing_address.city,
         billing_state: billing_address.state,
+        billing_state_code: billingStateCode,
         billing_pincode: billing_address.pincode,
         billing_country: billing_address.country,
       }])
