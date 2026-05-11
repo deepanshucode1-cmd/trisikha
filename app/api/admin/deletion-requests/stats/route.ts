@@ -37,7 +37,6 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       stats,
-      actionRequired: stats.eligible + stats.failed,
     });
   } catch (error) {
     logError(error as Error, {

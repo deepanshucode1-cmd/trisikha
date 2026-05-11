@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import {
   getRequestsNeedingReminders,
-  markRequestsAsEligible,
+  autoExecutePendingDeletions,
   markReminderSent,
   getDaysRemaining,
 } from "@/lib/deletion-request";
@@ -65,12 +65,11 @@ async function verifyQStashSignature(req: Request): Promise<boolean> {
  * POST /api/cron/process-deletions
  *
  * Processes scheduled deletion requests:
- * 1. Marks requests as 'eligible' when 14-day window expires (does NOT execute)
- * 2. Sends reminder emails (day 1, 7, 13)
+ * 1. Auto-executes pending requests whose 14-day cooling-off window has expired
+ *    (deletes unpaid orders or anonymizes paid-order PII per CGST Rule 46)
+ * 2. Sends reminder emails (day 1, 7, 13) before the window expires
  *
- * Actual deletion execution requires admin approval via admin dashboard.
- *
- * Called daily by Upstash QStash
+ * Called daily by Upstash QStash. No admin intervention required.
  */
 export async function POST(req: Request) {
   try {
@@ -84,16 +83,15 @@ export async function POST(req: Request) {
     }
 
     const results = {
-      markedEligible: 0,
       remindersDay1Sent: 0,
       remindersDay7Sent: 0,
       remindersDay13Sent: 0,
       remindersFailed: 0,
     };
 
-    // Mark requests as eligible when 14-day window expires
-    // NOTE: This does NOT execute deletions - admin must approve via dashboard
-    results.markedEligible = await markRequestsAsEligible();
+    // Auto-execute pending deletion requests past their 14-day window.
+    // The function logs+swallows its own errors and always returns counters.
+    const autoExec = await autoExecutePendingDeletions();
 
     // Send reminder emails
     const reminders = await getRequestsNeedingReminders();
@@ -245,6 +243,7 @@ export async function POST(req: Request) {
 
     logSecurityEvent("cron_process_deletions_completed", {
       ...results,
+      autoExec,
       ...autoCleanup,
       ...nomineeCleanup,
       timestamp: new Date().toISOString(),
@@ -252,9 +251,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message:
-        "Deletion processing completed. Eligible requests require admin approval.",
-      results: { ...results, ...autoCleanup, ...nomineeCleanup },
+      message: "Deletion processing completed.",
+      results: { ...results, autoExec, ...autoCleanup, ...nomineeCleanup },
     });
   } catch (error) {
     logError(error as Error, {

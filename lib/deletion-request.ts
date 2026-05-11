@@ -4,15 +4,17 @@
  *
  * Flow:
  * 1. User requests deletion → 14-day cooling-off window (status: pending)
- * 2. After 14 days → status changes to 'eligible' (cron job)
- * 3. Admin reviews and executes deletion:
+ * 2. After 14 days → daily cron auto-executes each pending request:
  *    - If NO paid orders: delete all data (status: completed)
- *    - If HAS paid orders: clear OTP only, defer deletion 8 years (status: deferred_legal)
+ *    - If HAS paid orders: anonymize PII (per CGST Rule 46 threshold) and defer
+ *      hard delete for 8 years (status: deferred_legal)
+ * 3. If execution fails, request stays at pending and the next cron run retries.
  */
 
 import { createServiceClient } from "@/utils/supabase/service";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
+import { sendDeletionCompleted } from "@/lib/email";
 import { addDays, addYears, differenceInDays } from "date-fns";
 
 // Constants
@@ -24,11 +26,9 @@ export const TAX_RETENTION_YEARS = 8;
 // Types
 export type DeletionStatus =
   | "pending"
-  | "eligible"
   | "deferred_legal"
   | "cancelled"
-  | "completed"
-  | "failed";
+  | "completed";
 
 export interface DeletionRequest {
   id: string;
@@ -75,9 +75,20 @@ export interface CreateDeletionRequestResult {
   alreadyPending?: boolean;
 }
 
+/**
+ * Outcome of a single executeDeletionRequest call.
+ * Distinct from DeletionStatus (DB column) — this carries runtime signaling,
+ * including "failed" sentinels that never get written to the row.
+ */
+export type ExecutionOutcome =
+  | "completed"        // request transitioned to completed in DB
+  | "deferred_legal"   // request transitioned to deferred_legal in DB
+  | "pending"          // execution attempted; row stays pending for next-cycle retry
+  | "failed";          // request not found / not eligible — no row mutation
+
 export interface ExecuteDeletionResult {
   success: boolean;
-  status: DeletionStatus;
+  status: ExecutionOutcome;
   ordersDeleted: number;
   otpCleared: boolean;
   hasPaidOrders: boolean;
@@ -131,12 +142,12 @@ export async function createDeletionRequest(
   const supabase = createServiceClient();
   const normalizedEmail = params.email.toLowerCase().trim();
 
-  // Check if there's already an active request (pending, eligible, or deferred_legal)
+  // Check if there's already an active request (pending or deferred_legal)
   const { data: existing } = await supabase
     .from("deletion_requests")
     .select("id, scheduled_deletion_at, status")
     .eq("guest_email", normalizedEmail)
-    .in("status", ["pending", "eligible", "deferred_legal"])
+    .in("status", ["pending", "deferred_legal"])
     .single();
 
   if (existing) {
@@ -220,7 +231,7 @@ export async function createDeletionRequest(
 }
 
 /**
- * Cancel a pending or eligible deletion request
+ * Cancel a pending deletion request (only during the 14-day cooling-off window)
  */
 export async function cancelDeletionRequest(params: {
   email: string;
@@ -239,7 +250,7 @@ export async function cancelDeletionRequest(params: {
       updated_at: now.toISOString(),
     })
     .eq("guest_email", normalizedEmail)
-    .in("status", ["pending", "eligible"])
+    .eq("status", "pending")
     .select("id")
     .single();
 
@@ -277,7 +288,7 @@ export async function getPendingDeletionRequest(
     .from("deletion_requests")
     .select("*")
     .eq("guest_email", normalizedEmail)
-    .in("status", ["pending", "eligible", "deferred_legal"])
+    .in("status", ["pending", "deferred_legal"])
     .single();
 
   if (error) {
@@ -322,47 +333,119 @@ export async function getDeletionRequestById(
   return data as DeletionRequest;
 }
 
+export interface AutoExecuteResult {
+  attempted: number;
+  completed: number;
+  deferred: number;
+  retryable: number;
+  errors: number;
+  completionEmailsSent: number;
+  completionEmailsFailed: number;
+}
+
 /**
- * Mark requests as eligible when 14-day window expires
- * Called by cron job - does NOT execute deletion
+ * Auto-execute pending deletion requests whose 14-day cooling-off window has expired.
+ * Called by the daily cron — no admin intervention required.
+ *
+ * For each due request, calls executeDeletionRequest:
+ *   - 'completed'      → request closed, all data erased, completion email sent
+ *   - 'deferred_legal' → PII anonymized, 8-year retention applies
+ *   - 'pending'        → execution failed, row left for next-cycle retry
+ *   - 'failed'         → request not found / disappeared mid-batch
  */
-export async function markRequestsAsEligible(): Promise<number> {
+export async function autoExecutePendingDeletions(): Promise<AutoExecuteResult> {
   const supabase = createServiceClient();
   const now = new Date();
 
-  const { data, error } = await supabase
+  const { data: dueRequests, error } = await supabase
     .from("deletion_requests")
-    .update({
-      status: "eligible",
-      updated_at: now.toISOString(),
-    })
+    .select("id, guest_email")
     .eq("status", "pending")
     .lte("scheduled_deletion_at", now.toISOString())
-    .select("id");
+    .order("scheduled_deletion_at", { ascending: true });
 
   if (error) {
-    logError(error as Error, { context: "mark_requests_as_eligible_failed" });
-    return 0;
+    logError(error as Error, { context: "auto_execute_query_failed" });
+    return {
+      attempted: 0,
+      completed: 0,
+      deferred: 0,
+      retryable: 0,
+      errors: 1,
+      completionEmailsSent: 0,
+      completionEmailsFailed: 0,
+    };
   }
 
-  const count = data?.length || 0;
+  const result: AutoExecuteResult = {
+    attempted: 0,
+    completed: 0,
+    deferred: 0,
+    retryable: 0,
+    errors: 0,
+    completionEmailsSent: 0,
+    completionEmailsFailed: 0,
+  };
 
-  if (count > 0) {
-    logSecurityEvent("deletion_requests_marked_eligible", {
-      count,
+  for (const req of dueRequests || []) {
+    result.attempted++;
+    try {
+      const execResult = await executeDeletionRequest(req.id);
+
+      switch (execResult.status) {
+        case "completed":
+          result.completed++;
+          try {
+            await sendDeletionCompleted({
+              email: req.guest_email,
+              ordersAnonymized: execResult.ordersDeleted,
+            });
+            result.completionEmailsSent++;
+          } catch (emailErr) {
+            result.completionEmailsFailed++;
+            logError(emailErr as Error, {
+              context: "auto_execute_completion_email_failed",
+              requestId: req.id,
+            });
+          }
+          break;
+        case "deferred_legal":
+          result.deferred++;
+          break;
+        case "pending":
+          result.retryable++;
+          break;
+        case "failed":
+          result.errors++;
+          break;
+      }
+    } catch (err) {
+      result.errors++;
+      logError(err as Error, {
+        context: "auto_execute_single_failed",
+        requestId: req.id,
+      });
+    }
+  }
+
+  if (result.attempted > 0) {
+    logSecurityEvent("deletion_requests_auto_executed", {
+      ...result,
       timestamp: now.toISOString(),
     });
   }
 
-  return count;
+  return result;
 }
 
 /**
- * Execute deletion for a specific request
- * Called by admin - handles tax compliance
+ * Execute deletion for a specific request. Called by the daily cron
+ * (autoExecutePendingDeletions) for pending requests past their 14-day window.
  *
- * - If NO paid orders: delete all order data
- * - If HAS paid orders: only clear OTP fields, defer deletion for 8 years
+ * - If NO paid orders: delete all order data (status: completed)
+ * - If HAS paid orders: anonymize PII per CGST Rule 46 threshold,
+ *   defer hard delete for 8 years (status: deferred_legal)
+ * - On CASE 2 delete failure: row stays at 'pending', retried next cycle
  */
 export async function executeDeletionRequest(
   requestId: string,
@@ -375,7 +458,7 @@ export async function executeDeletionRequest(
     .from("deletion_requests")
     .select("*")
     .eq("id", requestId)
-    .in("status", ["eligible", "pending"]) // Allow both for flexibility
+    .eq("status", "pending")
     .single();
 
   if (fetchError || !request) {
@@ -632,15 +715,6 @@ export async function executeDeletionRequest(
     .select("id");
 
   if (deleteError) {
-    // Mark request as failed
-    await supabase
-      .from("deletion_requests")
-      .update({
-        status: "failed",
-        updated_at: now.toISOString(),
-      })
-      .eq("id", requestId);
-
     logError(deleteError as Error, {
       context: "execute_deletion_delete_failed",
       requestId,
@@ -649,7 +723,7 @@ export async function executeDeletionRequest(
 
     return {
       success: false,
-      status: "failed",
+      status: "pending",
       ordersDeleted: 0,
       otpCleared: false,
       hasPaidOrders: false,
@@ -703,26 +777,6 @@ export async function executeDeletionRequest(
     retentionEndDate: null,
     message: `Deletion completed. ${ordersDeleted} order(s) permanently deleted.`,
   };
-}
-
-/**
- * Get all requests with 'eligible' status (ready for admin execution)
- */
-export async function getEligibleDeletionRequests(): Promise<DeletionRequest[]> {
-  const supabase = createServiceClient();
-
-  const { data, error } = await supabase
-    .from("deletion_requests")
-    .select("*")
-    .eq("status", "eligible")
-    .order("scheduled_deletion_at", { ascending: true });
-
-  if (error) {
-    logError(error as Error, { context: "get_eligible_deletion_requests_failed" });
-    return [];
-  }
-
-  return (data as DeletionRequest[]) || [];
 }
 
 /**
@@ -875,11 +929,10 @@ export function getDaysRemaining(scheduledDeletionAt: string | Date): number {
  */
 export async function getDeletionRequestStats(): Promise<{
   pending: number;
-  eligible: number;
   deferredLegal: number;
   completed: number;
-  failed: number;
-  eligibleNext7Days: number;
+  cancelled: number;
+  dueNext7Days: number;
 }> {
   const supabase = createServiceClient();
 
@@ -891,11 +944,10 @@ export async function getDeletionRequestStats(): Promise<{
     logError(error as Error, { context: "get_deletion_request_stats_failed" });
     return {
       pending: 0,
-      eligible: 0,
       deferredLegal: 0,
       completed: 0,
-      failed: 0,
-      eligibleNext7Days: 0,
+      cancelled: 0,
+      dueNext7Days: 0,
     };
   }
 
@@ -904,25 +956,20 @@ export async function getDeletionRequestStats(): Promise<{
 
   const stats = {
     pending: 0,
-    eligible: 0,
     deferredLegal: 0,
     completed: 0,
-    failed: 0,
-    eligibleNext7Days: 0,
+    cancelled: 0,
+    dueNext7Days: 0,
   };
 
   for (const req of data || []) {
     switch (req.status) {
       case "pending":
         stats.pending++;
-        // Check if becoming eligible in next 7 days
         const scheduledAt = new Date(req.scheduled_deletion_at);
         if (scheduledAt <= in7Days) {
-          stats.eligibleNext7Days++;
+          stats.dueNext7Days++;
         }
-        break;
-      case "eligible":
-        stats.eligible++;
         break;
       case "deferred_legal":
         stats.deferredLegal++;
@@ -930,8 +977,8 @@ export async function getDeletionRequestStats(): Promise<{
       case "completed":
         stats.completed++;
         break;
-      case "failed":
-        stats.failed++;
+      case "cancelled":
+        stats.cancelled++;
         break;
     }
   }

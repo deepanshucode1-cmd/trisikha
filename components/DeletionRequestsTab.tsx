@@ -5,11 +5,9 @@ import React, { useEffect, useState, useCallback } from "react";
 // Types
 type DeletionStatus =
   | "pending"
-  | "eligible"
   | "deferred_legal"
   | "cancelled"
-  | "completed"
-  | "failed";
+  | "completed";
 
 type DeletionRequest = {
   id: string;
@@ -31,11 +29,10 @@ type DeletionRequest = {
 
 type DeletionStats = {
   pending: number;
-  eligible: number;
   deferredLegal: number;
   completed: number;
-  failed: number;
-  eligibleNext7Days: number;
+  cancelled: number;
+  dueNext7Days: number;
 };
 
 type OrderInfo = {
@@ -51,11 +48,9 @@ const STATUS_CONFIG: Record<
   { label: string; color: string; bgColor: string }
 > = {
   pending: { label: "Pending", color: "text-yellow-700", bgColor: "bg-yellow-100" },
-  eligible: { label: "Eligible", color: "text-orange-700", bgColor: "bg-orange-100" },
   deferred_legal: { label: "Deferred (Tax)", color: "text-blue-700", bgColor: "bg-blue-100" },
   cancelled: { label: "Cancelled", color: "text-gray-700", bgColor: "bg-gray-100" },
   completed: { label: "Completed", color: "text-green-700", bgColor: "bg-green-100" },
-  failed: { label: "Failed", color: "text-red-700", bgColor: "bg-red-100" },
 };
 
 export default function DeletionRequestsTab() {
@@ -73,10 +68,6 @@ export default function DeletionRequestsTab() {
   const [selectedRequest, setSelectedRequest] = useState<DeletionRequest | null>(null);
   const [selectedOrders, setSelectedOrders] = useState<OrderInfo[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-
-  // Bulk selection
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Fetch requests
   const fetchRequests = useCallback(async () => {
@@ -131,92 +122,6 @@ export default function DeletionRequestsTab() {
     }
   };
 
-  // Execute deletion
-  const executeRequest = async (id: string) => {
-    if (!confirm("Are you sure you want to execute this deletion request?")) {
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const res = await fetch(`/api/admin/deletion-requests/${id}`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to execute deletion");
-      }
-
-      const data = await res.json();
-      alert(data.message);
-      setShowModal(false);
-      fetchRequests();
-    } catch (err) {
-      console.error("Execute deletion error:", err);
-      alert((err as Error).message);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Bulk execute
-  const executeBulk = async () => {
-    if (selectedIds.size === 0) {
-      alert("No requests selected");
-      return;
-    }
-
-    if (!confirm(`Execute ${selectedIds.size} deletion requests?`)) {
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const res = await fetch("/api/admin/deletion-requests/bulk-execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestIds: Array.from(selectedIds) }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Bulk execution failed");
-      }
-
-      const data = await res.json();
-      alert(
-        `Bulk execution complete:\n- Completed: ${data.summary.completed}\n- Deferred: ${data.summary.deferred}\n- Failed: ${data.summary.failed}`
-      );
-      setSelectedIds(new Set());
-      fetchRequests();
-    } catch (err) {
-      console.error("Bulk execute error:", err);
-      alert((err as Error).message);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Toggle selection
-  const toggleSelection = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    setSelectedIds(newSet);
-  };
-
-  // Select all eligible
-  const selectAllEligible = () => {
-    const eligibleIds = requests
-      .filter((r) => r.status === "eligible")
-      .map((r) => r.id);
-    setSelectedIds(new Set(eligibleIds));
-  };
-
   // Format date
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-IN", {
@@ -242,15 +147,11 @@ export default function DeletionRequestsTab() {
     <div className="space-y-6">
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="text-2xl font-bold text-yellow-700">{stats.pending}</div>
             <div className="text-sm text-yellow-600">Pending</div>
-          </div>
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="text-2xl font-bold text-orange-700">{stats.eligible}</div>
-            <div className="text-sm text-orange-600">Eligible</div>
-            <div className="text-xs text-orange-500 mt-1">Action Required</div>
+            <div className="text-xs text-yellow-500 mt-1">Cooling-off window</div>
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="text-2xl font-bold text-blue-700">{stats.deferredLegal}</div>
@@ -261,66 +162,51 @@ export default function DeletionRequestsTab() {
             <div className="text-2xl font-bold text-green-700">{stats.completed}</div>
             <div className="text-sm text-green-600">Completed</div>
           </div>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="text-2xl font-bold text-red-700">{stats.failed}</div>
-            <div className="text-sm text-red-600">Failed</div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="text-2xl font-bold text-gray-700">{stats.cancelled}</div>
+            <div className="text-sm text-gray-600">Cancelled</div>
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
             <div className="text-2xl font-bold text-purple-700">
-              {stats.eligibleNext7Days}
+              {stats.dueNext7Days}
             </div>
-            <div className="text-sm text-purple-600">Next 7 Days</div>
+            <div className="text-sm text-purple-600">Due Next 7 Days</div>
+            <div className="text-xs text-purple-500 mt-1">Auto-executed by cron</div>
           </div>
         </div>
       )}
 
-      {/* Filters and Actions */}
-      <div className="flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex gap-4 items-center">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as DeletionStatus | "all")}
-            className="border rounded-lg px-3 py-2"
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="eligible">Eligible</option>
-            <option value="deferred_legal">Deferred (Tax)</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 items-center">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as DeletionStatus | "all")}
+          className="border rounded-lg px-3 py-2"
+        >
+          <option value="all">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="deferred_legal">Deferred (Tax)</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
 
-          <input
-            type="text"
-            placeholder="Search by email..."
-            value={emailSearch}
-            onChange={(e) => setEmailSearch(e.target.value)}
-            className="border rounded-lg px-3 py-2 w-64"
-          />
+        <input
+          type="text"
+          placeholder="Search by email..."
+          value={emailSearch}
+          onChange={(e) => setEmailSearch(e.target.value)}
+          className="border rounded-lg px-3 py-2 w-64"
+        />
 
-          <button
-            onClick={fetchRequests}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-          >
-            Refresh
-          </button>
-        </div>
+        <button
+          onClick={fetchRequests}
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+        >
+          Refresh
+        </button>
 
-        <div className="flex gap-2">
-          <button
-            onClick={selectAllEligible}
-            className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200"
-          >
-            Select All Eligible
-          </button>
-          <button
-            onClick={executeBulk}
-            disabled={selectedIds.size === 0 || actionLoading}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-          >
-            {actionLoading ? "Processing..." : `Execute Selected (${selectedIds.size})`}
-          </button>
+        <div className="ml-auto text-sm text-gray-500">
+          Deletions run automatically via daily cron after the 14-day window.
         </div>
       </div>
 
@@ -336,19 +222,6 @@ export default function DeletionRequestsTab() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                <input
-                  type="checkbox"
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      selectAllEligible();
-                    } else {
-                      setSelectedIds(new Set());
-                    }
-                  }}
-                  checked={selectedIds.size > 0}
-                />
-              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                 Email
               </th>
@@ -372,13 +245,13 @@ export default function DeletionRequestsTab() {
           <tbody className="bg-white divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   Loading...
                 </td>
               </tr>
             ) : requests.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   No deletion requests found
                 </td>
               </tr>
@@ -391,20 +264,7 @@ export default function DeletionRequestsTab() {
                     : null;
 
                 return (
-                  <tr
-                    key={req.id}
-                    className={`hover:bg-gray-50 ${
-                      req.status === "eligible" ? "bg-orange-50" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(req.id)}
-                        onChange={() => toggleSelection(req.id)}
-                        disabled={!["pending", "eligible"].includes(req.status)}
-                      />
-                    </td>
+                  <tr key={req.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-gray-900">
                         {req.guest_email}
@@ -450,22 +310,12 @@ export default function DeletionRequestsTab() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => fetchRequestDetails(req.id)}
-                          className="text-blue-600 hover:text-blue-800 text-sm"
-                        >
-                          View
-                        </button>
-                        {["pending", "eligible"].includes(req.status) && (
-                          <button
-                            onClick={() => executeRequest(req.id)}
-                            className="text-red-600 hover:text-red-800 text-sm"
-                          >
-                            Execute
-                          </button>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => fetchRequestDetails(req.id)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
                 );
@@ -622,24 +472,15 @@ export default function DeletionRequestsTab() {
                   </div>
                 )}
 
-                {/* Actions */}
-                {["pending", "eligible"].includes(selectedRequest.status) && (
-                  <div className="flex justify-end gap-3 pt-4 border-t">
-                    <button
-                      onClick={() => setShowModal(false)}
-                      className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => executeRequest(selectedRequest.id)}
-                      disabled={actionLoading}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {actionLoading ? "Processing..." : "Execute Deletion"}
-                    </button>
-                  </div>
-                )}
+                {/* Close */}
+                <div className="flex justify-end pt-4 border-t">
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -86,7 +86,7 @@ export async function sendAbandonedCartRecovery(): Promise<CleanupResult> {
       .from("orders")
       .select("id, guest_email, total_amount")
       .eq("order_status", "CHECKED_OUT")
-      .neq("payment_status", "paid")
+      .eq("payment_status", "initiated")
       .lt("created_at", cutoffDate.toISOString())
       .is("resume_email_sent_at", null);
 

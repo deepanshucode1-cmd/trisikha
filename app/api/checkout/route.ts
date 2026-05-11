@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       .select("id, razorpay_order_id, order_items(product_id, quantity)")
       .eq("guest_email", guest_email)
       .eq("order_status", "CHECKED_OUT")
-      .eq("payment_status", "initiated");
+      .in("payment_status", ["initiated", "failed"]);
 
     if (stalePending && stalePending.length > 0) {
       for (const stale of stalePending) {

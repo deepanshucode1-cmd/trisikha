@@ -59,22 +59,26 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 
 ### Phase 1: Critical Fixes (HIGH Priority)
 
-#### 1.1 Admin Dashboard for Deletion Requests ✅ COMPLETED
+#### 1.1 Automated Deletion Pipeline ✅ COMPLETED
 **Implemented in:**
-- `app/api/admin/deletion-requests/route.ts` - List requests with filters
-- `app/api/admin/deletion-requests/[id]/route.ts` - Get/execute individual requests
+- `app/api/admin/deletion-requests/route.ts` - List requests with filters (read-only)
+- `app/api/admin/deletion-requests/[id]/route.ts` - GET request details (read-only)
 - `app/api/admin/deletion-requests/stats/route.ts` - Statistics endpoint
-- `app/api/admin/deletion-requests/bulk-execute/route.ts` - Bulk execution
-- `components/DeletionRequestsTab.tsx` - Admin UI component
-- `lib/deletion-request.ts` - Service layer with tax compliance
+- `app/api/cron/process-deletions/route.ts` - Daily cron: reminders + auto-execute
+- `lib/deletion-request.ts` - Service layer (`autoExecutePendingDeletions`)
+- `components/DeletionRequestsTab.tsx` - Admin read-only monitoring UI
 
 **Features delivered:**
-- List all deletion requests with filters (status, email, date)
-- View request details with associated orders
-- Execute single/bulk deletions
-- Show tax compliance status (paid vs unpaid orders)
-- Statistics dashboard
-- 14-day cooling-off window with reminders
+- 14-day cooling-off window with day 1/7/13 reminder emails
+- Daily cron auto-executes pending requests past their window — no admin click
+- CASE 1 (paid orders): PII anonymized per CGST Rule 46 ₹50k threshold, hard
+  delete deferred 8 years (status `deferred_legal`)
+- CASE 2 (no paid orders): all orders hard-deleted (status `completed`),
+  completion email sent
+- CASE 2 failures stay at `pending` so the next cron cycle retries — no manual
+  recovery needed
+- Admin UI is read-only: list/filter/view requests for audit, no execute path
+- State machine: `pending → completed | deferred_legal | cancelled`
 
 #### 1.2 Privacy Policy Update ✅ COMPLETED
 **Files modified:**
@@ -282,9 +286,9 @@ This plan outlines the implementation steps to make Trisikha fully compliant wit
 ### Admin APIs (Implemented)
 | Method | Endpoint | Purpose | Status |
 |--------|----------|---------|--------|
-| GET | `/api/admin/deletion-requests` | List deletion requests | ✅ |
-| GET/POST | `/api/admin/deletion-requests/[id]` | Get/execute deletion | ✅ |
-| POST | `/api/admin/deletion-requests/bulk-execute` | Bulk execute | ✅ |
+| GET | `/api/admin/deletion-requests` | List deletion requests (read-only) | ✅ |
+| GET | `/api/admin/deletion-requests/[id]` | Request details (read-only) | ✅ |
+| POST | `/api/cron/process-deletions` | Daily cron: reminders + auto-execute | ✅ |
 | GET | `/api/admin/correction-requests` | List corrections with stats | ✅ |
 | GET/POST | `/api/admin/correction-requests/[id]` | Get/process correction | ✅ |
 | GET | `/api/admin/grievances` | List grievances with stats | ✅ |
