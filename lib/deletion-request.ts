@@ -14,7 +14,12 @@
 import { createServiceClient } from "@/utils/supabase/service";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
-import { sendDeletionCompleted } from "@/lib/email";
+import {
+  sendDeletionCompleted,
+  sendDeletionDeferred,
+  sendNomineeDeletionCompleted,
+  sendNomineeDeletionDeferred,
+} from "@/lib/email";
 import { addDays, addYears, differenceInDays } from "date-fns";
 
 // Constants
@@ -341,6 +346,8 @@ export interface AutoExecuteResult {
   errors: number;
   completionEmailsSent: number;
   completionEmailsFailed: number;
+  deferredEmailsSent: number;
+  deferredEmailsFailed: number;
 }
 
 /**
@@ -359,7 +366,7 @@ export async function autoExecutePendingDeletions(): Promise<AutoExecuteResult> 
 
   const { data: dueRequests, error } = await supabase
     .from("deletion_requests")
-    .select("id, guest_email")
+    .select("id, guest_email, source_nominee_claim_id")
     .eq("status", "pending")
     .lte("scheduled_deletion_at", now.toISOString())
     .order("scheduled_deletion_at", { ascending: true });
@@ -374,6 +381,8 @@ export async function autoExecutePendingDeletions(): Promise<AutoExecuteResult> 
       errors: 1,
       completionEmailsSent: 0,
       completionEmailsFailed: 0,
+      deferredEmailsSent: 0,
+      deferredEmailsFailed: 0,
     };
   }
 
@@ -385,6 +394,8 @@ export async function autoExecutePendingDeletions(): Promise<AutoExecuteResult> 
     errors: 0,
     completionEmailsSent: 0,
     completionEmailsFailed: 0,
+    deferredEmailsSent: 0,
+    deferredEmailsFailed: 0,
   };
 
   for (const req of dueRequests || []) {
@@ -392,14 +403,48 @@ export async function autoExecutePendingDeletions(): Promise<AutoExecuteResult> 
     try {
       const execResult = await executeDeletionRequest(req.id);
 
+      // For nominee-originated rows the principal mailbox is unattended
+      // (deceased/incapacitated). Look up the nominee to redirect mail.
+      let nomineeInfo: { email: string; name: string; claimId: string } | null = null;
+      if (req.source_nominee_claim_id) {
+        const { data: claim } = await supabase
+          .from("nominee_claims")
+          .select("id, nominee_email, nominee:nominees(nominee_name)")
+          .eq("id", req.source_nominee_claim_id)
+          .single();
+        if (claim) {
+          // supabase-js types the join as either a single object or an
+          // array depending on relationship cardinality; normalise.
+          const joined = (claim as { nominee?: { nominee_name?: string } | { nominee_name?: string }[] }).nominee;
+          const nomineeName = Array.isArray(joined)
+            ? joined[0]?.nominee_name ?? "Nominee"
+            : joined?.nominee_name ?? "Nominee";
+          nomineeInfo = {
+            email: (claim as { nominee_email: string }).nominee_email,
+            name: nomineeName,
+            claimId: req.source_nominee_claim_id,
+          };
+        }
+      }
+
       switch (execResult.status) {
         case "completed":
           result.completed++;
           try {
-            await sendDeletionCompleted({
-              email: req.guest_email,
-              ordersAnonymized: execResult.ordersDeleted,
-            });
+            if (nomineeInfo) {
+              await sendNomineeDeletionCompleted({
+                nomineeEmail: nomineeInfo.email,
+                nomineeName: nomineeInfo.name,
+                principalEmail: req.guest_email,
+                claimId: nomineeInfo.claimId,
+                ordersAnonymized: execResult.ordersDeleted,
+              });
+            } else {
+              await sendDeletionCompleted({
+                email: req.guest_email,
+                ordersAnonymized: execResult.ordersDeleted,
+              });
+            }
             result.completionEmailsSent++;
           } catch (emailErr) {
             result.completionEmailsFailed++;
@@ -411,6 +456,31 @@ export async function autoExecutePendingDeletions(): Promise<AutoExecuteResult> 
           break;
         case "deferred_legal":
           result.deferred++;
+          try {
+            if (nomineeInfo) {
+              await sendNomineeDeletionDeferred({
+                nomineeEmail: nomineeInfo.email,
+                nomineeName: nomineeInfo.name,
+                principalEmail: req.guest_email,
+                claimId: nomineeInfo.claimId,
+                ordersAnonymized: execResult.ordersDeleted,
+                retentionEndDate: execResult.retentionEndDate,
+              });
+            } else {
+              await sendDeletionDeferred({
+                email: req.guest_email,
+                ordersAnonymized: execResult.ordersDeleted,
+                retentionEndDate: execResult.retentionEndDate,
+              });
+            }
+            result.deferredEmailsSent++;
+          } catch (emailErr) {
+            result.deferredEmailsFailed++;
+            logError(emailErr as Error, {
+              context: "auto_execute_deferred_email_failed",
+              requestId: req.id,
+            });
+          }
           break;
         case "pending":
           result.retryable++;

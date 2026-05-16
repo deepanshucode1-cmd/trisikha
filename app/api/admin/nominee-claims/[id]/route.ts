@@ -7,7 +7,7 @@ import { sanitizeObject } from "@/lib/xss";
 import { sendNomineeClaimProcessed } from "@/lib/email";
 
 const processSchema = z.object({
-  action: z.enum(["verify", "reject", "complete"]),
+  action: z.enum(["approve", "reject"]),
   adminNotes: z.string().optional(),
 });
 
@@ -66,7 +66,9 @@ export async function GET(
 /**
  * PATCH /api/admin/nominee-claims/[id]
  *
- * Process a nominee claim (verify, reject, or complete).
+ * Process a nominee claim (approve or reject).
+ * On approve: executes the requested action(s) and transitions to `completed`.
+ * On reject: transitions to `rejected`.
  */
 export async function PATCH(
   req: Request,
@@ -120,22 +122,38 @@ export async function PATCH(
       return NextResponse.json({ error: result.message }, { status: 400 });
     }
 
-    // Send email notification for completed or rejected claims
-    if (claim && (action === "complete" || action === "reject")) {
+    // One email per terminal transition:
+    //   approve + export (with or without deletion) → sendNomineeDataExport
+    //     already fired inside processNomineeClaim with the JSON attached and
+    //     deletion timing in the body. That IS the completion notification.
+    //   approve + deletion only → generic "completed" email here.
+    //   reject → generic "rejected" email here.
+    if (claim) {
       const nomineeName = claim.nominee?.nominee_name || "Nominee";
 
-      sendNomineeClaimProcessed({
-        nomineeEmail: claim.nominee_email,
-        nomineeName,
-        claimId: id,
-        status: action === "complete" ? "completed" : "rejected",
-        actionTaken:
-          action === "complete" ? adminNotes || "Your request has been processed." : undefined,
-        rejectionReason:
-          action === "reject" ? adminNotes || undefined : undefined,
-      }).catch((err) =>
-        console.error("Failed to send nominee claim processed email:", err)
-      );
+      if (action === "approve" && result.deletionQueued && !result.exportSent) {
+        sendNomineeClaimProcessed({
+          nomineeEmail: claim.nominee_email,
+          nomineeName,
+          claimId: id,
+          status: "completed",
+          actionTaken:
+            adminNotes ||
+            "Deletion of the principal's data has been queued and will be completed within 24 hours.",
+        }).catch((err) =>
+          console.error("Failed to send nominee claim processed email:", err)
+        );
+      } else if (action === "reject") {
+        sendNomineeClaimProcessed({
+          nomineeEmail: claim.nominee_email,
+          nomineeName,
+          claimId: id,
+          status: "rejected",
+          rejectionReason: adminNotes || undefined,
+        }).catch((err) =>
+          console.error("Failed to send nominee claim processed email:", err)
+        );
+      }
     }
 
     return NextResponse.json({

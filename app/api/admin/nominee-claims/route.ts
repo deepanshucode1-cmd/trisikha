@@ -32,7 +32,6 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const status = url.searchParams.get("status") as
       | "pending"
-      | "verified"
       | "rejected"
       | "completed"
       | null;

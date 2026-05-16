@@ -552,7 +552,7 @@ export async function sendNomineeClaimProcessed(params: {
 
 ### Policy
 
-- Uploaded proof documents are retained for **1 year** after the claim is processed (verified/rejected/completed)
+- Uploaded proof documents are retained for **1 year** after the claim reaches a terminal state (completed/rejected). The 1-year clock is stamped onto `document_retained_until` at the moment of that transition inside `processNomineeClaim`. Pending claims have `document_retained_until = NULL` and are excluded from cleanup.
 - `document_retained_until` is set on the `nominee_claims` record
 - After expiry, the document is deleted from Supabase Storage, and `document_path` is set to `'deleted'`
 - The claim record itself is retained indefinitely (it's part of the audit trail — only the uploaded file is deleted)

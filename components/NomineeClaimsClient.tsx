@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useCsrf } from "@/hooks/useCsrf";
 
 // Types
-type ClaimStatus = "pending" | "verified" | "rejected" | "completed";
+type ClaimStatus = "pending" | "rejected" | "completed";
 type ClaimType = "death" | "incapacity";
 type Relationship =
   | "spouse"
@@ -47,21 +47,28 @@ type NomineeClaim = {
 
 type ClaimStats = {
   pending: number;
-  verified: number;
   rejected: number;
   completed: number;
 };
 
 // Status configuration
-const STATUS_CONFIG: Record<
-  ClaimStatus,
-  { label: string; color: string; bgColor: string }
-> = {
+type StatusDisplay = { label: string; color: string; bgColor: string };
+
+const STATUS_CONFIG: Record<ClaimStatus, StatusDisplay> = {
   pending: { label: "Pending", color: "text-yellow-700", bgColor: "bg-yellow-100" },
-  verified: { label: "Verified", color: "text-blue-700", bgColor: "bg-blue-100" },
   rejected: { label: "Rejected", color: "text-red-700", bgColor: "bg-red-100" },
   completed: { label: "Completed", color: "text-green-700", bgColor: "bg-green-100" },
 };
+
+const UNKNOWN_STATUS: StatusDisplay = {
+  label: "Unknown",
+  color: "text-gray-700",
+  bgColor: "bg-gray-100",
+};
+
+function getStatusDisplay(status: string): StatusDisplay {
+  return STATUS_CONFIG[status as ClaimStatus] ?? UNKNOWN_STATUS;
+}
 
 const CLAIM_TYPE_LABELS: Record<ClaimType, string> = {
   death: "Death",
@@ -159,7 +166,7 @@ export default function NomineeClaimsClient() {
   };
 
   // Process claim
-  const handleAction = async (action: "verify" | "reject" | "complete") => {
+  const handleAction = async (action: "approve" | "reject") => {
     if (!selectedClaim || !csrfToken) return;
 
     setActionLoading(true);
@@ -242,18 +249,12 @@ export default function NomineeClaimsClient() {
         <div className="space-y-6">
           {/* Stats Cards */}
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <div className="text-2xl font-bold text-yellow-700">
                   {stats.pending}
                 </div>
                 <div className="text-sm text-yellow-600">Pending</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-2xl font-bold text-blue-700">
-                  {stats.verified}
-                </div>
-                <div className="text-sm text-blue-600">Verified</div>
               </div>
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <div className="text-2xl font-bold text-red-700">
@@ -282,7 +283,6 @@ export default function NomineeClaimsClient() {
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
-              <option value="verified">Verified</option>
               <option value="rejected">Rejected</option>
               <option value="completed">Completed</option>
             </select>
@@ -363,7 +363,7 @@ export default function NomineeClaimsClient() {
                     </tr>
                   ) : (
                     claims.map((claim) => {
-                      const statusConfig = STATUS_CONFIG[claim.status];
+                      const statusConfig = getStatusDisplay(claim.status);
                       const actions = [];
                       if (claim.action_export) actions.push("Export");
                       if (claim.action_deletion) actions.push("Deletion");
@@ -520,11 +520,16 @@ export default function NomineeClaimsClient() {
                       <div>
                         <label className="text-sm text-gray-500">Status</label>
                         <div>
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${STATUS_CONFIG[selectedClaim.status].bgColor} ${STATUS_CONFIG[selectedClaim.status].color}`}
-                          >
-                            {STATUS_CONFIG[selectedClaim.status].label}
-                          </span>
+                          {(() => {
+                            const cfg = getStatusDisplay(selectedClaim.status);
+                            return (
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${cfg.bgColor} ${cfg.color}`}
+                              >
+                                {cfg.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div>
@@ -604,8 +609,7 @@ export default function NomineeClaimsClient() {
                     )}
 
                     {/* Admin Actions */}
-                    {(selectedClaim.status === "pending" ||
-                      selectedClaim.status === "verified") && (
+                    {selectedClaim.status === "pending" && (
                       <div className="border-t pt-4 space-y-4">
                         <h3 className="font-medium text-gray-900">Admin Actions</h3>
 
@@ -617,59 +621,34 @@ export default function NomineeClaimsClient() {
                             value={actionNotes}
                             onChange={(e) => setActionNotes(e.target.value)}
                             rows={3}
-                            placeholder={
-                              selectedClaim.status === "pending"
-                                ? "Verification notes or rejection reason..."
-                                : "Details of actions taken (export sent, data deleted, etc.)..."
-                            }
+                            placeholder="Approval notes or rejection reason..."
                             className="w-full border rounded-lg px-3 py-2 resize-vertical"
                           />
                         </div>
 
                         <div className="flex flex-wrap gap-3">
-                          {selectedClaim.status === "pending" && (
-                            <>
-                              <button
-                                onClick={() => handleAction("verify")}
-                                disabled={actionLoading}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                {actionLoading ? "Processing..." : "Verify Claim"}
-                              </button>
-                              <button
-                                onClick={() => handleAction("reject")}
-                                disabled={actionLoading}
-                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                              >
-                                {actionLoading ? "Processing..." : "Reject Claim"}
-                              </button>
-                            </>
-                          )}
-                          {selectedClaim.status === "verified" && (
-                            <button
-                              onClick={() => handleAction("complete")}
-                              disabled={actionLoading}
-                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                            >
-                              {actionLoading ? "Processing..." : "Mark Completed"}
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleAction("approve")}
+                            disabled={actionLoading}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                          >
+                            {actionLoading ? "Processing..." : "Approve Claim"}
+                          </button>
+                          <button
+                            onClick={() => handleAction("reject")}
+                            disabled={actionLoading}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {actionLoading ? "Processing..." : "Reject Claim"}
+                          </button>
                         </div>
 
-                        {selectedClaim.status === "pending" && (
-                          <p className="text-xs text-gray-500">
-                            Review the uploaded proof document before verifying. Verify confirms
-                            the claim is legitimate. After verifying, use existing admin tools to
-                            perform the requested export/deletion, then mark as completed.
-                          </p>
-                        )}
-                        {selectedClaim.status === "verified" && (
-                          <p className="text-xs text-gray-500">
-                            Ensure you have already performed the requested actions (data
-                            export and/or deletion) using the existing admin tools before marking
-                            as completed. The nominee will be notified.
-                          </p>
-                        )}
+                        <p className="text-xs text-gray-500">
+                          Review the uploaded proof document before approving. Approving
+                          executes the requested actions automatically: the data export
+                          is emailed to the nominee, and any deletion request is queued
+                          for the daily cron (completes within 24h).
+                        </p>
                       </div>
                     )}
 

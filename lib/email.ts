@@ -54,11 +54,18 @@ function getTransporter(): nodemailer.Transporter {
   return transporter;
 }
 
+interface EmailAttachment {
+  filename: string;
+  content: string | Buffer;
+  contentType?: string;
+}
+
 interface EmailOptions {
   to: string;
   subject: string;
   text?: string;
   html?: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
@@ -821,6 +828,161 @@ export async function sendDeletionCompleted(params: {
   });
 }
 
+/**
+ * Sent when a guest's deletion request transitions to `deferred_legal`:
+ * the principal had paid orders, so PII has been anonymized but the
+ * anonymized order records are retained for 8 years per CGST Act §36.
+ */
+export async function sendDeletionDeferred(params: {
+  email: string;
+  ordersAnonymized: number;
+  retentionEndDate: Date | null;
+}): Promise<boolean> {
+  const { email, ordersAnonymized, retentionEndDate } = params;
+  const retentionLabel = retentionEndDate
+    ? retentionEndDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+    : "8 years from now";
+
+  return sendEmail({
+    to: email,
+    subject: "TrishikhaOrganics: Your Data Has Been Anonymized",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Data Deletion Processed</h2>
+        <p>Dear Customer,</p>
+        <p>As per your request, we have removed your personal information (name, email, phone, address) from our systems.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <h3 style="margin-top: 0; color: #166534;">Summary</h3>
+          <ul style="margin-bottom: 0;">
+            <li>Orders anonymized: <strong>${ordersAnonymized}</strong></li>
+            <li>Personal information removed: Email, phone, address</li>
+            <li>Processed on: <strong>${new Date().toLocaleDateString("en-IN")}</strong></li>
+          </ul>
+        </div>
+
+        <h3>What We Retained &amp; Why</h3>
+        <p>Because your account included paid orders, Indian tax law (CGST Act §36 and Income Tax Act) requires us to retain anonymized order records for 8 years. These records:</p>
+        <ul>
+          <li>Cannot be linked back to you — your name, email, phone, and address have been permanently removed</li>
+          <li>Contain only order totals, products, and tax fields needed for compliance</li>
+          <li>Will be permanently deleted on or around <strong>${escapeHtml(retentionLabel)}</strong></li>
+        </ul>
+
+        <p>You will receive one final notice 48 hours before the records are permanently erased. After that, this email address will receive no further communication from us.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Your data protection rights have been honored under the DPDP Act, balanced against tax retention obligations.<br>
+          Thank you for being a customer of Trishikha Organics.
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to the NOMINEE when a nominee-originated deletion completes fully
+ * (principal had no paid orders → all data erased). The principal's own
+ * mailbox is unattended (deceased/incapacitated); the nominee is the
+ * correct recipient.
+ */
+export async function sendNomineeDeletionCompleted(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  principalEmail: string;
+  claimId: string;
+  ordersAnonymized: number;
+}): Promise<boolean> {
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: `TrishikhaOrganics: Deletion completed for ${params.principalEmail}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Data Deletion Completed</h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+
+        <p>The deletion request you submitted as the appointed nominee for <strong>${escapeHtml(params.principalEmail)}</strong> has been fully processed. The principal's personal data has been permanently removed from our systems.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0;"><strong>Nominee claim ID:</strong> ${escapeHtml(params.claimId)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Data subject (principal):</strong> ${escapeHtml(params.principalEmail)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Orders anonymized:</strong> ${params.ordersAnonymized}</p>
+          <p style="margin: 0;"><strong>Completed on:</strong> ${new Date().toLocaleDateString("en-IN")}</p>
+        </div>
+
+        <p>No further data for the principal remains in our active records. This email will be the last communication you receive in connection with this claim.</p>
+
+        <p>Legal basis: DPDP Act 2023 §13 (Right to Erasure), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi ${params.nomineeName},\n\nThe deletion request you submitted as the appointed nominee for ${params.principalEmail} has been fully processed. The principal's personal data has been permanently removed from our systems.\n\nNominee claim ID: ${params.claimId}\nData subject (principal): ${params.principalEmail}\nOrders anonymized: ${params.ordersAnonymized}\nCompleted on: ${new Date().toLocaleDateString("en-IN")}\n\nNo further data for the principal remains in our active records. This email will be the last communication you receive in connection with this claim.\n\nLegal basis: DPDP Act 2023 §13 (Right to Erasure), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to the NOMINEE when a nominee-originated deletion is `deferred_legal`:
+ * the principal had paid orders, PII has been anonymized, but anonymized
+ * order records are retained for 8 years per CGST Act §36.
+ */
+export async function sendNomineeDeletionDeferred(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  principalEmail: string;
+  claimId: string;
+  ordersAnonymized: number;
+  retentionEndDate: Date | null;
+}): Promise<boolean> {
+  const retentionLabel = params.retentionEndDate
+    ? params.retentionEndDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+    : "approximately 8 years from now";
+
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: `TrishikhaOrganics: Deletion processed for ${params.principalEmail}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">Data Deletion Processed</h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+
+        <p>The deletion request you submitted as the appointed nominee for <strong>${escapeHtml(params.principalEmail)}</strong> has been processed. The principal's personal information (name, email, phone, address) has been removed from our systems.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0;"><strong>Nominee claim ID:</strong> ${escapeHtml(params.claimId)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Data subject (principal):</strong> ${escapeHtml(params.principalEmail)}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Orders anonymized:</strong> ${params.ordersAnonymized}</p>
+          <p style="margin: 0;"><strong>Processed on:</strong> ${new Date().toLocaleDateString("en-IN")}</p>
+        </div>
+
+        <h3>Tax-Mandated Retention</h3>
+        <p>Because the principal had paid orders, Indian tax law (CGST Act §36 and Income Tax Act) requires us to retain anonymized order records for 8 years. These records:</p>
+        <ul>
+          <li>Cannot be linked back to the principal — name, email, phone, and address have been permanently removed</li>
+          <li>Contain only order totals, products, and tax fields needed for compliance</li>
+          <li>Will be permanently deleted on or around <strong>${escapeHtml(retentionLabel)}</strong></li>
+        </ul>
+
+        <p>You will receive a final notice 48 hours before the anonymized records are permanently erased.</p>
+
+        <p>Legal basis: DPDP Act 2023 §13 (Right to Erasure), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14, balanced against statutory tax-retention obligations.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi ${params.nomineeName},\n\nThe deletion request you submitted as the appointed nominee for ${params.principalEmail} has been processed. The principal's personal information has been removed from our systems.\n\nNominee claim ID: ${params.claimId}\nData subject (principal): ${params.principalEmail}\nOrders anonymized: ${params.ordersAnonymized}\nProcessed on: ${new Date().toLocaleDateString("en-IN")}\n\nTax-Mandated Retention:\nBecause the principal had paid orders, Indian tax law (CGST Act §36 and Income Tax Act) requires us to retain anonymized order records for 8 years. These records cannot be linked back to the principal and will be permanently deleted on or around ${retentionLabel}.\n\nYou will receive a final notice 48 hours before the anonymized records are permanently erased.\n\nLegal basis: DPDP Act 2023 §13, exercised by an appointed nominee under DPDP Rules 2025 Rule 14.\n\nTrishikha Organics`,
+  });
+}
+
 // --- Grievance Redressal Emails (DPDP Rule 14(3)) ---
 
 /**
@@ -1407,5 +1569,74 @@ export async function sendNomineeClaimProcessed(params: {
     text: isCompleted
       ? `Hi ${params.nomineeName},\n\nYour nominee claim ${params.claimId} has been processed successfully.\n\n${params.actionTaken ? `Action Taken: ${params.actionTaken}\n\n` : ""}Trishikha Organics`
       : `Hi ${params.nomineeName},\n\nYour nominee claim ${params.claimId} could not be verified.\n\n${params.rejectionReason ? `Reason: ${params.rejectionReason}\n\n` : ""}Contact: trishikhaorganic@gmail.com | +91 79841 30253\n\nTrishikha Organics`,
+  });
+}
+
+/**
+ * Sent to nominee when their claim's data-export action is approved.
+ * Attaches the principal's data export JSON. The body makes the relationship
+ * explicit: who the nominee is, whose data this is, and why they're getting it.
+ *
+ * If `deletionAlsoQueued` is true, the body also notifies the nominee that
+ * the principal's data will be permanently deleted within ~24 hours (the
+ * deletion cron window). This sets correct expectations about the brief
+ * lag between approval and actual deletion.
+ */
+export async function sendNomineeDataExport(params: {
+  nomineeEmail: string;
+  nomineeName: string;
+  principalEmail: string;
+  claimId: string;
+  jsonString: string;
+  filename: string;
+  deletionAlsoQueued: boolean;
+}): Promise<boolean> {
+  const deletionLineHtml = params.deletionAlsoQueued
+    ? `<p>You also requested deletion of <strong>${escapeHtml(params.principalEmail)}</strong>'s data. The deletion has been queued and will be completed within 24 hours. This export is your snapshot of the data we held prior to deletion.</p>`
+    : "";
+
+  const deletionLineText = params.deletionAlsoQueued
+    ? `\nYou also requested deletion of ${params.principalEmail}'s data. The deletion has been queued and will be completed within 24 hours. This export is your snapshot of the data we held prior to deletion.\n`
+    : "";
+
+  return sendEmail({
+    to: params.nomineeEmail,
+    subject: `TrishikhaOrganics: Data export for ${params.principalEmail} — Nominee Claim`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a365d;">Nominee Data Export</h2>
+        <p>Hi ${escapeHtml(params.nomineeName)},</p>
+
+        <p>You are receiving this email because you submitted a nominee claim requesting a copy of the data Trishikha Organics holds for <strong>${escapeHtml(params.principalEmail)}</strong>, and our admin has approved that request.</p>
+
+        <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 8px 0;"><strong>Nominee:</strong> ${escapeHtml(params.nomineeName)} &lt;${escapeHtml(params.nomineeEmail)}&gt;</p>
+          <p style="margin: 0 0 8px 0;"><strong>Data subject (principal):</strong> ${escapeHtml(params.principalEmail)}</p>
+          <p style="margin: 0;"><strong>Claim ID:</strong> ${escapeHtml(params.claimId)}</p>
+        </div>
+
+        <p>The attached file <strong>${escapeHtml(params.filename)}</strong> contains the principal's data in JSON format. Please treat this information as confidential — it includes personal details such as orders, shipping addresses, and contact information belonging to the data principal.</p>
+
+        ${deletionLineHtml}
+
+        <p>If you did not submit this claim, please contact our Grievance Officer immediately at <a href="mailto:trishikhaorganic@gmail.com" style="color: #3d3c30;">trishikhaorganic@gmail.com</a> or +91 79841 30253.</p>
+
+        <p>Legal basis: DPDP Act 2023 §11 (Right to Data Portability), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          This is an automated message from Trishikha Organics.<br>
+          Thank you for shopping with Trishikha Organics.
+        </p>
+      </div>
+    `,
+    text: `Hi ${params.nomineeName},\n\nYou are receiving this email because you submitted a nominee claim requesting a copy of the data Trishikha Organics holds for ${params.principalEmail}, and our admin has approved that request.\n\nNominee: ${params.nomineeName} <${params.nomineeEmail}>\nData subject (principal): ${params.principalEmail}\nClaim ID: ${params.claimId}\n\nThe attached file ${params.filename} contains the principal's data in JSON format. Please treat this information as confidential.\n${deletionLineText}\nIf you did not submit this claim, please contact our Grievance Officer at trishikhaorganic@gmail.com or +91 79841 30253.\n\nLegal basis: DPDP Act 2023 §11 (Right to Data Portability), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.\n\nTrishikha Organics`,
+    attachments: [
+      {
+        filename: params.filename,
+        content: params.jsonString,
+        contentType: "application/json",
+      },
+    ],
   });
 }

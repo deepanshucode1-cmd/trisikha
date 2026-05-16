@@ -12,11 +12,13 @@
 import { createServiceClient } from "@/utils/supabase/service";
 import { logError, logSecurityEvent } from "@/lib/logger";
 import { logDataAccess } from "@/lib/audit";
+import { buildPrincipalDataExport } from "@/lib/data-export";
+import { sendNomineeDataExport } from "@/lib/email";
 
 // Types
 export type NomineeStatus = "active" | "revoked";
 export type ClaimType = "death" | "incapacity";
-export type ClaimStatus = "pending" | "verified" | "rejected" | "completed";
+export type ClaimStatus = "pending" | "rejected" | "completed";
 export type Relationship =
   | "spouse"
   | "child"
@@ -89,9 +91,18 @@ export interface SubmitClaimParams {
 
 export interface ProcessClaimParams {
   claimId: string;
-  action: "verify" | "reject" | "complete";
+  action: "approve" | "reject";
   adminId: string;
   adminNotes?: string;
+}
+
+export interface ProcessClaimResult {
+  success: boolean;
+  message: string;
+  /** True if action_export ran and the export email was delivered. */
+  exportSent?: boolean;
+  /** True if action_deletion ran and a deletion_requests row was queued. */
+  deletionQueued?: boolean;
 }
 
 // ============================================================
@@ -309,9 +320,9 @@ export async function submitNomineeClaim(
 ): Promise<{ claimId: string }> {
   const supabase = createServiceClient();
 
-  // Document retention: 1 year after creation
-  const retainUntil = new Date();
-  retainUntil.setFullYear(retainUntil.getFullYear() + 1);
+  // document_retained_until is intentionally left NULL on insert.
+  // The 1-year clock starts when the claim reaches a terminal state
+  // (completed or rejected), stamped inside processNomineeClaim.
 
   const { data, error } = await supabase
     .from("nominee_claims")
@@ -326,7 +337,6 @@ export async function submitNomineeClaim(
       action_export: params.actionExport,
       action_deletion: params.actionDeletion,
       status: "pending",
-      document_retained_until: retainUntil.toISOString(),
       ip_address: params.ip,
       user_agent: params.userAgent || null,
     })
@@ -439,18 +449,122 @@ export async function getNomineeClaimById(
 }
 
 /**
+ * Build the principal's data export and email it to the nominee.
+ * Throws on any failure — caller (processNomineeClaim) aborts the transition.
+ */
+async function executeExportForNominee(params: {
+  principalEmail: string;
+  nomineeEmail: string;
+  nomineeName: string;
+  claimId: string;
+  deletionAlsoQueued: boolean;
+}): Promise<void> {
+  const { jsonString, filename, ordersCount } = await buildPrincipalDataExport(
+    params.principalEmail
+  );
+
+  const emailSent = await sendNomineeDataExport({
+    nomineeEmail: params.nomineeEmail,
+    nomineeName: params.nomineeName,
+    principalEmail: params.principalEmail,
+    claimId: params.claimId,
+    jsonString,
+    filename,
+    deletionAlsoQueued: params.deletionAlsoQueued,
+  });
+
+  if (!emailSent) {
+    throw new Error("Failed to email data export to nominee.");
+  }
+
+  logSecurityEvent("nominee_export_executed", {
+    claimId: params.claimId,
+    principalEmail: params.principalEmail,
+    nomineeEmail: params.nomineeEmail,
+    ordersCount,
+  });
+}
+
+/**
+ * Queue a deletion request for the principal. Inserts a deletion_requests
+ * row with `scheduled_deletion_at = now`; the existing daily cron picks it
+ * up and runs `executeDeletionRequest` against it.
+ *
+ * If the principal already has a pending deletion request (unique partial
+ * index on `guest_email WHERE status = 'pending'`), this no-ops gracefully
+ * — the existing request will be processed by cron and covers the same data.
+ */
+async function queueDeletionForNominee(params: {
+  principalEmail: string;
+  claimId: string;
+  adminId: string;
+}): Promise<{ deletionRequestId: string | null; alreadyPending: boolean }> {
+  const supabase = createServiceClient();
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("deletion_requests")
+    .insert({
+      guest_email: params.principalEmail,
+      status: "pending",
+      scheduled_deletion_at: now,
+      source_nominee_claim_id: params.claimId,
+      ip_address: null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    // 23505 = unique_violation. The partial unique index on (guest_email)
+    // WHERE status = 'pending' means a pending request already exists for
+    // this principal — treat as success, cron will handle it.
+    const pgError = error as { code?: string };
+    if (pgError.code === "23505") {
+      logSecurityEvent("nominee_deletion_already_pending", {
+        claimId: params.claimId,
+        principalEmail: params.principalEmail,
+        adminId: params.adminId,
+      });
+      return { deletionRequestId: null, alreadyPending: true };
+    }
+    logError(error as Error, {
+      context: "queue_deletion_for_nominee_failed",
+      claimId: params.claimId,
+    });
+    throw new Error("Failed to queue deletion for principal.");
+  }
+
+  logSecurityEvent("nominee_deletion_queued", {
+    claimId: params.claimId,
+    deletionRequestId: data.id,
+    principalEmail: params.principalEmail,
+    adminId: params.adminId,
+  });
+
+  return { deletionRequestId: data.id, alreadyPending: false };
+}
+
+/**
  * Process a nominee claim (admin action).
- * Status transitions: pending → verified | rejected, verified → completed.
+ *
+ * Status transitions: pending → completed (approve) | pending → rejected.
+ *
+ * On `approve`, executes the actions requested at claim submission BEFORE
+ * the status update — export-first ordering so the export is built against
+ * live DB data, then deletion is queued for the cron. Any executor failure
+ * aborts the transition; the claim stays `pending` so the admin can retry.
+ *
+ * See: docs/nominee-claim-automation-and-retention-plan.md §2
  */
 export async function processNomineeClaim(
   params: ProcessClaimParams
-): Promise<{ success: boolean; message: string }> {
+): Promise<ProcessClaimResult> {
   const supabase = createServiceClient();
   const now = new Date().toISOString();
 
   const { data: claim, error: fetchError } = await supabase
     .from("nominee_claims")
-    .select("*")
+    .select("*, nominee:nominees(*)")
     .eq("id", params.claimId)
     .single();
 
@@ -460,10 +574,8 @@ export async function processNomineeClaim(
 
   const typedClaim = claim as NomineeClaim;
 
-  // Validate status transition
   const validTransitions: Record<string, string[]> = {
-    pending: ["verify", "reject"],
-    verified: ["complete"],
+    pending: ["approve", "reject"],
   };
 
   const allowed = validTransitions[typedClaim.status] || [];
@@ -474,12 +586,67 @@ export async function processNomineeClaim(
     };
   }
 
-  const newStatus =
-    params.action === "verify"
-      ? "verified"
-      : params.action === "reject"
-        ? "rejected"
-        : "completed";
+  let exportSent = false;
+  let deletionQueued = false;
+
+  if (params.action === "approve") {
+    const nomineeName = typedClaim.nominee?.nominee_name || "Nominee";
+
+    // Export-first ordering: builder reads live DB data, so it must run
+    // before deletion is queued. Failure aborts before any deletion row
+    // is inserted.
+    if (typedClaim.action_export) {
+      try {
+        await executeExportForNominee({
+          principalEmail: typedClaim.principal_email,
+          nomineeEmail: typedClaim.nominee_email,
+          nomineeName,
+          claimId: typedClaim.id,
+          deletionAlsoQueued: typedClaim.action_deletion,
+        });
+        exportSent = true;
+      } catch (err) {
+        logError(err as Error, {
+          context: "nominee_claim_export_failed",
+          claimId: params.claimId,
+        });
+        return {
+          success: false,
+          message:
+            "Failed to deliver data export to nominee. Claim left pending — please retry.",
+        };
+      }
+    }
+
+    if (typedClaim.action_deletion) {
+      try {
+        await queueDeletionForNominee({
+          principalEmail: typedClaim.principal_email,
+          claimId: typedClaim.id,
+          adminId: params.adminId,
+        });
+        deletionQueued = true;
+      } catch (err) {
+        logError(err as Error, {
+          context: "nominee_claim_deletion_queue_failed",
+          claimId: params.claimId,
+        });
+        // Note: if export ran and email already went out, retry will
+        // re-send (acceptable duplicate to nominee — see §2.6).
+        return {
+          success: false,
+          message:
+            "Failed to queue principal deletion. Claim left pending — please retry.",
+        };
+      }
+    }
+  }
+
+  const newStatus = params.action === "approve" ? "completed" : "rejected";
+
+  // 1-year document retention clock starts at terminal-state transition.
+  const retainUntil = new Date();
+  retainUntil.setFullYear(retainUntil.getFullYear() + 1);
 
   const { error: updateError } = await supabase
     .from("nominee_claims")
@@ -488,6 +655,7 @@ export async function processNomineeClaim(
       admin_notes: params.adminNotes || typedClaim.admin_notes,
       processed_by: params.adminId,
       processed_at: now,
+      document_retained_until: retainUntil.toISOString(),
       updated_at: now,
     })
     .eq("id", params.claimId);
@@ -497,6 +665,9 @@ export async function processNomineeClaim(
       context: "process_nominee_claim_failed",
       claimId: params.claimId,
     });
+    // Side effects (export sent / deletion queued) already happened. The
+    // claim stays `pending` so admin retries — retry produces an additional
+    // queued deletion row (idempotent on cron; see §2.6 accepted edge cost).
     return { success: false, message: "Failed to process nominee claim." };
   }
 
@@ -518,11 +689,15 @@ export async function processNomineeClaim(
     principalEmail: typedClaim.principal_email,
     nomineeEmail: typedClaim.nominee_email,
     adminId: params.adminId,
+    exportSent,
+    deletionQueued,
   });
 
   return {
     success: true,
     message: `Nominee claim ${newStatus}.`,
+    exportSent,
+    deletionQueued,
   };
 }
 
@@ -531,7 +706,6 @@ export async function processNomineeClaim(
  */
 export async function getNomineeClaimStats(): Promise<{
   pending: number;
-  verified: number;
   rejected: number;
   completed: number;
 }> {
@@ -543,10 +717,10 @@ export async function getNomineeClaimStats(): Promise<{
 
   if (error) {
     logError(error as Error, { context: "get_nominee_claim_stats_failed" });
-    return { pending: 0, verified: 0, rejected: 0, completed: 0 };
+    return { pending: 0, rejected: 0, completed: 0 };
   }
 
-  const stats = { pending: 0, verified: 0, rejected: 0, completed: 0 };
+  const stats = { pending: 0, rejected: 0, completed: 0 };
   for (const row of data || []) {
     const s = row.status as ClaimStatus;
     if (s in stats) stats[s]++;
