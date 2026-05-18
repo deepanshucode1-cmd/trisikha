@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["**/*.test.ts"],
-    exclude: ["node_modules", ".next"],
+    exclude: ["node_modules", ".next", ".snapshots/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

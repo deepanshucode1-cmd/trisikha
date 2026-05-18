@@ -17,6 +17,9 @@ function createChainableMock(resolvedValue: Record<string, unknown> = { data: nu
   chain.lt = vi.fn().mockReturnValue(self());
   chain.lte = vi.fn().mockReturnValue(self());
   chain.in = vi.fn().mockReturnValue(self());
+  chain.is = vi.fn().mockReturnValue(self());
+  chain.or = vi.fn().mockReturnValue(self());
+  chain.not = vi.fn().mockReturnValue(self());
 
   // Terminal calls that actually resolve
   chain.then = vi.fn((resolve) => resolve(resolvedValue));
@@ -24,6 +27,38 @@ function createChainableMock(resolvedValue: Record<string, unknown> = { data: nu
   // Make the chain thenable so `await` works
   Object.defineProperty(chain, "then", {
     value: (resolve: (v: unknown) => void) => Promise.resolve(resolvedValue).then(resolve),
+    writable: true,
+    configurable: true,
+  });
+
+  return chain;
+}
+
+// Build a chainable mock that consumes a queue of responses on each await.
+// Use when a function makes multiple sequential awaits against the same table.
+function createChainableQueueMock(responses: Array<Record<string, unknown>>) {
+  const queue = [...responses];
+  const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+  const self = () => chain;
+
+  chain.select = vi.fn().mockReturnValue(self());
+  chain.insert = vi.fn().mockReturnValue(self());
+  chain.update = vi.fn().mockReturnValue(self());
+  chain.delete = vi.fn().mockReturnValue(self());
+  chain.eq = vi.fn().mockReturnValue(self());
+  chain.neq = vi.fn().mockReturnValue(self());
+  chain.lt = vi.fn().mockReturnValue(self());
+  chain.lte = vi.fn().mockReturnValue(self());
+  chain.in = vi.fn().mockReturnValue(self());
+  chain.is = vi.fn().mockReturnValue(self());
+  chain.or = vi.fn().mockReturnValue(self());
+  chain.not = vi.fn().mockReturnValue(self());
+
+  Object.defineProperty(chain, "then", {
+    value: (resolve: (v: unknown) => void) => {
+      const next = queue.shift() || { data: null, error: null };
+      return Promise.resolve(next).then(resolve);
+    },
     writable: true,
     configurable: true,
   });
@@ -75,7 +110,14 @@ import {
   deleteAbandonedCheckouts,
   notifyDeferredExpiry,
   executeDeferredDeletions,
+  purgeExpiredGuestSessions,
+  purgeStaleReviewTokens,
+  anonymiseStaleCorrectionRequests,
+  anonymiseStaleGrievances,
 } from "@/lib/auto-cleanup";
+import { scrubRazorpayNotes } from "@/lib/razorpay-server";
+
+const mockedScrub = vi.mocked(scrubRazorpayNotes);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -438,6 +480,293 @@ describe("Auto-Cleanup Service", () => {
       // Deletion still succeeds despite email failure
       expect(result.deleted).toBe(1);
       expect(result.errors).toBe(0);
+    });
+
+    it("scrubs Razorpay notes before hard-delete (2.A.5)", async () => {
+      const requests = [
+        { id: "req-1", guest_email: "alice@test.com", retention_end_date: "2026-02-01" },
+      ];
+
+      setupFromHandler("deletion_requests", { data: requests, error: null });
+      // Queue: first await on orders fetches razorpay_order_ids,
+      // second await is the DELETE+RETURNING.
+      fromHandlers["orders"] = createChainableQueueMock([
+        {
+          data: [
+            { razorpay_order_id: "rzp_a" },
+            { razorpay_order_id: null }, // should be filtered
+            { razorpay_order_id: "rzp_b" },
+          ],
+          error: null,
+        },
+        { data: [{ id: "o-1" }, { id: "o-2" }, { id: "o-3" }], error: null },
+      ]);
+
+      const result = await executeDeferredDeletions();
+
+      expect(result.deleted).toBe(1);
+      expect(mockedScrub).toHaveBeenCalledWith("rzp_a");
+      expect(mockedScrub).toHaveBeenCalledWith("rzp_b");
+      expect(mockedScrub).toHaveBeenCalledTimes(2);
+      expect(mockedScrub).not.toHaveBeenCalledWith(null);
+    });
+  });
+
+  // ─── purgeExpiredGuestSessions ────────────────────────────────────────────
+
+  describe("purgeExpiredGuestSessions", () => {
+    it("returns { deleted: 0, errors: 0 } when no eligible rows", async () => {
+      setupFromHandler("guest_data_sessions", { data: [], error: null });
+
+      const result = await purgeExpiredGuestSessions();
+
+      expect(result).toEqual({ deleted: 0, errors: 0 });
+      expect(mockLogDataAccess).not.toHaveBeenCalled();
+      expect(mockLogSecurityEvent).not.toHaveBeenCalled();
+    });
+
+    it("deletes and counts rows when expired sessions exist", async () => {
+      const purged = [{ id: "s1" }, { id: "s2" }, { id: "s3" }];
+      setupFromHandler("guest_data_sessions", { data: purged, error: null });
+
+      const result = await purgeExpiredGuestSessions();
+
+      expect(result).toEqual({ deleted: 3, errors: 0 });
+      expect(mockLogDataAccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tableName: "guest_data_sessions",
+          operation: "DELETE",
+          rowCount: 3,
+        })
+      );
+      expect(mockLogSecurityEvent).toHaveBeenCalledWith(
+        "auto_cleanup_guest_sessions",
+        expect.objectContaining({ deletedCount: 3 })
+      );
+    });
+
+    it("applies all three OR predicates (otp / session / lockout)", async () => {
+      const chain = setupFromHandler("guest_data_sessions", { data: [], error: null });
+
+      await purgeExpiredGuestSessions();
+
+      // Three .or() invocations correspond to the three time windows.
+      expect(chain.or).toHaveBeenCalledTimes(3);
+      const calls = (chain.or as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(calls.some((q: string) => q.includes("otp_expires_at"))).toBe(true);
+      expect(calls.some((q: string) => q.includes("session_expires_at"))).toBe(true);
+      expect(calls.some((q: string) => q.includes("otp_locked_until"))).toBe(true);
+    });
+
+    it("returns errors=1 and skips audit on query failure", async () => {
+      setupFromHandler("guest_data_sessions", {
+        data: null,
+        error: { message: "boom" },
+      });
+
+      const result = await purgeExpiredGuestSessions();
+
+      expect(result).toEqual({ deleted: 0, errors: 1 });
+      expect(mockLogError).toHaveBeenCalledTimes(1);
+      expect(mockLogDataAccess).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── purgeStaleReviewTokens ───────────────────────────────────────────────
+
+  describe("purgeStaleReviewTokens", () => {
+    it("returns zero when nothing stuck and nothing stale", async () => {
+      // 3 awaits in order: reviews(SELECT), review_tokens(DELETE recovery
+      // — skipped because no stuckIds), review_tokens(DELETE stale).
+      // With no stuckIds the recovery DELETE is short-circuited, so the
+      // queue is: reviews → review_tokens(stale).
+      fromHandlers["reviews"] = createChainableQueueMock([
+        { data: [], error: null },
+      ]);
+      fromHandlers["review_tokens"] = createChainableQueueMock([
+        { data: [], error: null },
+      ]);
+
+      const result = await purgeStaleReviewTokens();
+
+      expect(result).toEqual({ deleted: 0, errors: 0 });
+      expect(mockLogDataAccess).not.toHaveBeenCalled();
+    });
+
+    it("recovers consumed-but-stuck tokens AND purges stale unused", async () => {
+      // Stuck refs from reviews → 2 token ids. Recovery delete returns 2.
+      // Then stale delete returns 3 more rows.
+      fromHandlers["reviews"] = createChainableQueueMock([
+        {
+          data: [
+            { review_token_id: "tok-1" },
+            { review_token_id: "tok-2" },
+          ],
+          error: null,
+        },
+      ]);
+      fromHandlers["review_tokens"] = createChainableQueueMock([
+        { data: [{ id: "tok-1" }, { id: "tok-2" }], error: null }, // recovery
+        { data: [{ id: "t3" }, { id: "t4" }, { id: "t5" }], error: null }, // stale
+      ]);
+
+      const result = await purgeStaleReviewTokens();
+
+      expect(result.deleted).toBe(5);
+      expect(result.errors).toBe(0);
+      expect(mockLogDataAccess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tableName: "review_tokens",
+          rowCount: 5,
+        })
+      );
+    });
+
+    it("continues to stale step when recovery query fails", async () => {
+      fromHandlers["reviews"] = createChainableQueueMock([
+        { data: null, error: { message: "fail" } },
+      ]);
+      fromHandlers["review_tokens"] = createChainableQueueMock([
+        { data: [{ id: "stale-1" }], error: null },
+      ]);
+
+      const result = await purgeStaleReviewTokens();
+
+      // Recovery step contributed 0 + 1 error, stale step contributed 1.
+      expect(result.deleted).toBe(1);
+      expect(result.errors).toBe(1);
+    });
+
+    it("records error from stale delete but preserves recovery count", async () => {
+      fromHandlers["reviews"] = createChainableQueueMock([
+        { data: [{ review_token_id: "tok-1" }], error: null },
+      ]);
+      fromHandlers["review_tokens"] = createChainableQueueMock([
+        { data: [{ id: "tok-1" }], error: null }, // recovery success
+        { data: null, error: { message: "stale fail" } }, // stale fails
+      ]);
+
+      const result = await purgeStaleReviewTokens();
+
+      expect(result.deleted).toBe(1);
+      expect(result.errors).toBe(1);
+    });
+  });
+
+  // ─── anonymiseStaleCorrectionRequests ─────────────────────────────────────
+
+  describe("anonymiseStaleCorrectionRequests", () => {
+    it("returns zero when no terminal-state rows past cutoff", async () => {
+      setupFromHandler("correction_requests", { data: [], error: null });
+
+      const result = await anonymiseStaleCorrectionRequests();
+
+      expect(result).toEqual({ notified: 0, errors: 0 });
+      expect(mockLogDataAccess).not.toHaveBeenCalled();
+    });
+
+    it("nulls all PII columns and stamps anonymised_at", async () => {
+      const chain = setupFromHandler("correction_requests", {
+        data: [{ id: "cr-1" }, { id: "cr-2" }],
+        error: null,
+      });
+
+      const result = await anonymiseStaleCorrectionRequests();
+
+      expect(result.notified).toBe(2);
+
+      // The UPDATE call payload should null every PII column and set anonymised_at.
+      const updateCall = (chain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(updateCall.email).toBeNull();
+      expect(updateCall.current_value).toBeNull();
+      expect(updateCall.requested_value).toBeNull();
+      expect(updateCall.ip_address).toBeNull();
+      expect(updateCall.user_agent).toBeNull();
+      expect(updateCall.anonymised_at).toEqual(expect.any(String));
+    });
+
+    it("filters to approved/rejected with anonymised_at IS NULL", async () => {
+      const chain = setupFromHandler("correction_requests", {
+        data: [],
+        error: null,
+      });
+
+      await anonymiseStaleCorrectionRequests();
+
+      // status IN (approved, rejected)
+      expect(chain.in).toHaveBeenCalledWith("status", ["approved", "rejected"]);
+      // anonymised_at IS NULL (idempotency guard)
+      expect(chain.is).toHaveBeenCalledWith("anonymised_at", null);
+      // processed_at < cutoff
+      expect(chain.lt).toHaveBeenCalledWith(
+        "processed_at",
+        expect.any(String)
+      );
+    });
+
+    it("returns errors=1 on DB failure", async () => {
+      setupFromHandler("correction_requests", {
+        data: null,
+        error: { message: "db down" },
+      });
+
+      const result = await anonymiseStaleCorrectionRequests();
+
+      expect(result).toEqual({ notified: 0, errors: 1 });
+      expect(mockLogError).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── anonymiseStaleGrievances ─────────────────────────────────────────────
+
+  describe("anonymiseStaleGrievances", () => {
+    it("returns zero when no terminal-state rows past cutoff", async () => {
+      setupFromHandler("grievances", { data: [], error: null });
+
+      const result = await anonymiseStaleGrievances();
+
+      expect(result).toEqual({ notified: 0, errors: 0 });
+      expect(mockLogDataAccess).not.toHaveBeenCalled();
+    });
+
+    it("nulls subject/description/email and stamps anonymised_at", async () => {
+      const chain = setupFromHandler("grievances", {
+        data: [{ id: "g-1" }],
+        error: null,
+      });
+
+      const result = await anonymiseStaleGrievances();
+
+      expect(result.notified).toBe(1);
+      const updateCall = (chain.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(updateCall.email).toBeNull();
+      expect(updateCall.subject).toBeNull();
+      expect(updateCall.description).toBeNull();
+      expect(updateCall.ip_address).toBeNull();
+      expect(updateCall.user_agent).toBeNull();
+      expect(updateCall.anonymised_at).toEqual(expect.any(String));
+    });
+
+    it("filters to resolved/closed with anonymised_at IS NULL", async () => {
+      const chain = setupFromHandler("grievances", { data: [], error: null });
+
+      await anonymiseStaleGrievances();
+
+      expect(chain.in).toHaveBeenCalledWith("status", ["resolved", "closed"]);
+      expect(chain.is).toHaveBeenCalledWith("anonymised_at", null);
+      expect(chain.lt).toHaveBeenCalledWith("resolved_at", expect.any(String));
+    });
+
+    it("returns errors=1 on DB failure", async () => {
+      setupFromHandler("grievances", {
+        data: null,
+        error: { message: "db down" },
+      });
+
+      const result = await anonymiseStaleGrievances();
+
+      expect(result).toEqual({ notified: 0, errors: 1 });
+      expect(mockLogError).toHaveBeenCalledTimes(1);
     });
   });
 });

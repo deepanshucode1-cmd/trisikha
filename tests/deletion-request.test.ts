@@ -122,6 +122,9 @@ vi.mock("@/lib/audit", () => ({
 }));
 
 import { executeDeletionRequest } from "@/lib/deletion-request";
+import { scrubRazorpayNotes } from "@/lib/razorpay-server";
+
+const mockedScrub = vi.mocked(scrubRazorpayNotes);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -749,4 +752,97 @@ describe("executeDeletionRequest", () => {
     expect(result.status).toBe("failed");
     expect(scripted.calls.filter((c) => c.table === "orders").length).toBe(0);
   });
+
+  // ─── Razorpay scrub coverage (2.A.5) ──────────────────────────────────────
+
+  // Scenario 20: CASE 1 — scrub called once per non-null razorpay_order_id
+  //              across paid AND unpaid orders for this email.
+  it("scrubs Razorpay notes for every order's razorpay_order_id in CASE 1", async () => {
+    scripted.setResponses("deletion_requests", [
+      { data: buildRequest(), error: null },
+    ]);
+    scripted.setResponses("orders", [
+      {
+        data: [
+          buildOrder({
+            id: "o-paid",
+            payment_status: "paid",
+            razorpay_order_id: "rzp_paid_1",
+            total_amount: 1000,
+          }),
+          buildOrder({
+            id: "o-unpaid",
+            payment_status: "initiated",
+            razorpay_order_id: "rzp_unpaid_1",
+          }),
+        ],
+        error: null,
+      },
+    ]);
+
+    await executeDeletionRequest("req-1");
+
+    expect(mockedScrub).toHaveBeenCalledWith("rzp_paid_1");
+    expect(mockedScrub).toHaveBeenCalledWith("rzp_unpaid_1");
+    expect(mockedScrub).toHaveBeenCalledTimes(2);
+  });
+
+  // Scenario 21: CASE 2 — scrub called for unpaid orders' razorpay_order_ids
+  it("scrubs Razorpay notes before hard-delete in CASE 2", async () => {
+    scripted.setResponses("deletion_requests", [
+      { data: buildRequest(), error: null },
+    ]);
+    scripted.setResponses("orders", [
+      {
+        data: [
+          buildOrder({
+            id: "o-1",
+            payment_status: "initiated",
+            razorpay_order_id: "rzp_case2_a",
+          }),
+          buildOrder({
+            id: "o-2",
+            payment_status: "initiated",
+            razorpay_order_id: "rzp_case2_b",
+          }),
+        ],
+        error: null,
+      },
+      { data: [{ id: "o-1" }, { id: "o-2" }], error: null },
+    ]);
+
+    const result = await executeDeletionRequest("req-1");
+
+    expect(result.status).toBe("completed");
+    expect(mockedScrub).toHaveBeenCalledWith("rzp_case2_a");
+    expect(mockedScrub).toHaveBeenCalledWith("rzp_case2_b");
+    expect(mockedScrub).toHaveBeenCalledTimes(2);
+  });
+
+  // Scenario 22: orders with NULL razorpay_order_id are filtered before scrub
+  it("does not call scrub for orders with null razorpay_order_id", async () => {
+    scripted.setResponses("deletion_requests", [
+      { data: buildRequest(), error: null },
+    ]);
+    scripted.setResponses("orders", [
+      {
+        data: [
+          buildOrder({ id: "o-1", payment_status: "initiated", razorpay_order_id: null }),
+          buildOrder({ id: "o-2", payment_status: "initiated", razorpay_order_id: "" }),
+          buildOrder({ id: "o-3", payment_status: "initiated", razorpay_order_id: "rzp_ok" }),
+        ],
+        error: null,
+      },
+      { data: [{ id: "o-1" }, { id: "o-2" }, { id: "o-3" }], error: null },
+    ]);
+
+    await executeDeletionRequest("req-1");
+
+    // Only the well-formed id should reach scrub.
+    expect(mockedScrub).toHaveBeenCalledWith("rzp_ok");
+    expect(mockedScrub).toHaveBeenCalledTimes(1);
+    expect(mockedScrub).not.toHaveBeenCalledWith(null);
+    expect(mockedScrub).not.toHaveBeenCalledWith("");
+  });
+
 });

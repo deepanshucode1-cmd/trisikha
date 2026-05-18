@@ -17,7 +17,7 @@ export default function PrivacyPolicy() {
           {/* Page Header */}
           <div className="text-center mb-12">
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">Privacy Policy</h1>
-            <p className="text-gray-600">Last updated: February 2026</p>
+            <p className="text-gray-600">Last updated: May 2026</p>
           </div>
 
           {/* Content */}
@@ -109,7 +109,6 @@ export default function PrivacyPolicy() {
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 <li><strong>Order and transaction data:</strong> Retained for a minimum of 8 years from the end of the relevant financial year, as required under Section 36 of the Central Goods and Services Tax (CGST) Act, 2017.</li>
                 <li><strong>Non-transactional personal data:</strong> Deleted upon request or when the purpose for collection has been fulfilled, subject to the 14-day cooling-off period under the DPDP Rules, 2025.</li>
-                <li><strong>Inactive accounts:</strong> Data associated with accounts inactive for over 1 year may be scheduled for deletion, with prior notice to you.</li>
               </ul>
             </section>
 

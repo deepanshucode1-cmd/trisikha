@@ -28,23 +28,18 @@ export async function POST(req: Request) {
 
     const supabase = createServiceClient();
 
-    // Look up and validate the token
+    // Look up and validate the token. A consumed token has already been
+    // deleted (DPDP §8(7) — token PII purged on consumption), so a missing
+    // row covers both "never existed" and "already used" with one branch.
     const { data: tokenData, error: tokenError } = await supabase
       .from("review_tokens")
-      .select("id, order_id, order_item_id, product_id, product_name, expires_at, consumed_at")
+      .select("id, order_id, order_item_id, product_id, product_name, expires_at")
       .eq("token", sanitizedData.token)
       .single();
 
     if (tokenError || !tokenData) {
       return NextResponse.json(
-        { error: "Invalid review token" },
-        { status: 400 }
-      );
-    }
-
-    if (tokenData.consumed_at) {
-      return NextResponse.json(
-        { error: "This review link has already been used" },
+        { error: "Invalid or already-used review token" },
         { status: 400 }
       );
     }
@@ -103,11 +98,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Mark token as consumed
-    await supabase
+    // Delete the token row now that the review row is the canonical record
+    // of consumption. The FK on reviews.review_token_id is ON DELETE SET NULL
+    // (see 20260517120000_review_token_retention.sql) so this succeeds. A
+    // delete failure here is non-fatal — the daily cron sweep will retry.
+    const { error: tokenDeleteError } = await supabase
       .from("review_tokens")
-      .update({ consumed_at: new Date().toISOString() })
+      .delete()
       .eq("id", tokenData.id);
+
+    if (tokenDeleteError) {
+      logError(new Error("Failed to delete consumed review token"), {
+        error: tokenDeleteError.message,
+        tokenId: tokenData.id,
+      });
+    }
 
     return NextResponse.json({
       success: true,

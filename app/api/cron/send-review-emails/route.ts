@@ -94,12 +94,13 @@ export async function POST(req: Request) {
       results.processed++;
 
       try {
-        // Fetch unconsumed review tokens for this order
+        // Fetch review tokens for this order. Consumed tokens are deleted
+        // inline on review submission (see review_token_retention migration),
+        // so the row's existence is itself the "unconsumed" signal.
         const { data: tokens, error: tokenError } = await supabase
           .from("review_tokens")
           .select("token, product_name")
-          .eq("order_id", order.id)
-          .is("consumed_at", null);
+          .eq("order_id", order.id);
 
         if (tokenError || !tokens || tokens.length === 0) {
           results.skipped++;

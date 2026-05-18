@@ -396,6 +396,302 @@ export async function notifyDeferredExpiry(): Promise<CleanupResult> {
   return result;
 }
 
+// ─── Stale Grievances ───────────────────────────────────────────────────────
+
+const TERMINAL_REQUEST_ANONYMISE_DAYS = 90;
+
+/**
+ * Anonymise grievances rows whose terminal state (resolved/closed) is more
+ * than 90 days old. The audit residue (category, status, priority,
+ * resolution_notes, sla_deadline, resolved_at, resolved_by) is preserved;
+ * the PII payload (email, subject, description, ip_address, user_agent) is
+ * nulled. 90 days matches the DPDP Rule 14(3) appeal window.
+ */
+export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
+  const supabase = createServiceClient();
+  const result: CleanupResult = { notified: 0, errors: 0 };
+
+  try {
+    const cutoff = subDays(new Date(), TERMINAL_REQUEST_ANONYMISE_DAYS);
+
+    const { data: anonymised, error } = await supabase
+      .from("grievances")
+      .update({
+        email: null,
+        subject: null,
+        description: null,
+        ip_address: null,
+        user_agent: null,
+        anonymised_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in("status", ["resolved", "closed"])
+      .is("anonymised_at", null)
+      .lt("resolved_at", cutoff.toISOString())
+      .select("id");
+
+    if (error) {
+      logError(error as Error, {
+        context: "auto_cleanup_anonymise_grievances",
+      });
+      result.errors++;
+      return result;
+    }
+
+    result.notified = anonymised?.length || 0;
+
+    if (result.notified > 0) {
+      await logDataAccess({
+        tableName: "grievances",
+        operation: "UPDATE",
+        queryType: "bulk",
+        rowCount: result.notified,
+        endpoint: "auto-cleanup",
+        reason: `Anonymised ${result.notified} terminal-state grievances row(s) past ${TERMINAL_REQUEST_ANONYMISE_DAYS}-day window (DPDP §4 / §8(7))`,
+      });
+
+      logSecurityEvent("auto_cleanup_grievances", {
+        anonymisedCount: result.notified,
+      });
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_anonymise_grievances",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
+// ─── Stale Correction Requests ──────────────────────────────────────────────
+
+/**
+ * Anonymise correction_requests rows whose terminal state (approved/rejected)
+ * is more than 90 days old. The audit residue (status, field_name,
+ * processed_by, processed_at) is preserved so admins can still demonstrate
+ * what was decided; the PII payload (email, current_value, requested_value,
+ * ip_address, user_agent) is nulled. 90 days matches the DPDP Rule 14(3)
+ * grievance appeal window.
+ */
+export async function anonymiseStaleCorrectionRequests(): Promise<CleanupResult> {
+  const supabase = createServiceClient();
+  const result: CleanupResult = { notified: 0, errors: 0 };
+
+  try {
+    const cutoff = subDays(new Date(), TERMINAL_REQUEST_ANONYMISE_DAYS);
+
+    const { data: anonymised, error } = await supabase
+      .from("correction_requests")
+      .update({
+        email: null,
+        current_value: null,
+        requested_value: null,
+        ip_address: null,
+        user_agent: null,
+        anonymised_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in("status", ["approved", "rejected"])
+      .is("anonymised_at", null)
+      .lt("processed_at", cutoff.toISOString())
+      .select("id");
+
+    if (error) {
+      logError(error as Error, {
+        context: "auto_cleanup_anonymise_correction_requests",
+      });
+      result.errors++;
+      return result;
+    }
+
+    result.notified = anonymised?.length || 0;
+
+    if (result.notified > 0) {
+      await logDataAccess({
+        tableName: "correction_requests",
+        operation: "UPDATE",
+        queryType: "bulk",
+        rowCount: result.notified,
+        endpoint: "auto-cleanup",
+        reason: `Anonymised ${result.notified} terminal-state correction_requests row(s) past ${TERMINAL_REQUEST_ANONYMISE_DAYS}-day window (DPDP §4 / §8(7))`,
+      });
+
+      logSecurityEvent("auto_cleanup_correction_requests", {
+        anonymisedCount: result.notified,
+      });
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_anonymise_correction_requests",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
+// ─── Stale Review Tokens ────────────────────────────────────────────────────
+
+const REVIEW_TOKEN_STALE_GRACE_DAYS = 30;
+
+/**
+ * Two-step cleanup for review_tokens, both targeting DPDP §8(7) erasure
+ * (token row carries `guest_email` PII that has no purpose post-consumption
+ * or post-expiry). Tokens are issued with a 30-day TTL on delivery
+ * (`app/api/webhooks/shiprocket/route.ts`), so the grace below gives a
+ * 60-day total row lifetime for unused tokens.
+ *
+ *   Step 1 — recovery: delete token rows that have a corresponding review.
+ *     After a successful inline delete (see `app/api/reviews/submit/route.ts`)
+ *     the FK on `reviews.review_token_id` (ON DELETE SET NULL) leaves the
+ *     review with `review_token_id = NULL`. So any review whose
+ *     `review_token_id` is still set points at a token row that survived
+ *     consumption — its inline delete failed and the row must go now,
+ *     regardless of `expires_at`.
+ *
+ *   Step 2 — stale unused: delete token rows whose `expires_at` is more
+ *     than 30 days in the past.
+ */
+export async function purgeStaleReviewTokens(): Promise<DeletionResult> {
+  const supabase = createServiceClient();
+  const result: DeletionResult = { deleted: 0, errors: 0 };
+
+  try {
+    // Step 1 — recovery: tokens referenced by a review (= consumed) but not
+    // yet deleted. Bounded by total reviews ever submitted; no pagination.
+    const { data: stuckRefs, error: stuckQueryError } = await supabase
+      .from("reviews")
+      .select("review_token_id")
+      .not("review_token_id", "is", null);
+
+    if (stuckQueryError) {
+      logError(stuckQueryError as Error, {
+        context: "auto_cleanup_purge_review_tokens_stuck_query",
+      });
+      result.errors++;
+    } else {
+      const stuckIds = (stuckRefs || [])
+        .map((r) => r.review_token_id as string)
+        .filter(Boolean);
+
+      if (stuckIds.length > 0) {
+        const { data: recovered, error: recoverError } = await supabase
+          .from("review_tokens")
+          .delete()
+          .in("id", stuckIds)
+          .select("id");
+
+        if (recoverError) {
+          logError(recoverError as Error, {
+            context: "auto_cleanup_purge_review_tokens_recovery",
+          });
+          result.errors++;
+        } else {
+          result.deleted += recovered?.length || 0;
+        }
+      }
+    }
+
+    // Step 2 — stale unused tokens past their expiry + grace window.
+    const cutoff = subDays(new Date(), REVIEW_TOKEN_STALE_GRACE_DAYS);
+
+    const { data: stale, error: staleError } = await supabase
+      .from("review_tokens")
+      .delete()
+      .lt("expires_at", cutoff.toISOString())
+      .select("id");
+
+    if (staleError) {
+      logError(staleError as Error, {
+        context: "auto_cleanup_purge_review_tokens_stale",
+      });
+      result.errors++;
+    } else {
+      result.deleted += stale?.length || 0;
+    }
+
+    if (result.deleted > 0) {
+      await logDataAccess({
+        tableName: "review_tokens",
+        operation: "DELETE",
+        queryType: "bulk",
+        rowCount: result.deleted,
+        endpoint: "auto-cleanup",
+        reason: `Purged ${result.deleted} review_tokens row(s) — consumed-but-stuck + stale-unused (DPDP §8(7))`,
+      });
+
+      logSecurityEvent("auto_cleanup_review_tokens", {
+        deletedCount: result.deleted,
+      });
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_purge_review_tokens",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
+// ─── Stale Guest Data Sessions ─────────────────────────────────────────────
+
+/**
+ * Delete guest_data_sessions rows whose OTP, session, and lockout windows have
+ * all elapsed — at that point the row's purpose (auth + rate-limit memory) is
+ * fully served and §8(7) requires erasure. The unique-on-email constraint
+ * means a returning visitor gets a fresh row regardless.
+ */
+export async function purgeExpiredGuestSessions(): Promise<DeletionResult> {
+  const supabase = createServiceClient();
+  const result: DeletionResult = { deleted: 0, errors: 0 };
+
+  try {
+    const nowIso = new Date().toISOString();
+
+    // A row is purgeable if every time-based reason to keep it has passed.
+    // NULL means "no such window was set", which is also "not blocking deletion".
+    const { data: deleted, error } = await supabase
+      .from("guest_data_sessions")
+      .delete()
+      .or(`otp_expires_at.is.null,otp_expires_at.lt.${nowIso}`)
+      .or(`session_expires_at.is.null,session_expires_at.lt.${nowIso}`)
+      .or(`otp_locked_until.is.null,otp_locked_until.lt.${nowIso}`)
+      .select("id");
+
+    if (error) {
+      logError(error as Error, { context: "auto_cleanup_purge_guest_sessions" });
+      result.errors++;
+      return result;
+    }
+
+    result.deleted = deleted?.length || 0;
+
+    if (result.deleted > 0) {
+      await logDataAccess({
+        tableName: "guest_data_sessions",
+        operation: "DELETE",
+        queryType: "bulk",
+        rowCount: result.deleted,
+        endpoint: "auto-cleanup",
+        reason: `Purged ${result.deleted} expired guest_data_sessions row(s) (DPDP §8(7) — purpose served)`,
+      });
+
+      logSecurityEvent("auto_cleanup_guest_sessions", {
+        deletedCount: result.deleted,
+      });
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_purge_guest_sessions",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
 /**
  * Execute deletion for deferred requests where retention has expired and 48hr notice was sent
  */
@@ -425,6 +721,21 @@ export async function executeDeferredDeletions(): Promise<DeletionResult> {
 
     for (const request of requests) {
       try {
+        // Scrub Razorpay's `notes` PII for every order tied to this email
+        // before the local DELETE. Matches the pattern in
+        // deleteAbandonedCheckouts: SELECT → scrub → DELETE.
+        const { data: orderRows } = await supabase
+          .from("orders")
+          .select("razorpay_order_id")
+          .eq("guest_email", request.guest_email);
+
+        await Promise.all(
+          (orderRows || [])
+            .map((o) => o.razorpay_order_id)
+            .filter((id): id is string => Boolean(id))
+            .map((id) => scrubRazorpayNotes(id))
+        );
+
         // Delete all orders for this email (order_items cascade via FK)
         const { data: deletedOrders, error: deleteError } = await supabase
           .from("orders")

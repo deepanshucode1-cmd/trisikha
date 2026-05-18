@@ -32,3 +32,10 @@ vi.mock("@upstash/redis", () => ({
     })),
   },
 }));
+
+// Mock the razorpay-server module so importing it doesn't construct a real
+// Razorpay client (which requires RAZORPAY_KEY_ID at module-load time).
+// Tests that need to assert scrub calls can override with vi.mocked(...).
+vi.mock("@/lib/razorpay-server", () => ({
+  scrubRazorpayNotes: vi.fn(async () => undefined),
+}));

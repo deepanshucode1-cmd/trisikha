@@ -13,6 +13,10 @@ import {
   deleteAbandonedCheckouts,
   notifyDeferredExpiry,
   executeDeferredDeletions,
+  purgeExpiredGuestSessions,
+  purgeStaleReviewTokens,
+  anonymiseStaleCorrectionRequests,
+  anonymiseStaleGrievances,
 } from "@/lib/auto-cleanup";
 import { getExpiredClaimDocuments, markDocumentDeleted } from "@/lib/nominee";
 import { deleteClaimDocument } from "@/lib/nominee-storage";
@@ -215,6 +219,51 @@ export async function POST(req: Request) {
       logError(err as Error, { context: "cron_execute_deferred_deletions" });
     }
 
+    // ─── Auto-Cleanup: Stale PII (DPDP §8(7) purpose-served erasure) ───────
+    const piiCleanup = {
+      guestSessionsPurged: 0,
+      reviewTokensPurged: 0,
+      correctionRequestsAnonymised: 0,
+      grievancesAnonymised: 0,
+      piiCleanupErrors: 0,
+    };
+
+    try {
+      const sessionResult = await purgeExpiredGuestSessions();
+      piiCleanup.guestSessionsPurged = sessionResult.deleted;
+      piiCleanup.piiCleanupErrors += sessionResult.errors;
+    } catch (err) {
+      piiCleanup.piiCleanupErrors++;
+      logError(err as Error, { context: "cron_purge_guest_sessions" });
+    }
+
+    try {
+      const tokenResult = await purgeStaleReviewTokens();
+      piiCleanup.reviewTokensPurged = tokenResult.deleted;
+      piiCleanup.piiCleanupErrors += tokenResult.errors;
+    } catch (err) {
+      piiCleanup.piiCleanupErrors++;
+      logError(err as Error, { context: "cron_purge_review_tokens" });
+    }
+
+    try {
+      const correctionResult = await anonymiseStaleCorrectionRequests();
+      piiCleanup.correctionRequestsAnonymised = correctionResult.notified;
+      piiCleanup.piiCleanupErrors += correctionResult.errors;
+    } catch (err) {
+      piiCleanup.piiCleanupErrors++;
+      logError(err as Error, { context: "cron_anonymise_correction_requests" });
+    }
+
+    try {
+      const grievanceResult = await anonymiseStaleGrievances();
+      piiCleanup.grievancesAnonymised = grievanceResult.notified;
+      piiCleanup.piiCleanupErrors += grievanceResult.errors;
+    } catch (err) {
+      piiCleanup.piiCleanupErrors++;
+      logError(err as Error, { context: "cron_anonymise_grievances" });
+    }
+
     // ─── Auto-Cleanup: Expired Nominee Claim Documents ─────────────────────
     const nomineeCleanup = {
       nomineeDocsDeleted: 0,
@@ -245,6 +294,7 @@ export async function POST(req: Request) {
       ...results,
       autoExec,
       ...autoCleanup,
+      ...piiCleanup,
       ...nomineeCleanup,
       timestamp: new Date().toISOString(),
     });
@@ -252,7 +302,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       message: "Deletion processing completed.",
-      results: { ...results, autoExec, ...autoCleanup, ...nomineeCleanup },
+      results: { ...results, autoExec, ...autoCleanup, ...piiCleanup, ...nomineeCleanup },
     });
   } catch (error) {
     logError(error as Error, {

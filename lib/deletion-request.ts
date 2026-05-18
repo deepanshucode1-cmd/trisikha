@@ -21,6 +21,7 @@ import {
   sendNomineeDeletionDeferred,
 } from "@/lib/email";
 import { addDays, addYears, differenceInDays } from "date-fns";
+import { scrubRazorpayNotes } from "@/lib/razorpay-server";
 
 // Constants
 export const DELETION_WINDOW_DAYS = parseInt(
@@ -554,7 +555,7 @@ export async function executeDeletionRequest(
   // Re-check for paid orders (data may have changed since request was created)
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, payment_status, created_at, total_amount")
+    .select("id, payment_status, created_at, total_amount, razorpay_order_id")
     .eq("guest_email", email);
 
   const paidOrders = orders?.filter((o) => o.payment_status === "paid") || [];
@@ -587,6 +588,16 @@ export async function executeDeletionRequest(
     const highValueOrderIds = paidOrders
       .filter((o) => Number(o.total_amount) >= RECIPIENT_DETAILS_THRESHOLD)
       .map((o) => o.id);
+
+    // Scrub PII from Razorpay's `notes` for every order tied to this email
+    // before we anonymise locally. scrubRazorpayNotes swallows its own
+    // errors, so this never blocks local erasure.
+    await Promise.all(
+      (orders || [])
+        .map((o) => o.razorpay_order_id)
+        .filter((id): id is string => Boolean(id))
+        .map((id) => scrubRazorpayNotes(id))
+    );
 
     // Clear OTP fields only (not tax-relevant)
     const { error: otpError } = await supabase
@@ -777,7 +788,16 @@ export async function executeDeletionRequest(
     };
   }
 
-  // CASE 2: No paid orders - safe to delete all data
+  // CASE 2: No paid orders - safe to delete all data.
+  // Scrub Razorpay's `notes` PII before the local DELETE so the third-party
+  // record is released too. scrubRazorpayNotes swallows its own errors.
+  await Promise.all(
+    (orders || [])
+      .map((o) => o.razorpay_order_id)
+      .filter((id): id is string => Boolean(id))
+      .map((id) => scrubRazorpayNotes(id))
+  );
+
   const { data: deletedOrders, error: deleteError } = await supabase
     .from("orders")
     .delete()
