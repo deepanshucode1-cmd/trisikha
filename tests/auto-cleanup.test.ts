@@ -84,10 +84,16 @@ vi.mock("@/utils/supabase/service", () => ({
 
 const mockSendPreErasureNotification = vi.fn().mockResolvedValue(true);
 const mockSendDeletionCompleted = vi.fn().mockResolvedValue(true);
+const mockSendCartRecoveryEmail = vi.fn().mockResolvedValue(true);
+const mockSendGrievanceSilenceReminder = vi.fn().mockResolvedValue(true);
+const mockSendGrievanceAutoClosed = vi.fn().mockResolvedValue(true);
 
 vi.mock("@/lib/email", () => ({
   sendPreErasureNotification: (...args: unknown[]) => mockSendPreErasureNotification(...args),
   sendDeletionCompleted: (...args: unknown[]) => mockSendDeletionCompleted(...args),
+  sendCartRecoveryEmail: (...args: unknown[]) => mockSendCartRecoveryEmail(...args),
+  sendGrievanceSilenceReminder: (...args: unknown[]) => mockSendGrievanceSilenceReminder(...args),
+  sendGrievanceAutoClosed: (...args: unknown[]) => mockSendGrievanceAutoClosed(...args),
 }));
 
 const mockLogError = vi.fn();
@@ -114,6 +120,8 @@ import {
   purgeStaleReviewTokens,
   anonymiseStaleCorrectionRequests,
   anonymiseStaleGrievances,
+  remindGrievanceSilence,
+  autoCloseSilentGrievances,
 } from "@/lib/auto-cleanup";
 import { scrubRazorpayNotes } from "@/lib/razorpay-server";
 
@@ -747,14 +755,40 @@ describe("Auto-Cleanup Service", () => {
       expect(updateCall.anonymised_at).toEqual(expect.any(String));
     });
 
-    it("filters to resolved/closed with anonymised_at IS NULL", async () => {
+    it("filters to closed with closed_at < cutoff AND anonymised_at IS NULL", async () => {
       const chain = setupFromHandler("grievances", { data: [], error: null });
 
       await anonymiseStaleGrievances();
 
-      expect(chain.in).toHaveBeenCalledWith("status", ["resolved", "closed"]);
+      // After 20260517150000, the new state machine has only 'closed' as a
+      // terminal state and uses closed_at as the cutoff anchor.
+      expect(chain.eq).toHaveBeenCalledWith("status", "closed");
       expect(chain.is).toHaveBeenCalledWith("anonymised_at", null);
-      expect(chain.lt).toHaveBeenCalledWith("resolved_at", expect.any(String));
+      expect(chain.lt).toHaveBeenCalledWith("closed_at", expect.any(String));
+    });
+
+    it("scrubs user-authored messages on the anonymised grievances", async () => {
+      // Two grievances qualify for parent-row anonymisation; the function
+      // should then issue a second UPDATE against grievance_messages
+      // filtered by author_role='user'.
+      const parentIds = [{ id: "g-1" }, { id: "g-2" }];
+      fromHandlers["grievances"] = createChainableQueueMock([
+        { data: parentIds, error: null }, // parent UPDATE returns ids
+      ]);
+      const messagesChain = setupFromHandler("grievance_messages", {
+        data: [{ id: "m-1" }],
+        error: null,
+      });
+
+      const result = await anonymiseStaleGrievances();
+
+      expect(result.notified).toBe(2);
+      expect(messagesChain.update).toHaveBeenCalledWith(
+        expect.objectContaining({ body: null, anonymised_at: expect.any(String) })
+      );
+      expect(messagesChain.in).toHaveBeenCalledWith("grievance_id", ["g-1", "g-2"]);
+      expect(messagesChain.eq).toHaveBeenCalledWith("author_role", "user");
+      expect(messagesChain.is).toHaveBeenCalledWith("anonymised_at", null);
     });
 
     it("returns errors=1 on DB failure", async () => {
@@ -767,6 +801,152 @@ describe("Auto-Cleanup Service", () => {
 
       expect(result).toEqual({ notified: 0, errors: 1 });
       expect(mockLogError).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── remindGrievanceSilence (day-14) ─────────────────────────────────────
+
+  describe("remindGrievanceSilence", () => {
+    it("returns zero when no awaiting_user_response grievances qualify", async () => {
+      setupFromHandler("grievances", { data: [], error: null });
+
+      const result = await remindGrievanceSilence();
+
+      expect(result).toEqual({ notified: 0, errors: 0 });
+      expect(mockSendGrievanceSilenceReminder).not.toHaveBeenCalled();
+    });
+
+    it("filters to awaiting_user_response + silence_reminder_sent_at IS NULL + awaiting_since < cutoff", async () => {
+      const chain = setupFromHandler("grievances", { data: [], error: null });
+
+      await remindGrievanceSilence();
+
+      expect(chain.eq).toHaveBeenCalledWith(
+        "status",
+        "awaiting_user_response"
+      );
+      expect(chain.is).toHaveBeenCalledWith("silence_reminder_sent_at", null);
+      expect(chain.lt).toHaveBeenCalledWith(
+        "awaiting_since",
+        expect.any(String)
+      );
+    });
+
+    it("sends reminder email and stamps silence_reminder_sent_at per row", async () => {
+      // First await on grievances = SELECT (returns 1 candidate).
+      // Second await on grievances = UPDATE silence_reminder_sent_at.
+      fromHandlers["grievances"] = createChainableQueueMock([
+        {
+          data: [
+            {
+              id: "g-1",
+              email: "alice@test.com",
+              subject: "Refund issue",
+              awaiting_since: new Date(
+                Date.now() - 15 * 24 * 60 * 60 * 1000
+              ).toISOString(),
+            },
+          ],
+          error: null,
+        },
+        { data: null, error: null }, // mark-sent UPDATE
+      ]);
+
+      const result = await remindGrievanceSilence();
+
+      expect(result.notified).toBe(1);
+      expect(mockSendGrievanceSilenceReminder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: "alice@test.com",
+          grievanceId: "g-1",
+          subject: "Refund issue",
+        })
+      );
+    });
+
+    it("returns errors=1 on SELECT failure", async () => {
+      setupFromHandler("grievances", {
+        data: null,
+        error: { message: "db down" },
+      });
+
+      const result = await remindGrievanceSilence();
+
+      expect(result).toEqual({ notified: 0, errors: 1 });
+      expect(mockLogError).toHaveBeenCalled();
+    });
+  });
+
+  // ─── autoCloseSilentGrievances (day-30) ──────────────────────────────────
+
+  describe("autoCloseSilentGrievances", () => {
+    it("returns zero when no awaiting grievances are 30+ days silent", async () => {
+      setupFromHandler("grievances", { data: [], error: null });
+
+      const result = await autoCloseSilentGrievances();
+
+      expect(result).toEqual({ deleted: 0, errors: 0 });
+      expect(mockSendGrievanceAutoClosed).not.toHaveBeenCalled();
+    });
+
+    it("transitions to closed with closed_by_role='auto_silence'", async () => {
+      // SELECT → returns 1 candidate. UPDATE (atomic with race-guard
+      // WHERE clause) → success.
+      fromHandlers["grievances"] = createChainableQueueMock([
+        {
+          data: [
+            { id: "g-30", email: "bob@test.com", subject: "Late delivery" },
+          ],
+          error: null,
+        },
+        { data: null, error: null }, // UPDATE
+      ]);
+
+      const result = await autoCloseSilentGrievances();
+
+      expect(result.deleted).toBe(1);
+      // Two emails per row: one to user, one to officer.
+      expect(mockSendGrievanceAutoClosed).toHaveBeenCalledTimes(2);
+      expect(mockSendGrievanceAutoClosed).toHaveBeenCalledWith(
+        expect.objectContaining({ audience: "user", grievanceId: "g-30" })
+      );
+      expect(mockSendGrievanceAutoClosed).toHaveBeenCalledWith(
+        expect.objectContaining({ audience: "officer", grievanceId: "g-30" })
+      );
+    });
+
+    it("UPDATE WHERE clause re-asserts the precondition (race guard)", async () => {
+      // Inspect the chain methods to confirm the race-guard predicate is
+      // present on the UPDATE step.
+      const chain = setupFromHandler("grievances", {
+        data: [{ id: "g-1", email: "x@test.com", subject: "X" }],
+        error: null,
+      });
+
+      await autoCloseSilentGrievances();
+
+      // The UPDATE chain includes both an eq(status, awaiting_user_response)
+      // and an lt(awaiting_since, ...) to guard against admin replies
+      // sneaking in between SELECT and UPDATE.
+      const eqCalls = (chain.eq as ReturnType<typeof vi.fn>).mock.calls;
+      const ltCalls = (chain.lt as ReturnType<typeof vi.fn>).mock.calls;
+      expect(
+        eqCalls.some(
+          (c) => c[0] === "status" && c[1] === "awaiting_user_response"
+        )
+      ).toBe(true);
+      expect(ltCalls.some((c) => c[0] === "awaiting_since")).toBe(true);
+    });
+
+    it("returns errors=1 on SELECT failure", async () => {
+      setupFromHandler("grievances", {
+        data: null,
+        error: { message: "db down" },
+      });
+
+      const result = await autoCloseSilentGrievances();
+
+      expect(result).toEqual({ deleted: 0, errors: 1 });
     });
   });
 });

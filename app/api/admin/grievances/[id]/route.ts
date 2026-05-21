@@ -4,21 +4,35 @@ import { z } from "zod";
 import { logError } from "@/lib/logger";
 import { getFirstZodError } from "@/lib/errors";
 import { requireCsrf } from "@/lib/csrf";
-import { getGrievanceById, updateGrievance } from "@/lib/grievance";
-import { sanitizeObject } from "@/lib/xss";
 import {
-  sendGrievanceStatusUpdate,
-  sendGrievanceResolved,
-} from "@/lib/email";
+  getGrievanceById,
+  updateGrievance,
+  forceClose,
+} from "@/lib/grievance";
+import { sanitizeObject } from "@/lib/xss";
+import { sendGrievanceForceClosed } from "@/lib/email";
 
-const updateSchema = z.object({
-  status: z
-    .enum(["open", "in_progress", "resolved", "closed"])
-    .optional(),
-  priority: z.enum(["low", "medium", "high"]).optional(),
-  adminNotes: z.string().optional(),
-  resolutionNotes: z.string().optional(),
-});
+// PATCH narrowed per docs/grievance-acceptance-workflow-plan.md §3.2:
+// - status writes removed (transitions happen via the /message endpoint,
+//   /accept and /dispute guest endpoints, and the silence cron)
+// - adminNotes / resolutionNotes removed (the message thread is the
+//   single source of truth for per-grievance text)
+const updateSchema = z
+  .object({
+    priority: z.enum(["low", "medium", "high"]).optional(),
+    forceClose: z.literal(true).optional(),
+    forceCloseReason: z.string().min(20).max(2000).optional(),
+  })
+  .refine(
+    (v) => !v.forceClose || (v.forceCloseReason && v.forceCloseReason.trim().length >= 20),
+    {
+      message: "forceClose requires forceCloseReason (≥20 characters)",
+      path: ["forceCloseReason"],
+    }
+  )
+  .refine((v) => v.priority || v.forceClose, {
+    message: "Provide either priority or forceClose",
+  });
 
 /**
  * GET /api/admin/grievances/[id]
@@ -52,7 +66,8 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const grievance = await getGrievanceById(id);
+    // Admin detail view renders the conversation thread inline.
+    const grievance = await getGrievanceById(id, { withMessages: true });
 
     if (!grievance) {
       return NextResponse.json(
@@ -129,7 +144,6 @@ export async function PATCH(
 
     const sanitizedData = sanitizeObject(parseResult.data);
 
-    // Get current grievance for email notification
     const currentGrievance = await getGrievanceById(id);
     if (!currentGrievance) {
       return NextResponse.json(
@@ -138,47 +152,44 @@ export async function PATCH(
       );
     }
 
-    const result = await updateGrievance({
-      grievanceId: id,
-      status: sanitizedData.status,
-      priority: sanitizedData.priority,
-      adminNotes: sanitizedData.adminNotes,
-      resolutionNotes: sanitizedData.resolutionNotes,
-      adminId: user.id,
-    });
-
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.message },
-        { status: 400 }
-      );
-    }
-
-    // Send email notifications (non-blocking)
-    if (sanitizedData.status === "resolved" && sanitizedData.resolutionNotes) {
-      sendGrievanceResolved({
+    // Force-close path (T8). Reason is admin-authored audit copy and is
+    // NOT anonymised by the daily cron (see plan §4.3).
+    if (sanitizedData.forceClose) {
+      const result = await forceClose({
+        grievanceId: id,
+        adminId: user.id,
+        reason: sanitizedData.forceCloseReason!,
+      });
+      if (!result.success) {
+        return NextResponse.json({ error: result.message }, { status: 400 });
+      }
+      sendGrievanceForceClosed({
         email: currentGrievance.email,
         grievanceId: id,
         subject: currentGrievance.subject,
-        resolutionNotes: sanitizedData.resolutionNotes,
+        reason: sanitizedData.forceCloseReason!,
       }).catch(() => {});
-    } else if (
-      sanitizedData.status &&
-      sanitizedData.status !== currentGrievance.status
-    ) {
-      sendGrievanceStatusUpdate({
-        email: currentGrievance.email,
-        grievanceId: id,
-        subject: currentGrievance.subject,
-        newStatus: sanitizedData.status,
-        adminNotes: sanitizedData.adminNotes,
-      }).catch(() => {});
+      return NextResponse.json({ success: true, message: result.message });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: result.message,
-    });
+    // Priority-only update (admin triage).
+    if (sanitizedData.priority) {
+      const result = await updateGrievance({
+        grievanceId: id,
+        priority: sanitizedData.priority,
+        adminId: user.id,
+      });
+      if (!result.success) {
+        return NextResponse.json({ error: result.message }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, message: result.message });
+    }
+
+    // Refine guards above should make this unreachable, but defend anyway.
+    return NextResponse.json(
+      { error: "Nothing to update" },
+      { status: 400 }
+    );
   } catch (error) {
     logError(error as Error, {
       context: "admin_update_grievance_error",

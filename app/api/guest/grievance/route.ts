@@ -202,7 +202,12 @@ export async function GET(req: Request) {
       );
     }
 
-    const grievances = await getGrievancesByEmail(normalizedEmail);
+    // Eager-load message threads — guest UI renders the conversation inline
+    // when a grievance is expanded. With OTP-gated access the volume per
+    // request is small (only this user's grievances).
+    const grievances = await getGrievancesByEmail(normalizedEmail, {
+      withMessages: true,
+    });
 
     return NextResponse.json({
       success: true,
@@ -214,9 +219,18 @@ export async function GET(req: Request) {
         status: g.status,
         priority: g.priority,
         slaDeadline: g.sla_deadline,
-        resolutionNotes: g.resolution_notes,
         createdAt: g.created_at,
-        resolvedAt: g.resolved_at,
+        closedAt: g.closed_at,
+        closedByRole: g.closed_by_role,
+        awaitingSince: g.awaiting_since,
+        messages: (g.messages || []).map((m) => ({
+          id: m.id,
+          authorRole: m.author_role,
+          body: m.body,
+          proposesClose: m.proposes_close,
+          anonymisedAt: m.anonymised_at,
+          createdAt: m.created_at,
+        })),
       })),
     });
   } catch (error) {

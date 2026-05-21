@@ -18,6 +18,8 @@ import {
   sendPreErasureNotification,
   sendDeletionCompleted,
   sendCartRecoveryEmail,
+  sendGrievanceSilenceReminder,
+  sendGrievanceAutoClosed,
 } from "@/lib/email";
 import { subDays, subHours, addDays } from "date-fns";
 import { generateResumeToken, buildResumeUrl } from "@/lib/resume-token";
@@ -401,11 +403,18 @@ export async function notifyDeferredExpiry(): Promise<CleanupResult> {
 const TERMINAL_REQUEST_ANONYMISE_DAYS = 90;
 
 /**
- * Anonymise grievances rows whose terminal state (resolved/closed) is more
- * than 90 days old. The audit residue (category, status, priority,
- * resolution_notes, sla_deadline, resolved_at, resolved_by) is preserved;
- * the PII payload (email, subject, description, ip_address, user_agent) is
- * nulled. 90 days matches the DPDP Rule 14(3) appeal window.
+ * Anonymise closed grievances whose `closed_at` is older than the 90-day
+ * window. The audit residue (category, status, priority, sla_deadline,
+ * closed_at, closed_by_role, force_close_reason) is preserved; the
+ * principal-authored PII (email, subject, description, ip_address,
+ * user_agent on the parent row, plus user-authored message bodies in the
+ * thread) is nulled. 90 days matches the DPDP Rule 14(3) appeal window.
+ *
+ * Two passes per cycle:
+ *   1. UPDATE grievances → null PII columns on terminal rows past cutoff.
+ *   2. UPDATE grievance_messages → null user-authored bodies for those
+ *      grievances. Admin-authored messages stay intact (operational
+ *      audit) — see plan §4.3.
  */
 export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
   const supabase = createServiceClient();
@@ -413,6 +422,7 @@ export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
 
   try {
     const cutoff = subDays(new Date(), TERMINAL_REQUEST_ANONYMISE_DAYS);
+    const now = new Date().toISOString();
 
     const { data: anonymised, error } = await supabase
       .from("grievances")
@@ -422,12 +432,12 @@ export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
         description: null,
         ip_address: null,
         user_agent: null,
-        anonymised_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        anonymised_at: now,
+        updated_at: now,
       })
-      .in("status", ["resolved", "closed"])
+      .eq("status", "closed")
       .is("anonymised_at", null)
-      .lt("resolved_at", cutoff.toISOString())
+      .lt("closed_at", cutoff.toISOString())
       .select("id");
 
     if (error) {
@@ -438,7 +448,37 @@ export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
       return result;
     }
 
-    result.notified = anonymised?.length || 0;
+    const anonymisedIds = (anonymised || []).map((r) => r.id as string);
+    result.notified = anonymisedIds.length;
+
+    // Pass 2 — scrub user-authored message bodies for the same grievances.
+    // The `author_role='user'` filter (backed by the consistency CHECK
+    // constraint in 20260517150000) ensures admin bodies are not touched.
+    if (anonymisedIds.length > 0) {
+      const { data: scrubbed, error: messageError } = await supabase
+        .from("grievance_messages")
+        .update({ body: null, anonymised_at: now })
+        .in("grievance_id", anonymisedIds)
+        .eq("author_role", "user")
+        .is("anonymised_at", null)
+        .select("id");
+
+      if (messageError) {
+        logError(messageError as Error, {
+          context: "auto_cleanup_anonymise_grievance_messages",
+        });
+        result.errors++;
+      } else if ((scrubbed?.length || 0) > 0) {
+        await logDataAccess({
+          tableName: "grievance_messages",
+          operation: "UPDATE",
+          queryType: "bulk",
+          rowCount: scrubbed!.length,
+          endpoint: "auto-cleanup",
+          reason: `Anonymised ${scrubbed!.length} user-authored message body(ies) on anonymised grievances`,
+        });
+      }
+    }
 
     if (result.notified > 0) {
       await logDataAccess({
@@ -447,7 +487,7 @@ export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
         queryType: "bulk",
         rowCount: result.notified,
         endpoint: "auto-cleanup",
-        reason: `Anonymised ${result.notified} terminal-state grievances row(s) past ${TERMINAL_REQUEST_ANONYMISE_DAYS}-day window (DPDP §4 / §8(7))`,
+        reason: `Anonymised ${result.notified} closed grievance row(s) past ${TERMINAL_REQUEST_ANONYMISE_DAYS}-day window (DPDP §4 / §8(7))`,
       });
 
       logSecurityEvent("auto_cleanup_grievances", {
@@ -457,6 +497,211 @@ export async function anonymiseStaleGrievances(): Promise<CleanupResult> {
   } catch (err) {
     logError(err instanceof Error ? err : new Error(String(err)), {
       context: "auto_cleanup_anonymise_grievances",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
+// ─── Grievance acceptance-workflow silence crons ──────────────────────────
+// Two crons, both keyed off awaiting_since (which is reset on every admin
+// communication while awaiting_user_response — see plan §1 T4c/T9).
+
+const SILENCE_REMINDER_DAYS = 14;
+const SILENCE_AUTO_CLOSE_DAYS = 30;
+
+/**
+ * Day-14 silence reminder: for grievances in awaiting_user_response whose
+ * last admin touch was 14+ days ago AND whose user has not yet been
+ * reminded. Sends one reminder email and stamps silence_reminder_sent_at
+ * so the next reminder fires only on a fresh admin touch (T4c/T9 reset
+ * this column to NULL — see plan §1 transition table).
+ */
+export async function remindGrievanceSilence(): Promise<CleanupResult> {
+  const supabase = createServiceClient();
+  const result: CleanupResult = { notified: 0, errors: 0 };
+
+  try {
+    const cutoff = subDays(new Date(), SILENCE_REMINDER_DAYS);
+
+    const { data: candidates, error } = await supabase
+      .from("grievances")
+      .select("id, email, subject, awaiting_since")
+      .eq("status", "awaiting_user_response")
+      .is("silence_reminder_sent_at", null)
+      .lt("awaiting_since", cutoff.toISOString());
+
+    if (error) {
+      logError(error as Error, {
+        context: "auto_cleanup_grievance_silence_query",
+      });
+      return { notified: 0, errors: 1 };
+    }
+
+    if (!candidates || candidates.length === 0) return result;
+
+    for (const g of candidates) {
+      try {
+        const daysUntilAutoClose = Math.max(
+          1,
+          SILENCE_AUTO_CLOSE_DAYS - SILENCE_REMINDER_DAYS
+        );
+        const sent = await sendGrievanceSilenceReminder({
+          email: g.email,
+          grievanceId: g.id,
+          subject: g.subject,
+          daysUntilAutoClose,
+        });
+
+        if (sent) {
+          const { error: updateError } = await supabase
+            .from("grievances")
+            .update({
+              silence_reminder_sent_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", g.id);
+
+          if (updateError) {
+            logError(updateError as Error, {
+              context: "auto_cleanup_grievance_silence_mark_sent",
+              grievanceId: g.id,
+            });
+            result.errors++;
+            continue;
+          }
+
+          await logDataAccess({
+            tableName: "grievances",
+            operation: "UPDATE",
+            rowCount: 1,
+            endpoint: "auto-cleanup",
+            reason: `Sent day-${SILENCE_REMINDER_DAYS} silence reminder for grievance ${g.id}`,
+          });
+          result.notified++;
+        }
+      } catch (err) {
+        logError(err instanceof Error ? err : new Error(String(err)), {
+          context: "auto_cleanup_grievance_silence_per_row",
+          grievanceId: g.id,
+        });
+        result.errors++;
+      }
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_grievance_silence",
+    });
+    result.errors++;
+  }
+
+  return result;
+}
+
+/**
+ * Day-30 auto-close: for grievances in awaiting_user_response whose last
+ * admin touch was 30+ days ago, transition to closed with
+ * closed_by_role='auto_silence'. Emails both user and grievance officer.
+ */
+export async function autoCloseSilentGrievances(): Promise<DeletionResult> {
+  const supabase = createServiceClient();
+  const result: DeletionResult = { deleted: 0, errors: 0 };
+
+  try {
+    const cutoff = subDays(new Date(), SILENCE_AUTO_CLOSE_DAYS);
+
+    const { data: candidates, error } = await supabase
+      .from("grievances")
+      .select("id, email, subject")
+      .eq("status", "awaiting_user_response")
+      .lt("awaiting_since", cutoff.toISOString());
+
+    if (error) {
+      logError(error as Error, {
+        context: "auto_cleanup_grievance_auto_close_query",
+      });
+      return { deleted: 0, errors: 1 };
+    }
+
+    if (!candidates || candidates.length === 0) return result;
+
+    for (const g of candidates) {
+      try {
+        const now = new Date().toISOString();
+        const { error: updateError } = await supabase
+          .from("grievances")
+          .update({
+            status: "closed",
+            closed_at: now,
+            closed_by_role: "auto_silence",
+            updated_at: now,
+          })
+          .eq("id", g.id)
+          // Guard against a race: if admin posted between the SELECT and
+          // this UPDATE, awaiting_since may have been reset within the
+          // grace window. Only flip rows still actually 30+ days silent.
+          .eq("status", "awaiting_user_response")
+          .lt("awaiting_since", cutoff.toISOString());
+
+        if (updateError) {
+          logError(updateError as Error, {
+            context: "auto_cleanup_grievance_auto_close_update",
+            grievanceId: g.id,
+          });
+          result.errors++;
+          continue;
+        }
+
+        // Notify both audiences. Failures are non-blocking.
+        await sendGrievanceAutoClosed({
+          audience: "user",
+          grievanceId: g.id,
+          subject: g.subject,
+          userEmail: g.email,
+        }).catch((err) =>
+          logError(err as Error, {
+            context: "auto_cleanup_grievance_auto_close_user_email",
+            grievanceId: g.id,
+          })
+        );
+
+        await sendGrievanceAutoClosed({
+          audience: "officer",
+          grievanceId: g.id,
+          subject: g.subject,
+          userEmail: g.email,
+        }).catch((err) =>
+          logError(err as Error, {
+            context: "auto_cleanup_grievance_auto_close_officer_email",
+            grievanceId: g.id,
+          })
+        );
+
+        await logDataAccess({
+          tableName: "grievances",
+          operation: "UPDATE",
+          rowCount: 1,
+          endpoint: "auto-cleanup",
+          reason: `Auto-closed grievance ${g.id} after ${SILENCE_AUTO_CLOSE_DAYS} days of user silence`,
+        });
+
+        logSecurityEvent("grievance_auto_closed_silence", {
+          grievanceId: g.id,
+        });
+
+        result.deleted++;
+      } catch (err) {
+        logError(err instanceof Error ? err : new Error(String(err)), {
+          context: "auto_cleanup_grievance_auto_close_per_row",
+          grievanceId: g.id,
+        });
+        result.errors++;
+      }
+    }
+  } catch (err) {
+    logError(err instanceof Error ? err : new Error(String(err)), {
+      context: "auto_cleanup_grievance_auto_close",
     });
     result.errors++;
   }

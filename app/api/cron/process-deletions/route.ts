@@ -17,6 +17,8 @@ import {
   purgeStaleReviewTokens,
   anonymiseStaleCorrectionRequests,
   anonymiseStaleGrievances,
+  remindGrievanceSilence,
+  autoCloseSilentGrievances,
 } from "@/lib/auto-cleanup";
 import { getExpiredClaimDocuments, markDocumentDeleted } from "@/lib/nominee";
 import { deleteClaimDocument } from "@/lib/nominee-storage";
@@ -225,6 +227,8 @@ export async function POST(req: Request) {
       reviewTokensPurged: 0,
       correctionRequestsAnonymised: 0,
       grievancesAnonymised: 0,
+      grievanceSilenceReminders: 0,
+      grievanceAutoClosed: 0,
       piiCleanupErrors: 0,
     };
 
@@ -262,6 +266,28 @@ export async function POST(req: Request) {
     } catch (err) {
       piiCleanup.piiCleanupErrors++;
       logError(err as Error, { context: "cron_anonymise_grievances" });
+    }
+
+    // Day-14 silence reminder on awaiting_user_response grievances.
+    // Ordered before auto-close so the same row can't get both notifications
+    // in the same cron run.
+    try {
+      const reminderResult = await remindGrievanceSilence();
+      piiCleanup.grievanceSilenceReminders = reminderResult.notified;
+      piiCleanup.piiCleanupErrors += reminderResult.errors;
+    } catch (err) {
+      piiCleanup.piiCleanupErrors++;
+      logError(err as Error, { context: "cron_grievance_silence_reminder" });
+    }
+
+    // Day-30 auto-close on awaiting_user_response grievances.
+    try {
+      const autoCloseResult = await autoCloseSilentGrievances();
+      piiCleanup.grievanceAutoClosed = autoCloseResult.deleted;
+      piiCleanup.piiCleanupErrors += autoCloseResult.errors;
+    } catch (err) {
+      piiCleanup.piiCleanupErrors++;
+      logError(err as Error, { context: "cron_grievance_auto_close" });
     }
 
     // ─── Auto-Cleanup: Expired Nominee Claim Documents ─────────────────────

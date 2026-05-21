@@ -1640,3 +1640,315 @@ export async function sendNomineeDataExport(params: {
     ],
   });
 }
+
+// ─── Grievance acceptance-workflow emails ──────────────────────────────────
+// Sent by the postAdminMessage / postUserDispute / acceptResolution /
+// forceClose service functions and the day-14/day-30 silence crons. See
+// docs/grievance-acceptance-workflow-plan.md §5.
+
+const GRIEVANCE_OFFICER_EMAIL =
+  process.env.GRIEVANCE_OFFICER_EMAIL || "trishikhaorganic@gmail.com";
+
+/**
+ * Sent to the user when admin posts a closure proposal (T4a/T4b/T4c).
+ * Body includes Accept-and-close and Follow-up CTAs back to /grievance.
+ */
+export async function sendGrievanceClosureProposed(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  proposalBody: string;
+}): Promise<boolean> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
+  return sendEmail({
+    to: params.email,
+    subject: "TrishikhaOrganics: A proposed resolution to your grievance",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">We've proposed a resolution</h2>
+        <p>Dear Customer,</p>
+        <p>Our team has reviewed your grievance and proposed a closure. Please review and let us know whether it works for you.</p>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+        </div>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0; font-weight: bold;">Our proposal:</p>
+          <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(params.proposalBody)}</p>
+        </div>
+
+        <p style="margin-top: 25px;"><strong>What happens next?</strong></p>
+        <p>
+          <a href="${escapeHtml(baseUrl)}/grievance"
+             style="display: inline-block; padding: 10px 18px; background-color: #166534; color: white; text-decoration: none; border-radius: 6px; margin-right: 8px;">
+            Accept and close
+          </a>
+          <a href="${escapeHtml(baseUrl)}/grievance"
+             style="display: inline-block; padding: 10px 18px; background-color: #fff; color: #166534; text-decoration: none; border: 1px solid #166534; border-radius: 6px;">
+            Follow up with us
+          </a>
+        </p>
+
+        <p style="color: #555; font-size: 13px; margin-top: 25px;">
+          If we don't hear from you within 30 days, the grievance will be closed automatically. You'll get a reminder around day 14.
+        </p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to the user when admin posts a clarifying (non-closing) message
+ * (T2 / T3 / T9). No CTAs — admin is keeping the conversation going.
+ */
+export async function sendGrievanceAdminReply(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  replyBody: string;
+}): Promise<boolean> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
+  return sendEmail({
+    to: params.email,
+    subject: "TrishikhaOrganics: A new reply on your grievance",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a365d;">New reply on your grievance</h2>
+        <p>Dear Customer,</p>
+        <p>Our team has added a message to your grievance.</p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+        </div>
+
+        <div style="background-color: #f8fafc; border-left: 4px solid #1a365d; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(params.replyBody)}</p>
+        </div>
+
+        <p>You can view the full conversation at <a href="${escapeHtml(baseUrl)}/grievance">${escapeHtml(baseUrl)}/grievance</a>.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to the grievance officer when a user disputes (T6). Body of the
+ * dispute is inlined so the admin can triage from the inbox.
+ */
+export async function sendGrievanceDisputeReceived(params: {
+  grievanceId: string;
+  userEmail: string;
+  subject: string;
+  disputeBody: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: GRIEVANCE_OFFICER_EMAIL,
+    subject: `Grievance disputed: ${params.subject}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #b45309;">User disputed your proposed closure</h2>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0 0 5px 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+          <p style="margin: 0;"><strong>User:</strong> ${escapeHtml(params.userEmail)}</p>
+        </div>
+
+        <div style="background-color: #fef3c7; border-left: 4px solid #b45309; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0; font-weight: bold; color: #92400e;">User's response:</p>
+          <p style="margin: 0; white-space: pre-wrap; color: #78350f;">${escapeHtml(params.disputeBody)}</p>
+        </div>
+
+        <p>The grievance is now back in <code>in_progress</code>. Please review and either post a new closure proposal or a clarifying reply.</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to the grievance officer when a user accepts a closure proposal (T5).
+ * No user body is included — acceptance is silent (see
+ * docs/grievance-acceptance-workflow-plan.md §3.1).
+ */
+export async function sendGrievanceAccepted(params: {
+  grievanceId: string;
+  userEmail: string;
+  subject: string;
+}): Promise<boolean> {
+  return sendEmail({
+    to: GRIEVANCE_OFFICER_EMAIL,
+    subject: `Grievance accepted and closed: ${params.subject}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #166534;">User accepted your proposed closure</h2>
+
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0 0 5px 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+          <p style="margin: 0 0 5px 0;"><strong>User:</strong> ${escapeHtml(params.userEmail)}</p>
+          <p style="margin: 0;"><strong>Closed at:</strong> ${new Date().toLocaleString("en-IN")}</p>
+        </div>
+
+        <p style="color: #555; font-size: 13px;">No further action required.</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to the user on day 14 of silence after admin's closure proposal.
+ * Same CTAs as the original proposal email — accept or follow up.
+ */
+export async function sendGrievanceSilenceReminder(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  daysUntilAutoClose: number;
+}): Promise<boolean> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
+  return sendEmail({
+    to: params.email,
+    subject: "TrishikhaOrganics: Your grievance still needs a response",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #b45309;">Reminder: your grievance is awaiting your response</h2>
+        <p>Dear Customer,</p>
+        <p>We proposed a resolution on your grievance a couple of weeks ago and haven't heard back from you yet.</p>
+
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+        </div>
+
+        <p>If we don't hear from you within the next <strong>${params.daysUntilAutoClose} day(s)</strong>, the grievance will be closed automatically.</p>
+
+        <p>
+          <a href="${escapeHtml(baseUrl)}/grievance"
+             style="display: inline-block; padding: 10px 18px; background-color: #166534; color: white; text-decoration: none; border-radius: 6px; margin-right: 8px;">
+            Accept and close
+          </a>
+          <a href="${escapeHtml(baseUrl)}/grievance"
+             style="display: inline-block; padding: 10px 18px; background-color: #fff; color: #166534; text-decoration: none; border: 1px solid #166534; border-radius: 6px;">
+            Follow up with us
+          </a>
+        </p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+        </p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to BOTH user and grievance officer when the day-30 silence cron
+ * auto-closes (T7). The `audience` flag selects the right copy.
+ */
+export async function sendGrievanceAutoClosed(params: {
+  audience: "user" | "officer";
+  grievanceId: string;
+  subject: string;
+  userEmail: string;
+}): Promise<boolean> {
+  if (params.audience === "user") {
+    return sendEmail({
+      to: params.userEmail,
+      subject: "TrishikhaOrganics: Your grievance has been closed",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #6b7280;">Your grievance has been closed</h2>
+          <p>Dear Customer,</p>
+          <p>We didn't hear back from you on our proposed resolution within 30 days, so your grievance has been closed automatically.</p>
+
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+            <p style="margin: 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+          </div>
+
+          <p>If you still need this resolved, please file a new grievance at <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com")}/grievance">/grievance</a>.</p>
+
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+          <p style="color: #888; font-size: 12px;">
+            Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+          </p>
+        </div>
+      `,
+    });
+  }
+
+  return sendEmail({
+    to: GRIEVANCE_OFFICER_EMAIL,
+    subject: `Grievance auto-closed (no response): ${params.subject}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #6b7280;">Grievance auto-closed (no response)</h2>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0 0 5px 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+          <p style="margin: 0 0 5px 0;"><strong>User:</strong> ${escapeHtml(params.userEmail)}</p>
+          <p style="margin: 0;"><strong>Closed at:</strong> ${new Date().toLocaleString("en-IN")}</p>
+        </div>
+
+        <p style="color: #555; font-size: 13px;">closed_by_role = auto_silence. No further action required.</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent to the user when admin force-closes (T8). The audit-trail reason
+ * is included verbatim; it's admin-authored copy retained under DPDP
+ * (not anonymised by the daily cron).
+ */
+export async function sendGrievanceForceClosed(params: {
+  email: string;
+  grievanceId: string;
+  subject: string;
+  reason: string;
+}): Promise<boolean> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://trisikhaorganics.com";
+  return sendEmail({
+    to: params.email,
+    subject: "TrishikhaOrganics: Your grievance has been closed",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #6b7280;">Your grievance has been closed</h2>
+        <p>Dear Customer,</p>
+        <p>Your grievance has been closed by our team. The reason recorded for the closure is below.</p>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0;"><strong>Reference ID:</strong> ${escapeHtml(params.grievanceId)}</p>
+          <p style="margin: 0;"><strong>Subject:</strong> ${escapeHtml(params.subject)}</p>
+        </div>
+
+        <div style="background-color: #f8fafc; border-left: 4px solid #6b7280; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0 0 5px 0; font-weight: bold;">Reason for closure:</p>
+          <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(params.reason)}</p>
+        </div>
+
+        <p>If you believe this closure was made in error, you may file a new grievance at <a href="${escapeHtml(baseUrl)}/grievance">/grievance</a> or contact our Grievance Officer at <a href="mailto:${escapeHtml(GRIEVANCE_OFFICER_EMAIL)}">${escapeHtml(GRIEVANCE_OFFICER_EMAIL)}</a>. Under DPDP Rules 2025, you may also escalate to the Data Protection Board.</p>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 12px;">
+          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+        </p>
+      </div>
+    `,
+  });
+}

@@ -30,6 +30,8 @@ const mockPurgeExpiredGuestSessions = vi.fn();
 const mockPurgeStaleReviewTokens = vi.fn();
 const mockAnonymiseStaleCorrectionRequests = vi.fn();
 const mockAnonymiseStaleGrievances = vi.fn();
+const mockRemindGrievanceSilence = vi.fn();
+const mockAutoCloseSilentGrievances = vi.fn();
 
 vi.mock("@/lib/auto-cleanup", () => ({
   sendAbandonedCartRecovery: (...args: unknown[]) => mockSendAbandonedCartRecovery(...args),
@@ -41,6 +43,8 @@ vi.mock("@/lib/auto-cleanup", () => ({
   purgeStaleReviewTokens: (...args: unknown[]) => mockPurgeStaleReviewTokens(...args),
   anonymiseStaleCorrectionRequests: (...args: unknown[]) => mockAnonymiseStaleCorrectionRequests(...args),
   anonymiseStaleGrievances: (...args: unknown[]) => mockAnonymiseStaleGrievances(...args),
+  remindGrievanceSilence: (...args: unknown[]) => mockRemindGrievanceSilence(...args),
+  autoCloseSilentGrievances: (...args: unknown[]) => mockAutoCloseSilentGrievances(...args),
 }));
 
 vi.mock("@/lib/nominee", () => ({
@@ -107,6 +111,8 @@ describe("POST /api/cron/process-deletions", () => {
     mockPurgeStaleReviewTokens.mockResolvedValue({ deleted: 0, errors: 0 });
     mockAnonymiseStaleCorrectionRequests.mockResolvedValue({ notified: 0, errors: 0 });
     mockAnonymiseStaleGrievances.mockResolvedValue({ notified: 0, errors: 0 });
+    mockRemindGrievanceSilence.mockResolvedValue({ notified: 0, errors: 0 });
+    mockAutoCloseSilentGrievances.mockResolvedValue({ deleted: 0, errors: 0 });
   });
 
   it("surfaces all PII-cleanup counters in the JSON response", async () => {
@@ -114,6 +120,8 @@ describe("POST /api/cron/process-deletions", () => {
     mockPurgeStaleReviewTokens.mockResolvedValueOnce({ deleted: 5, errors: 0 });
     mockAnonymiseStaleCorrectionRequests.mockResolvedValueOnce({ notified: 2, errors: 0 });
     mockAnonymiseStaleGrievances.mockResolvedValueOnce({ notified: 1, errors: 0 });
+    mockRemindGrievanceSilence.mockResolvedValueOnce({ notified: 4, errors: 0 });
+    mockAutoCloseSilentGrievances.mockResolvedValueOnce({ deleted: 2, errors: 0 });
 
     const res = await POST(cronRequest());
     const json = await res.json();
@@ -125,6 +133,8 @@ describe("POST /api/cron/process-deletions", () => {
       reviewTokensPurged: 5,
       correctionRequestsAnonymised: 2,
       grievancesAnonymised: 1,
+      grievanceSilenceReminders: 4,
+      grievanceAutoClosed: 2,
       piiCleanupErrors: 0,
     });
   });
@@ -136,6 +146,8 @@ describe("POST /api/cron/process-deletions", () => {
     expect(mockPurgeStaleReviewTokens).toHaveBeenCalledTimes(1);
     expect(mockAnonymiseStaleCorrectionRequests).toHaveBeenCalledTimes(1);
     expect(mockAnonymiseStaleGrievances).toHaveBeenCalledTimes(1);
+    expect(mockRemindGrievanceSilence).toHaveBeenCalledTimes(1);
+    expect(mockAutoCloseSilentGrievances).toHaveBeenCalledTimes(1);
   });
 
   it("accumulates errors across PII-cleanup steps without aborting", async () => {
@@ -148,8 +160,10 @@ describe("POST /api/cron/process-deletions", () => {
 
     expect(res.status).toBe(200);
     expect(json.results.piiCleanupErrors).toBe(4);
-    // All four steps still ran despite earlier errors
+    // All six steps still ran despite earlier errors
     expect(mockAnonymiseStaleGrievances).toHaveBeenCalledTimes(1);
+    expect(mockRemindGrievanceSilence).toHaveBeenCalledTimes(1);
+    expect(mockAutoCloseSilentGrievances).toHaveBeenCalledTimes(1);
   });
 
   it("treats a thrown step as one error and continues", async () => {
@@ -172,6 +186,8 @@ describe("POST /api/cron/process-deletions", () => {
 
   it("logs the security event with PII-cleanup counters included", async () => {
     mockPurgeStaleReviewTokens.mockResolvedValueOnce({ deleted: 7, errors: 0 });
+    mockRemindGrievanceSilence.mockResolvedValueOnce({ notified: 3, errors: 0 });
+    mockAutoCloseSilentGrievances.mockResolvedValueOnce({ deleted: 1, errors: 0 });
 
     await POST(cronRequest());
 
@@ -182,6 +198,8 @@ describe("POST /api/cron/process-deletions", () => {
         guestSessionsPurged: 0,
         correctionRequestsAnonymised: 0,
         grievancesAnonymised: 0,
+        grievanceSilenceReminders: 3,
+        grievanceAutoClosed: 1,
       })
     );
   });
