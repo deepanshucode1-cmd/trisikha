@@ -893,25 +893,52 @@ export async function purgeExpiredGuestSessions(): Promise<DeletionResult> {
   const result: DeletionResult = { deleted: 0, errors: 0 };
 
   try {
-    const nowIso = new Date().toISOString();
+    const now = new Date();
 
-    // A row is purgeable if every time-based reason to keep it has passed.
-    // NULL means "no such window was set", which is also "not blocking deletion".
-    const { data: deleted, error } = await supabase
+    // PostgREST's `.or()` parser is fragile when filter values contain dots
+    // (ISO timestamps include `.123Z` milliseconds), so we SELECT all rows
+    // and filter in-code, then DELETE by id. At Trishikha's scale the table
+    // is small (one row per email at a time, purged daily) — full scan is
+    // cheap.
+    const { data: rows, error: selectError } = await supabase
       .from("guest_data_sessions")
-      .delete()
-      .or(`otp_expires_at.is.null,otp_expires_at.lt.${nowIso}`)
-      .or(`session_expires_at.is.null,session_expires_at.lt.${nowIso}`)
-      .or(`otp_locked_until.is.null,otp_locked_until.lt.${nowIso}`)
-      .select("id");
+      .select("id, otp_expires_at, session_expires_at, otp_locked_until");
 
-    if (error) {
-      logError(error as Error, { context: "auto_cleanup_purge_guest_sessions" });
+    if (selectError) {
+      logError(selectError as Error, {
+        context: "auto_cleanup_purge_guest_sessions_select",
+      });
       result.errors++;
       return result;
     }
 
-    result.deleted = deleted?.length || 0;
+    // A row is purgeable if every time-based reason to keep it has passed.
+    // NULL means "no such window was set", which is also "not blocking deletion".
+    const expiredIds = (rows || [])
+      .filter((r) => {
+        const otpOk = !r.otp_expires_at || new Date(r.otp_expires_at) < now;
+        const sessOk = !r.session_expires_at || new Date(r.session_expires_at) < now;
+        const lockOk = !r.otp_locked_until || new Date(r.otp_locked_until) < now;
+        return otpOk && sessOk && lockOk;
+      })
+      .map((r) => r.id as string);
+
+    if (expiredIds.length === 0) return result;
+
+    const { error: deleteError } = await supabase
+      .from("guest_data_sessions")
+      .delete()
+      .in("id", expiredIds);
+
+    if (deleteError) {
+      logError(deleteError as Error, {
+        context: "auto_cleanup_purge_guest_sessions_delete",
+      });
+      result.errors++;
+      return result;
+    }
+
+    result.deleted = expiredIds.length;
 
     if (result.deleted > 0) {
       await logDataAccess({

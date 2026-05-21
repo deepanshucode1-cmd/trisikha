@@ -553,17 +553,30 @@ describe("Auto-Cleanup Service", () => {
       );
     });
 
-    it("applies all three OR predicates (otp / session / lockout)", async () => {
-      const chain = setupFromHandler("guest_data_sessions", { data: [], error: null });
+    it("filters in-code against all three windows (otp / session / lockout)", async () => {
+      // PostgREST's .or() parser chokes on dotted ISO timestamps, so the
+      // function loads all rows and filters them in-code. Seed three rows:
+      // one purgeable, two protected (one by future session, one by future
+      // lockout). Expect only the purgeable one in the .in() delete.
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      fromHandlers["guest_data_sessions"] = createChainableQueueMock([
+        {
+          data: [
+            { id: "purgeable", otp_expires_at: past, session_expires_at: past, otp_locked_until: null },
+            { id: "active-session", otp_expires_at: past, session_expires_at: future, otp_locked_until: null },
+            { id: "locked-out", otp_expires_at: past, session_expires_at: past, otp_locked_until: future },
+          ],
+          error: null,
+        },
+        { data: null, error: null }, // DELETE result
+      ]);
 
-      await purgeExpiredGuestSessions();
+      const result = await purgeExpiredGuestSessions();
 
-      // Three .or() invocations correspond to the three time windows.
-      expect(chain.or).toHaveBeenCalledTimes(3);
-      const calls = (chain.or as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-      expect(calls.some((q: string) => q.includes("otp_expires_at"))).toBe(true);
-      expect(calls.some((q: string) => q.includes("session_expires_at"))).toBe(true);
-      expect(calls.some((q: string) => q.includes("otp_locked_until"))).toBe(true);
+      expect(result.deleted).toBe(1);
+      const chain = fromHandlers["guest_data_sessions"];
+      expect(chain.in).toHaveBeenCalledWith("id", ["purgeable"]);
     });
 
     it("returns errors=1 and skips audit on query failure", async () => {
