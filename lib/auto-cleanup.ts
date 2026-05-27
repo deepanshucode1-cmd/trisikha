@@ -398,6 +398,30 @@ export async function notifyDeferredExpiry(): Promise<CleanupResult> {
   return result;
 }
 
+
+// ---- delete paid orders after retention period for tax purpose is over
+// --- retention period is defined by 31st december of the financialy year of the transaction date
+// determined by paid_at which is before 31st march of the year or after  and 72 months 
+
+
+export async function deletePaidOrders(): Promise<CleanupResult> {
+
+  const supabase = createServiceClient();
+
+  const now = new Date();
+
+  const { error } = await supabase.from("orders")
+    .delete().lte("retention_end_date", now);
+
+  if (error) {
+    logError(error as Error, { context: "auto_cleanup_delete_paid_orders" });
+    return { notified: 0, errors: 1 }
+  }
+
+  return { notified: 0, errors: 0 };
+}
+
+
 // ─── Stale Grievances ───────────────────────────────────────────────────────
 
 const TERMINAL_REQUEST_ANONYMISE_DAYS = 90;

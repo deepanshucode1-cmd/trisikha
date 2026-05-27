@@ -655,40 +655,6 @@ export async function executeDeletionRequest(
       };
     }
 
-    if (lowValueOrderIds.length > 0) {
-      const { error: anonymizeAddressError } = await supabase
-        .from("orders")
-        .update({
-          shipping_first_name: "Deleted",
-          shipping_last_name: "User",
-          shipping_address_line1: "Address Removed",
-          shipping_address_line2: null,
-          billing_first_name: "Deleted",
-          billing_last_name: "User",
-          billing_address_line1: "Address Removed",
-          billing_address_line2: null,
-        })
-        .in("id", lowValueOrderIds);
-
-      if (anonymizeAddressError) {
-        logError(anonymizeAddressError as Error, {
-          context: "execute_deletion_anonymize_address_failed",
-          requestId,
-          email,
-        });
-        return {
-          success: false,
-          status: "failed",
-          ordersDeleted: 0,
-          otpCleared: true,
-          hasPaidOrders: true,
-          paidOrdersCount: paidOrders.length,
-          retentionEndDate: null,
-          message: "Failed to anonymize order address PII",
-        };
-      }
-    }
-
     // Anonymize review data (DPDP compliance)
     // 1. Scrub guest_email from review_tokens for this user
     const { error: tokenAnonymizeError } = await supabase

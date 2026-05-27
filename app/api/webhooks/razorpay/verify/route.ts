@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import { createServiceClient } from "@/utils/supabase/service";
 import { logPayment, logOrder, trackSecurityEvent, logError } from "@/lib/logger";
 import { generateReceiptPDF } from "@/lib/receipt";
+import { getDate, getMonth, getYear } from "date-fns";
 
 export async function POST(request: Request) {
   const body = await request.text();
@@ -69,6 +70,20 @@ export async function POST(request: Request) {
         amount: paymentEntity.amount,
       });
 
+      const now = new Date();
+      const date = getDate(now);
+      const month = getMonth(now);
+      const year = getYear(now);
+
+      let financialYear = year;
+      if (month > 3) {
+        financialYear = year + 1;
+      }
+
+      financialYear = financialYear + 6;
+
+      const retention_end_date = new Date(financialYear, 12, 31);
+
       // Update order status (only if not already processed)
       const { data: updateData, error: updateError } = await supabase
         .from("orders")
@@ -79,6 +94,7 @@ export async function POST(request: Request) {
           payment_id: razorpay_payment_id,
           paid_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          retention_end_date: retention_end_date.toISOString(),
         })
         .eq("id", orderId)
         .eq("payment_status", "initiated")

@@ -48,7 +48,8 @@
       "Bash(git -C /home/nishant/Desktop/trisikha/trisikha add:*)",
       "Bash(git -C /home/nishant/Desktop/trisikha/trisikha push origin selling)",
       "WebFetch(domain:apidocs.shiprocket.in)",
-      "WebFetch(domain:razorpay.com)"
+      "WebFetch(domain:razorpay.com)",
+      "Bash(npm test *)"
     ]
   }
 }

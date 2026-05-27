@@ -67,7 +67,7 @@ const inMemoryLimiter = new InMemoryRateLimiter();
 export const otpRateLimit = hasRedisCredentials
   ? new Ratelimit({
     redis: Redis.fromEnv(),
-    limiter: Ratelimit.slidingWindow(3, "10 m"),
+    limiter: Ratelimit.slidingWindow(10, "10 m"),
     prefix: "ratelimit:otp",
   })
   : {
