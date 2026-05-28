@@ -410,14 +410,17 @@ export async function deletePaidOrders(): Promise<CleanupResult> {
 
   const now = new Date();
 
-  const { error } = await supabase.from("orders")
-    .delete().lte("retention_end_date", now);
+  const { data: deleted, error } = await supabase.from("orders")
+    .delete().not("retention_end_date", "is", null).lte("retention_end_date", now.toISOString()).select("id");
 
   if (error) {
     logError(error as Error, { context: "auto_cleanup_delete_paid_orders" });
     return { notified: 0, errors: 1 }
   }
 
+  if (deleted) {
+    return { notified: deleted.length, errors: 0 };
+  }
   return { notified: 0, errors: 0 };
 }
 

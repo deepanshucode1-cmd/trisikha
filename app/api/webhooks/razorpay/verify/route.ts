@@ -70,19 +70,20 @@ export async function POST(request: Request) {
         amount: paymentEntity.amount,
       });
 
+
       const now = new Date();
-      const date = getDate(now);
       const month = getMonth(now);
       const year = getYear(now);
 
       let financialYear = year;
-      if (month > 3) {
+      if (month > 2) {
         financialYear = year + 1;
       }
 
       financialYear = financialYear + 6;
 
-      const retention_end_date = new Date(financialYear, 12, 31);
+
+      const retention_end_date = new Date(Date.UTC(financialYear, 11, 31));
 
       // Update order status (only if not already processed)
       const { data: updateData, error: updateError } = await supabase

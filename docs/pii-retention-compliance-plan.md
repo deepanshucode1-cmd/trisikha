@@ -371,3 +371,59 @@ Recommended sequencing — each phase is independently shippable and reversible:
 - **Existing 8-year tax retention** — already compliant under §17(1)(a).
 - **Webhook payload retention (Razorpay / Shiprocket)** — webhooks are
   signature-verified and consumed immediately; payloads aren't stored.
+
+
+1. name and address has to be prserved as tax related data for 72 months
+
+
+
+46. Tax invoice.- Subject to rule 54, a tax invoice referred to in section 31 shall be issued by
+the registered person containing the following particulars, namely,-
+(a) name, address and Goods and Services Tax Identification Number of the
+supplier;
+(b) a consecutive serial number not exceeding sixteen characters, in one or
+multiple series, containing alphabets or numerals or special charactershyphen or dash and slash symbolised as “-” and “/” respectively, and any
+combination thereof, unique for a financial year;
+(c) date of its issue;
+(d) name, address and Goods and Services Tax Identification Number or Unique
+Identity Number, if registered, of the recipient;
+(e) name and address of the recipient and the address of delivery, along with the
+name of the State and its code, if such recipient is un-registered and where the
+value of the taxable supply is fifty thousand rupees or more;
+(f) name and address of the recipient and the address of delivery, along with the
+name of the State and its code, if such recipient is un-registered and where the
+value of the taxable supply is less than fifty thousand rupees and the recipient
+requests that such details be recorded in the tax invoice;
+(g) Harmonised System of Nomenclature code for goods or services
+(h) description of goods or services;
+(i) quantity in case of goods and unit or Unique Quantity Code thereof;
+(j) total value of supply of goods or services or both;
+(k) taxable value of the supply of goods or services or both taking into account
+discount or abatement, if any;
+(l) rate of tax (central tax, State tax, integrated tax, Union territory tax or cess);
+(m) amount of tax charged in respect of taxable goods or services (central tax,
+State tax, integrated tax, Union territory tax or cess);
+(n) place of supply along with the name of the State, in the case of a supply in the
+course of inter-State trade or commerce;
+(o) address of delivery where the same is different from the place of supply;
+(p) whether the tax is payable on reverse charge basis; and
+(q) signature or digital signature of the supplier or his authorised representative
+
+
+2. check what is missing in invoice
+
+3.deletion cancellation flow
+
+1. retain data until it is necessary 
+
+a) for orders which are paid, two types of data
+    a1) tax related , preserved till due date of financialy year (31st of December) + 72 months 
+    a2) Non tax related , preserved for 1 year from paid_at and  anonymisation of PII, orders with refund_stateus = REFUND_COMPLETED also has to be removed // has to be implemented later
+
+    user has option to export data in 1st case, 
+    second case implementation is delayed as of now, 
+
+    user can file grievances and make a deletion request which anonymises non-tax related data
+
+
+    we dont have to worry about retention post a user request as he/she can export data and keep it, as keeping the data as such serves no purpose, though this opinion needs to be verified by law experts

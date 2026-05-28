@@ -19,6 +19,7 @@ import {
   anonymiseStaleGrievances,
   remindGrievanceSilence,
   autoCloseSilentGrievances,
+  deletePaidOrders,
 } from "@/lib/auto-cleanup";
 import { getExpiredClaimDocuments, markDocumentDeleted } from "@/lib/nominee";
 import { deleteClaimDocument } from "@/lib/nominee-storage";
@@ -164,15 +165,28 @@ export async function POST(req: Request) {
       }
     }
 
+
+
+
     // ─── Auto-Cleanup: Abandoned Checkouts ──────────────────────────────────
     const autoCleanup = {
       abandonedRecoveryEmailsSent: 0,
       abandonedNotified: 0,
       abandonedDeleted: 0,
+      paidOrdersDeleted: 0,
       deferredNotified: 0,
       deferredExecuted: 0,
       autoCleanupErrors: 0,
     };
+
+    try {
+      const deleteResult = await deletePaidOrders();
+      autoCleanup.paidOrdersDeleted = deleteResult.notified;
+      autoCleanup.autoCleanupErrors += deleteResult.errors;
+    } catch (err) {
+      autoCleanup.autoCleanupErrors++;
+      logError(err as Error, { context: "cron_delete_paid_orders" });
+    }
 
     try {
       const recoveryResult = await sendAbandonedCartRecovery();
@@ -328,7 +342,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       message: "Deletion processing completed.",
-      results: { ...results, autoExec, ...autoCleanup, ...piiCleanup, ...nomineeCleanup },
+      results: { ...results, autoExec, ...autoCleanup, ...piiCleanup, ...nomineeCleanup, },
     });
   } catch (error) {
     logError(error as Error, {

@@ -9,6 +9,7 @@ import { paymentRateLimit, getClientIp } from "@/lib/rate-limit";
 import { handleApiError } from "@/lib/errors";
 import { logPayment, logOrder, trackSecurityEvent, logSecurityEvent, logError } from "@/lib/logger";
 import { generateReceiptPDF } from "@/lib/receipt";
+import { getDate, getMonth, getYear } from "date-fns";
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -121,6 +122,20 @@ export async function POST(req: Request) {
       );
     }
 
+    const now = new Date();
+    const month = getMonth(now);
+    const year = getYear(now);
+
+    let financialYear = year;
+    if (month > 2) {
+      financialYear = year + 1;
+    }
+
+    financialYear = financialYear + 6;
+
+    const retention_end_date = new Date(Date.UTC(financialYear, 11, 31));
+
+
     // 4. Update order status (atomic operation with conditional update)
     const { data, error } = await supabase
       .from("orders")
@@ -132,6 +147,7 @@ export async function POST(req: Request) {
         paid_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         resume_token_used_at: new Date().toISOString(),
+        retention_end_date: retention_end_date.toISOString(),
       })
       .eq("id", order_id)
       .eq("payment_status", "initiated") // Prevent double-processing
