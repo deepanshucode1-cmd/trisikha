@@ -28,9 +28,7 @@ export default function PrivacyPolicy() {
               <p className="text-gray-700 leading-relaxed mb-4">
                 Welcome to Trishikha Organics (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). We are committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website or make a purchase from us.
               </p>
-              <p className="text-gray-700 leading-relaxed">
-                This policy is published in compliance with the Digital Personal Data Protection (DPDP) Act, 2023 and the DPDP Rules, 2025 notified by the Government of India. We act as a &quot;Data Fiduciary&quot; under the DPDP Act for the personal data we process.
-              </p>
+
             </section>
 
             {/* Information We Collect */}
@@ -95,7 +93,6 @@ export default function PrivacyPolicy() {
               <ul className="list-disc pl-6 space-y-2 text-gray-700 mt-4">
                 <li>SSL/TLS encryption for all data transmission</li>
                 <li>Secure payment processing through Razorpay (PCI-DSS compliant)</li>
-                <li>Regular security assessments and updates</li>
                 <li>Access controls and authentication measures</li>
               </ul>
             </section>
@@ -116,16 +113,15 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">7. Your Rights as a Data Principal</h2>
               <p className="text-gray-700 leading-relaxed mb-4">
-                Under the DPDP Act, 2023 and DPDP Rules, 2025, you (&quot;Data Principal&quot;) have the following rights regarding your personal data:
+                You (&quot;Data Principal&quot;) have the following rights regarding your personal data:
               </p>
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
-                <li><strong>Right to Access (Rule 14):</strong> Request a summary of your personal data we hold and the processing activities performed on it.</li>
-                <li><strong>Right to Correction (Rule 14):</strong> Request correction of inaccurate or incomplete personal data, including your name, phone number, and address. Correction requests are reviewed and processed by our team.</li>
-                <li><strong>Right to Erasure (Rule 8):</strong> Request deletion of your personal data. Deletion requests are subject to a 14-day cooling-off period during which you may cancel. Data associated with paid orders is retained for 8 years as required by tax law.</li>
+                <li><strong>Right to Access:</strong> Request a summary of your personal data we hold and the processing activities performed on it.</li>
+                <li><strong>Right to Correction:</strong> Request correction of inaccurate or incomplete personal data, including your name, phone number, and address. Correction requests are reviewed and processed by our team.</li>
+                <li><strong>Right to Erasure:</strong> Request deletion of your personal data. Deletion requests are subject to a 14-day cooling-off period during which you may cancel. Data associated with paid orders is retained for 8 years as required by tax law.</li>
                 <li><strong>Right to Data Portability:</strong> Request your personal data in a commonly used, machine-readable format (JSON).</li>
-                <li><strong>Right to Nominate (Rule 14):</strong> Appoint a nominee who may exercise your rights on your behalf in the event of your death or incapacity via <Link href="/nominee" className="text-[#3d3c30] font-medium hover:underline">/nominee</Link>.</li>
+                <li><strong>Right to Nominate:</strong> Appoint a nominee who may exercise your rights on your behalf in the event of your death or incapacity via <Link href="/nominee" className="text-[#3d3c30] font-medium hover:underline">/nominee</Link>.</li>
                 <li><strong>Right to File a Grievance:</strong> Submit a grievance to our Grievance Officer regarding the processing of your personal data via <Link href="/grievance" className="text-[#3d3c30] font-medium hover:underline">/grievance</Link>.</li>
-                <li><strong>Right to Complain to the Data Protection Board:</strong> If your grievance is not resolved within 90 days, or you are unsatisfied with our response, you may file a complaint with the Data Protection Board of India.</li>
               </ul>
               <p className="text-gray-700 leading-relaxed mt-4">
                 To exercise any of these rights, visit your data management page at <Link href="/my-data" className="text-[#3d3c30] font-medium hover:underline">/my-data</Link> or contact us at <a href="mailto:trishikhaorganic@gmail.com" className="text-[#3d3c30] font-medium hover:underline">trishikhaorganic@gmail.com</a>.
@@ -136,7 +132,7 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">8. Grievance Redressal</h2>
               <p className="text-gray-700 leading-relaxed mb-4">
-                In accordance with Rule 14(3) of the DPDP Rules, 2025, if you have any concerns or complaints regarding the processing of your personal data, you may submit a grievance. We are committed to resolving all grievances within <strong>90 days</strong> of receipt.
+                If you have any concerns or complaints regarding the processing of your personal data, you may submit a grievance. We are committed to resolving all grievances within <strong>90 days</strong> of receipt.
               </p>
               <div className="text-gray-700 space-y-2 mb-4">
                 <p><strong>Grievance Officer:</strong></p>
@@ -156,7 +152,7 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">9. Nominee Appointment</h2>
               <p className="text-gray-700 leading-relaxed">
-                Under Rule 14 of the DPDP Rules, 2025, you have the right to appoint a nominee who may exercise your data principal rights on your behalf in the event of your death or incapacity. You can appoint or manage your nominee at <Link href="/nominee" className="text-[#3d3c30] font-medium hover:underline">/nominee</Link>. If you are a nominee and need to submit a claim, visit <Link href="/nominee-claim" className="text-[#3d3c30] font-medium hover:underline">/nominee-claim</Link>.
+                You can appoint a nominee who may exercise your data principal rights on your behalf in the event of your death or incapacity. You can appoint or manage your nominee at <Link href="/nominee" className="text-[#3d3c30] font-medium hover:underline">/nominee</Link>. If you are a nominee and need to submit a claim, visit <Link href="/nominee-claim" className="text-[#3d3c30] font-medium hover:underline">/nominee-claim</Link>.
               </p>
             </section>
 
@@ -164,7 +160,7 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">10. Cookies</h2>
               <p className="text-gray-700 leading-relaxed">
-                We use essential cookies to ensure the proper functioning of our website, including maintaining your shopping cart and authentication status. We do not use third-party tracking or advertising cookies.
+                We use essential cookies to ensure the proper functioning of our website, including maintaining your shopping cart. We do not use third-party tracking or advertising cookies.
               </p>
             </section>
 

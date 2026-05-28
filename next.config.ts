@@ -49,9 +49,9 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co https://api.razorpay.com",
+              "connect-src 'self' blob: https://*.supabase.co https://api.razorpay.com",
               // UPDATE THIS LINE BELOW:
-              "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com", 
+              "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com",
               "frame-ancestors 'none'",
             ].join("; ")
           }

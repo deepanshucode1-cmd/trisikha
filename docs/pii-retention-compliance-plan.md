@@ -421,9 +421,11 @@ a) for orders which are paid, two types of data
     a2) Non tax related , preserved for 1 year from paid_at and  anonymisation of PII, orders with refund_stateus = REFUND_COMPLETED also has to be removed // has to be implemented later
 
     user has option to export data in 1st case, 
-    second case implementation is delayed as of now, 
+    second case implementation is delayed as of now,not required until november 
 
     user can file grievances and make a deletion request which anonymises non-tax related data
 
 
     we dont have to worry about retention post a user request as he/she can export data and keep it, as keeping the data as such serves no purpose, though this opinion needs to be verified by law experts
+
+    possible threat on logging in
