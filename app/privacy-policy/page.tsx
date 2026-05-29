@@ -105,7 +105,7 @@ export default function PrivacyPolicy() {
               </p>
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 <li><strong>Order and transaction data:</strong> Retained for a minimum of 8 years from the end of the relevant financial year, as required under Section 36 of the Central Goods and Services Tax (CGST) Act, 2017.</li>
-                <li><strong>Non-transactional personal data:</strong> Deleted upon request or when the purpose for collection has been fulfilled, subject to the 14-day cooling-off period under the DPDP Rules, 2025.</li>
+                <li><strong>Non-transactional personal data:</strong> Deleted upon request or when the purpose for collection has been fulfilled, subject to the 14-day cooling-off period.</li>
               </ul>
             </section>
 
@@ -143,9 +143,7 @@ export default function PrivacyPolicy() {
               <p className="text-gray-700 leading-relaxed mb-4">
                 You can file a grievance online at <Link href="/grievance" className="text-[#3d3c30] font-medium hover:underline">/grievance</Link> or via email.
               </p>
-              <p className="text-gray-700 leading-relaxed">
-                If your grievance is not resolved within 90 days, or if you are not satisfied with our response, you may file a complaint with the Data Protection Board of India as established under the DPDP Act, 2023.
-              </p>
+
             </section>
 
             {/* Nominee Appointment */}

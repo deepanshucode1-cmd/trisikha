@@ -53,7 +53,6 @@ export default function ReturnPolicy() {
               <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 <li>Products that have been opened or used</li>
                 <li>Products without original packaging</li>
-                <li>Items marked as &quot;Final Sale&quot; or &quot;Non-Returnable&quot;</li>
                 <li>Orders where the 48-hour return window has expired</li>
                 <li>Products that show signs of damage caused by the customer</li>
               </ul>
@@ -175,7 +174,7 @@ export default function ReturnPolicy() {
                   <h3 className="font-semibold text-amber-800 mb-2">Return (After Shipment)</h3>
                   <ul className="text-sm text-amber-700 space-y-1">
                     <li>Refund minus both-ways shipping</li>
-                    <li>Available within 48 hours of pickup</li>
+                    <li>Available within 48 hours of delivery</li>
                     <li>Requires product return pickup</li>
                   </ul>
                 </div>
