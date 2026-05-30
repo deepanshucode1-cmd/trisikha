@@ -91,7 +91,12 @@ export async function POST(req: Request) {
         shipping_city,
         shipping_state,
         shipping_pincode,
-        shipping_country,
+        billing_address_line1,
+        billing_address_line2,
+        billing_city,
+        billing_state,
+        billing_pincode,
+        billing_country,
         created_at,
         updated_at
       `)

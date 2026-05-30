@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { notFound } from "next/navigation";
 
 type Order = {
   id: string;
@@ -14,9 +15,15 @@ type Order = {
   order_status: string;
   shiprocket_status: string | null;
   shipping_address_line1: string;
+  shipping_address_line2: string;
   shipping_city: string;
   shipping_state: string;
   shipping_pincode: string;
+  billing_address_line1: string;
+  billing_address_line2: string;
+  billing_city: string;
+  billing_state: string;
+  billing_pincode: string;
   created_at: string;
 };
 
@@ -32,17 +39,20 @@ type CorrectionRequest = {
   processedAt: string | null;
 };
 
-type CorrectionFieldName = "name" | "phone" | "address";
+type CorrectionFieldName = "name" | "phone" | "shipping_address" | "billing_address";
 
 type Step = "email" | "otp" | "data";
 
 const FIELD_LABELS: Record<CorrectionFieldName, string> = {
   name: "Name",
   phone: "Phone",
-  address: "Address",
+  shipping_address: "Shipping Address",
+  billing_address: "Billing Address"
 };
 
 export default function CorrectDataPage() {
+
+
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -175,15 +185,25 @@ export default function CorrectDataPage() {
         return `${order.shipping_first_name} ${order.shipping_last_name}`.trim();
       case "phone":
         return order.guest_phone;
-      case "address":
+      case "shipping_address":
         return JSON.stringify({
-          address: order.shipping_address_line1,
+          address_line1: order.shipping_address_line1,
+          address_line2: order.shipping_address_line2,
           city: order.shipping_city,
           state: order.shipping_state,
           pincode: order.shipping_pincode,
         });
+      case "billing_address":
+        return JSON.stringify({
+          address_line1: order.billing_address_line1,
+          address_line2: order.billing_address_line2,
+          city: order.billing_city,
+          state: order.billing_state,
+          pincode: order.billing_pincode,
+        });
       default:
         return "";
+
     }
   };
 
@@ -284,9 +304,7 @@ export default function CorrectDataPage() {
           <p className="mt-2 text-gray-600">
             Request correction of personal data on your orders
           </p>
-          <p className="mt-1 text-sm text-gray-500">
-            DPDP Act 2023, Rule 14 - Right to Correction
-          </p>
+
         </div>
 
         <ToastContainer
@@ -355,7 +373,7 @@ export default function CorrectDataPage() {
             </p>
             {otpExpiry && (
               <p className="text-sm text-gray-500 mb-6">
-                Code expires at {otpExpiry.toLocaleTimeString()}
+                Code expires at {otpExpiry!.toLocaleTimeString()}
               </p>
             )}
 
@@ -411,7 +429,7 @@ export default function CorrectDataPage() {
               <p className="text-sm text-blue-800">
                 Only orders with status <strong>CONFIRMED</strong> that have <strong>not yet entered the shipping pipeline</strong> can be corrected online. Once an AWB is assigned or pickup is scheduled, please contact our Grievance Officer at{" "}
                 <a href="mailto:trishikhaorganic@gmail.com" className="underline font-medium">trishikhaorganic@gmail.com</a>{" "}
-                or <a href="tel:+917984130253" className="underline font-medium">+91 79841 30253</a> for manual correction (DPDP Act 2023, Rule 14).
+                or <a href="tel:+917984130253" className="underline font-medium">+91 79841 30253</a> for manual correction.
               </p>
             </div>
 
@@ -490,7 +508,8 @@ export default function CorrectDataPage() {
                             >
                               <option value="name">Name</option>
                               <option value="phone">Phone</option>
-                              <option value="address">Address</option>
+                              <option value="shipping_address">Shipping Address</option>
+                              <option value="billing_address">Billing Address</option>
                             </select>
                           </div>
 
@@ -499,11 +518,11 @@ export default function CorrectDataPage() {
                               Current Value
                             </label>
                             <div className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-600 break-all">
-                              {correctionField === "address"
+                              {correctionField === "shipping_address" || correctionField === "billing_address"
                                 ? (() => {
                                   try {
                                     const parsed = JSON.parse(correctionCurrentValue);
-                                    return `${parsed.address}, ${parsed.city}, ${parsed.state} - ${parsed.pincode}`;
+                                    return `${parsed.address_line1}, ${parsed.address_line2}, ${parsed.city}, ${parsed.state} - ${parsed.pincode}`;
                                   } catch {
                                     return correctionCurrentValue;
                                   }
@@ -516,13 +535,19 @@ export default function CorrectDataPage() {
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               Correct Value
                             </label>
-                            {correctionField === "address" ? (
+                            {correctionField === "shipping_address" || correctionField === "billing_address" ? (
                               <div className="space-y-2">
                                 <input
                                   type="text"
-                                  placeholder="Street address"
+                                  placeholder="House number and Street name "
                                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                                  id="addr-street"
+                                  id="addr-street-line1"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Apartment suite etc optional"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                  id="addr-street-line2"
                                 />
                                 <div className="grid grid-cols-3 gap-2">
                                   <input
@@ -547,12 +572,13 @@ export default function CorrectDataPage() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const street = (document.getElementById("addr-street") as HTMLInputElement)?.value || "";
+                                    const street_line1 = (document.getElementById("addr-street-line1") as HTMLInputElement)?.value || "";
+                                    const street_line2 = (document.getElementById("addr-street-line2") as HTMLInputElement)?.value || "";
                                     const city = (document.getElementById("addr-city") as HTMLInputElement)?.value || "";
                                     const state = (document.getElementById("addr-state") as HTMLInputElement)?.value || "";
                                     const pincode = (document.getElementById("addr-pincode") as HTMLInputElement)?.value || "";
                                     setCorrectionRequestedValue(
-                                      JSON.stringify({ address: street, city, state, pincode })
+                                      JSON.stringify({ address: street_line1, street_line2, city, state, pincode })
                                     );
                                   }}
                                   className="text-sm text-green-600 hover:text-green-700"
@@ -573,6 +599,8 @@ export default function CorrectDataPage() {
                               />
                             )}
                           </div>
+
+
 
                           <div className="flex gap-3 pt-2">
                             <button

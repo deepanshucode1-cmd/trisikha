@@ -126,6 +126,9 @@ export default function CorrectionRequestsTab() {
 
   // Truncate long values
   const truncate = (str: string, maxLen: number) => {
+    if (str === null) {
+      return null;
+    }
     return str.length > maxLen ? str.slice(0, maxLen) + "..." : str;
   };
 

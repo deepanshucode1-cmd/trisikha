@@ -13,7 +13,7 @@ import { sanitizeObject } from "@/lib/xss";
 const correctionSchema = z.object({
   email: z.email({ message: "Invalid email address" }),
   sessionToken: z.string().min(1, "Session token required").max(100).trim(),
-  fieldName: z.enum(["name", "phone", "address"], {
+  fieldName: z.enum(["name", "phone", "shipping_address", "billing_address"], {
     message: "Field must be one of: name, phone, address",
   }),
   currentValue: z.string().min(1, "Current value is required").max(500).trim(),

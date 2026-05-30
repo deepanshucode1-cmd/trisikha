@@ -17,7 +17,7 @@ import { logDataAccess } from "@/lib/audit";
 // Types
 export type CorrectionStatus = "pending" | "approved" | "rejected";
 
-export type CorrectionFieldName = "name" | "phone" | "address";
+export type CorrectionFieldName = "name" | "phone" | "shipping_address" | "billing_address";
 
 export interface CorrectionRequest {
   id: string;
@@ -58,12 +58,19 @@ export interface ProcessCorrectionParams {
 const FIELD_TO_COLUMNS: Record<CorrectionFieldName, string[]> = {
   name: ["shipping_first_name", "shipping_last_name"],
   phone: ["guest_phone"],
-  address: [
+  shipping_address: [
     "shipping_address_line1",
     "shipping_city",
     "shipping_state",
     "shipping_pincode",
   ],
+  billing_address: [
+    "billing_address_line1",
+    "billing_city",
+    "billing_state",
+    "billing_pincode",
+  ],
+
 };
 
 /**
@@ -349,14 +356,33 @@ async function applyCorrectionToOrder(
         guest_phone: request.requested_value.trim(),
       };
       break;
-    case "address":
+    case "shipping_address":
       // requested_value expected as JSON: {"address":"...","city":"...","state":"...","pincode":"..."}
       try {
         const parsed = JSON.parse(request.requested_value);
-        if (parsed.address) updateData.shipping_address_line1 = parsed.address;
+        if (parsed.address_line1) updateData.shipping_address_line1 = parsed.address_line1;
+        if (parsed.address_line2) updateData.shipping_address_line2 = parsed.address_line2;
         if (parsed.city) updateData.shipping_city = parsed.city;
         if (parsed.state) updateData.shipping_state = parsed.state;
         if (parsed.pincode) updateData.shipping_pincode = parsed.pincode;
+      } catch {
+        return {
+          success: false,
+          message:
+            'Invalid address format. Expected JSON: {"address":"...","city":"...","state":"...","pincode":"..."}',
+        };
+      }
+      break;
+
+    case "billing_address":
+      // requested_value expected as JSON: {"address":"...","city":"...","state":"...","pincode":"..."}
+      try {
+        const parsed = JSON.parse(request.requested_value);
+        if (parsed.address_line1) updateData.billing_address_line1 = parsed.address_line1;
+        if (parsed.address_line2) updateData.billing_address_line2 = parsed.address_line2;
+        if (parsed.city) updateData.billing_city = parsed.city;
+        if (parsed.state) updateData.billing_state = parsed.state;
+        if (parsed.pincode) updateData.billing_pincode = parsed.pincode;
       } catch {
         return {
           success: false,
@@ -392,7 +418,6 @@ async function applyCorrectionToOrder(
     operation: "UPDATE",
     queryType: "single",
     rowCount,
-    userId: "system:guest_correction",
     endpoint: "/api/guest/correct-data",
     oldData: { [request.field_name]: request.current_value },
     newData: { [request.field_name]: request.requested_value },
