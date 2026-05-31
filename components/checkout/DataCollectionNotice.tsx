@@ -25,7 +25,7 @@ const content = {
       "Shared with Shiprocket for shipping and Razorpay for payment",
       "Retained for 8 years for tax compliance (Income Tax Act)",
     ],
-    rightsHeading: "Your Rights (DPDP Act 2023)",
+    rightsHeading: "Your Rights",
     rightsIntro: "You have the right to:",
     rightsItems: [
       "Access your personal data",
@@ -38,7 +38,7 @@ const content = {
     exerciseRights: "Exercise your rights at:",
     grievanceHeading: "Grievance Officer",
     grievanceOrg: "Trishikha Organics",
-    grievanceResponse: "Response within 90 days (DPDP Rule 14(3))",
+    grievanceResponse: "Response within 90 days ",
     privacyPolicy: "Privacy Policy",
     myData: "My Data",
   },
@@ -49,7 +49,7 @@ const content = {
     hideDetails: "विवरण छिपाएँ",
     title: "डेटा संग्रहण सूचना",
     intro:
-      "यह ऑर्डर देकर, तृषिखा ऑर्गेनिक्स DPDP अधिनियम 2023 की धारा 7 (वैध उपयोग) के तहत ऑर्डर पूर्ति के लिए निम्नलिखित व्यक्तिगत डेटा एकत्र और संसाधित करेगा:",
+      "यह ऑर्डर देकर, ऑर्डर पूर्ति के लिए निम्नलिखित व्यक्तिगत डेटा एकत्र और संसाधित करेगा:",
     dataHeading: "हम कौन सा डेटा एकत्र करते हैं",
     dataItems: [
       "नाम, ईमेल, फ़ोन नंबर — ऑर्डर प्रोसेसिंग और संचार के लिए",
@@ -63,7 +63,7 @@ const content = {
       "शिपिंग के लिए Shiprocket और भुगतान के लिए Razorpay के साथ साझा किया जाता है",
       "कर अनुपालन (आयकर अधिनियम) के लिए 8 वर्षों तक रखा जाता है",
     ],
-    rightsHeading: "आपके अधिकार (DPDP अधिनियम 2023)",
+    rightsHeading: "आपके अधिकार",
     rightsIntro: "आपको निम्नलिखित अधिकार हैं:",
     rightsItems: [
       "अपने व्यक्तिगत डेटा तक पहुँचें",

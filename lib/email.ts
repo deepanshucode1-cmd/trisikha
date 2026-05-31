@@ -709,7 +709,7 @@ export async function sendDeletionRequestConfirmation(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          This is an automated message regarding your data protection rights under DPDP Act.<br>
+          This is an automated message regarding your data protection rights.<br>
           Thank you for shopping with Trishikha Organics.
         </p>
       </div>
@@ -820,7 +820,7 @@ export async function sendDeletionCompleted(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Your data protection rights have been honored under the DPDP Act.<br>
+          Your data protection rights have been honored.<br>
           Thank you for being a customer of Trishikha Organics.
         </p>
       </div>
@@ -873,7 +873,7 @@ export async function sendDeletionDeferred(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Your data protection rights have been honored under the DPDP Act, balanced against tax retention obligations.<br>
+          Your data protection rights have been honored, balanced against tax retention obligations.<br>
           Thank you for being a customer of Trishikha Organics.
         </p>
       </div>
@@ -913,8 +913,6 @@ export async function sendNomineeDeletionCompleted(params: {
 
         <p>No further data for the principal remains in our active records. This email will be the last communication you receive in connection with this claim.</p>
 
-        <p>Legal basis: DPDP Act 2023 §13 (Right to Erasure), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.</p>
-
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
           This is an automated message from Trishikha Organics.<br>
@@ -922,7 +920,7 @@ export async function sendNomineeDeletionCompleted(params: {
         </p>
       </div>
     `,
-    text: `Hi ${params.nomineeName},\n\nThe deletion request you submitted as the appointed nominee for ${params.principalEmail} has been fully processed. The principal's personal data has been permanently removed from our systems.\n\nNominee claim ID: ${params.claimId}\nData subject (principal): ${params.principalEmail}\nOrders anonymized: ${params.ordersAnonymized}\nCompleted on: ${new Date().toLocaleDateString("en-IN")}\n\nNo further data for the principal remains in our active records. This email will be the last communication you receive in connection with this claim.\n\nLegal basis: DPDP Act 2023 §13 (Right to Erasure), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.\n\nTrishikha Organics`,
+    text: `Hi ${params.nomineeName},\n\nThe deletion request you submitted as the appointed nominee for ${params.principalEmail} has been fully processed. The principal's personal data has been permanently removed from our systems.\n\nNominee claim ID: ${params.claimId}\nData subject (principal): ${params.principalEmail}\nOrders anonymized: ${params.ordersAnonymized}\nCompleted on: ${new Date().toLocaleDateString("en-IN")}\n\nNo further data for the principal remains in our active records. This email will be the last communication you receive in connection with this claim.\n\nLegal basis: Right to Erasure, exercised on behalf of the data principal by an appointed nominee.\n\nTrishikha Organics`,
   });
 }
 
@@ -970,8 +968,6 @@ export async function sendNomineeDeletionDeferred(params: {
 
         <p>You will receive a final notice 48 hours before the anonymized records are permanently erased.</p>
 
-        <p>Legal basis: DPDP Act 2023 §13 (Right to Erasure), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14, balanced against statutory tax-retention obligations.</p>
-
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
           This is an automated message from Trishikha Organics.<br>
@@ -979,7 +975,7 @@ export async function sendNomineeDeletionDeferred(params: {
         </p>
       </div>
     `,
-    text: `Hi ${params.nomineeName},\n\nThe deletion request you submitted as the appointed nominee for ${params.principalEmail} has been processed. The principal's personal information has been removed from our systems.\n\nNominee claim ID: ${params.claimId}\nData subject (principal): ${params.principalEmail}\nOrders anonymized: ${params.ordersAnonymized}\nProcessed on: ${new Date().toLocaleDateString("en-IN")}\n\nTax-Mandated Retention:\nBecause the principal had paid orders, Indian tax law (CGST Act §36 and Income Tax Act) requires us to retain anonymized order records for 8 years. These records cannot be linked back to the principal and will be permanently deleted on or around ${retentionLabel}.\n\nYou will receive a final notice 48 hours before the anonymized records are permanently erased.\n\nLegal basis: DPDP Act 2023 §13, exercised by an appointed nominee under DPDP Rules 2025 Rule 14.\n\nTrishikha Organics`,
+    text: `Hi ${params.nomineeName},\n\nThe deletion request you submitted as the appointed nominee for ${params.principalEmail} has been processed. The principal's personal information has been removed from our systems.\n\nNominee claim ID: ${params.claimId}\nData subject (principal): ${params.principalEmail}\nOrders anonymized: ${params.ordersAnonymized}\nProcessed on: ${new Date().toLocaleDateString("en-IN")}\n\nTax-Mandated Retention:\nBecause the principal had paid orders, Indian tax law (CGST Act §36 and Income Tax Act) requires us to retain anonymized order records for 6 years from due date of filing return. These records cannot be linked back to the principal and will be permanently deleted on or around ${retentionLabel}.\n\nYou will receive a final notice 48 hours before the anonymized records are permanently erased.\n\nTrishikha Organics`,
   });
 }
 
@@ -1018,13 +1014,13 @@ export async function sendGrievanceReceived(params: {
           <p style="margin: 0;"><strong>Response Deadline:</strong> ${escapeHtml(formattedDeadline)}</p>
         </div>
 
-        <p>As per DPDP Rules 2025, we will address your grievance within <strong>90 days</strong> from the date of receipt.</p>
+        <p>We will address your grievance within <strong>90 days</strong> from the date of receipt.</p>
 
         <p>You can check the status of your grievance at any time by visiting our grievance page and verifying your email.</p>
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          This is an automated acknowledgment under DPDP Rules 2025 Rule 14(3).<br>
+          This is an automated acknowledgment<br>
           Thank you for shopping with Trishikha Organics.
         </p>
       </div>
@@ -1135,7 +1131,7 @@ export async function sendGrievanceResolved(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Your rights under the DPDP Act 2023 are important to us.<br>
+          Your rights are important to us.<br>
           Thank you for shopping with Trishikha Organics.
         </p>
       </div>
@@ -1317,7 +1313,7 @@ export async function sendPreErasureNotification(params: {
 
         <h3>Your Rights</h3>
         <p style="font-size: 14px; color: #666;">
-          Under the DPDP Act 2023, you have the right to access, correct, or manage your data.
+          You have the right to access, correct, or manage your data.
           Visit <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/my-data" style="color: #3d3c30;">/my-data</a> to exercise your rights.
         </p>
 
@@ -1325,7 +1321,7 @@ export async function sendPreErasureNotification(params: {
           <p style="margin: 0; font-size: 13px; color: #666;">
             <strong>Grievance Officer:</strong> Trishikha Organics<br>
             Email: trishikhaorganic@gmail.com | Phone: +91 79841 30253<br>
-            Response within 90 days (DPDP Rule 14(3))
+            Response within 90 days
           </p>
         </div>
 
@@ -1367,7 +1363,7 @@ export async function sendNomineeAppointed(params: {
           <p style="margin: 0;"><strong>Relationship:</strong> ${escapeHtml(params.relationship)}</p>
         </div>
 
-        <p>Your nominee can request export or deletion of your data in the event of your death or incapacity, as per DPDP Act 2023, Rule 14.</p>
+        <p>Your nominee can request export or deletion of your data in the event of your death or incapacity.</p>
         <p>You can revoke or update your nominee at any time by visiting <a href="${escapeHtml(process.env.NEXT_PUBLIC_BASE_URL || "")}/nominee" style="color: #3d3c30; font-weight: bold;">/nominee</a>.</p>
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
@@ -1377,7 +1373,7 @@ export async function sendNomineeAppointed(params: {
         </p>
       </div>
     `,
-    text: `Hi,\n\nYou have successfully appointed a nominee for your data at Trishikha Organics.\n\nNominee Name: ${params.nomineeName}\nNominee Email: ${params.nomineeEmail}\nRelationship: ${params.relationship}\n\nYour nominee can request export or deletion of your data in the event of your death or incapacity (DPDP Act 2023, Rule 14).\n\nYou can revoke or update your nominee at: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee\n\nTrishikha Organics`,
+    text: `Hi,\n\nYou have successfully appointed a nominee for your data at Trishikha Organics.\n\nNominee Name: ${params.nomineeName}\nNominee Email: ${params.nomineeEmail}\nRelationship: ${params.relationship}\n\nYour nominee can request export or deletion of your data in the event of your death or incapacity.\n\nYou can revoke or update your nominee at: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee\n\nTrishikha Organics`,
   });
 }
 
@@ -1401,7 +1397,7 @@ export async function sendNomineeNotification(params: {
 
         <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin: 20px 0;">
           <h3 style="margin: 0 0 10px 0; color: #1a365d;">What does this mean?</h3>
-          <p style="margin: 0;">In the event of the data principal's death or incapacity, you may exercise the following rights on their behalf under the DPDP Act 2023, Rule 14:</p>
+          <p style="margin: 0;">In the event of the data principal's death or incapacity, you may exercise the following rights on their behalf</p>
           <ul style="margin: 10px 0 0 0;">
             <li>Request export of their order data</li>
             <li>Request deletion of their personal data</li>
@@ -1418,7 +1414,7 @@ export async function sendNomineeNotification(params: {
         </p>
       </div>
     `,
-    text: `Hi ${params.nomineeName},\n\nYou have been appointed as a data nominee by ${params.principalEmail} at Trishikha Organics.\n\nIn the event of the data principal's death or incapacity, you may request export or deletion of their data under the DPDP Act 2023, Rule 14.\n\nTo submit a claim, visit: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee-claim\n\nThe data principal can revoke this nomination at any time.\n\nTrishikha Organics`,
+    text: `Hi ${params.nomineeName},\n\nYou have been appointed as a data nominee by ${params.principalEmail} at Trishikha Organics.\n\nIn the event of the data principal's death or incapacity, you may request export or deletion of their data.\n\nTo submit a claim, visit: ${process.env.NEXT_PUBLIC_BASE_URL || ""}/nominee-claim\n\nThe data principal can revoke this nomination at any time.\n\nTrishikha Organics`,
   });
 }
 
@@ -1621,8 +1617,7 @@ export async function sendNomineeDataExport(params: {
 
         <p>If you did not submit this claim, please contact our Grievance Officer immediately at <a href="mailto:trishikhaorganic@gmail.com" style="color: #3d3c30;">trishikhaorganic@gmail.com</a> or +91 79841 30253.</p>
 
-        <p>Legal basis: DPDP Act 2023 §11 (Right to Data Portability), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.</p>
-
+      
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
           This is an automated message from Trishikha Organics.<br>
@@ -1630,7 +1625,7 @@ export async function sendNomineeDataExport(params: {
         </p>
       </div>
     `,
-    text: `Hi ${params.nomineeName},\n\nYou are receiving this email because you submitted a nominee claim requesting a copy of the data Trishikha Organics holds for ${params.principalEmail}, and our admin has approved that request.\n\nNominee: ${params.nomineeName} <${params.nomineeEmail}>\nData subject (principal): ${params.principalEmail}\nClaim ID: ${params.claimId}\n\nThe attached file ${params.filename} contains the principal's data in JSON format. Please treat this information as confidential.\n${deletionLineText}\nIf you did not submit this claim, please contact our Grievance Officer at trishikhaorganic@gmail.com or +91 79841 30253.\n\nLegal basis: DPDP Act 2023 §11 (Right to Data Portability), exercised on behalf of the data principal by an appointed nominee under DPDP Rules 2025 Rule 14.\n\nTrishikha Organics`,
+    text: `Hi ${params.nomineeName},\n\nYou are receiving this email because you submitted a nominee claim requesting a copy of the data Trishikha Organics holds for ${params.principalEmail}, and our admin has approved that request.\n\nNominee: ${params.nomineeName} <${params.nomineeEmail}>\nData subject (principal): ${params.principalEmail}\nClaim ID: ${params.claimId}\n\nThe attached file ${params.filename} contains the principal's data in JSON format. Please treat this information as confidential.\n${deletionLineText}\nIf you did not submit this claim, please contact our Grievance Officer at trishikhaorganic@gmail.com or +91 79841 30253.\n\nTrishikha Organics`,
     attachments: [
       {
         filename: params.filename,
@@ -1697,7 +1692,7 @@ export async function sendGrievanceClosureProposed(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+          Trishikha Organics — Grievance redressal .
         </p>
       </div>
     `,
@@ -1737,7 +1732,7 @@ export async function sendGrievanceAdminReply(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+          Trishikha Organics — Grievance redressal.
         </p>
       </div>
     `,
@@ -1848,7 +1843,7 @@ export async function sendGrievanceSilenceReminder(params: {
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+          Trishikha Organics — Grievance redressal.
         </p>
       </div>
     `,
@@ -1884,7 +1879,7 @@ export async function sendGrievanceAutoClosed(params: {
 
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
           <p style="color: #888; font-size: 12px;">
-            Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+            Trishikha Organics — Grievance redressal.
           </p>
         </div>
       `,
@@ -1942,11 +1937,11 @@ export async function sendGrievanceForceClosed(params: {
           <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(params.reason)}</p>
         </div>
 
-        <p>If you believe this closure was made in error, you may file a new grievance at <a href="${escapeHtml(baseUrl)}/grievance">/grievance</a> or contact our Grievance Officer at <a href="mailto:${escapeHtml(GRIEVANCE_OFFICER_EMAIL)}">${escapeHtml(GRIEVANCE_OFFICER_EMAIL)}</a>. Under DPDP Rules 2025, you may also escalate to the Data Protection Board.</p>
+        <p>If you believe this closure was made in error, you may file a new grievance at <a href="${escapeHtml(baseUrl)}/grievance">/grievance</a> or contact our Grievance Officer at <a href="mailto:${escapeHtml(GRIEVANCE_OFFICER_EMAIL)}">${escapeHtml(GRIEVANCE_OFFICER_EMAIL)}</a></p>
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
         <p style="color: #888; font-size: 12px;">
-          Trishikha Organics — Grievance redressal under DPDP Rules 2025, Rule 14(3).
+          Trishikha Organics — Grievance redressal.
         </p>
       </div>
     `,

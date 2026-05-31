@@ -287,9 +287,6 @@ export default function GrievancePage() {
             <p className="mt-2 text-gray-600">
               File a grievance related to your personal data
             </p>
-            <p className="mt-1 text-sm text-gray-500">
-              DPDP Rules 2025, Rule 14(3) &mdash; 90-day resolution guarantee
-            </p>
           </div>
 
           <ToastContainer
@@ -429,7 +426,7 @@ export default function GrievancePage() {
             <>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
-                  Under DPDP Rules 2025 (Rule 14(3)), your grievance will be
+                  Your grievance will be
                   addressed within <strong>90 days</strong> from the date of
                   filing. You will receive email updates on the progress of
                   your grievance.
@@ -558,10 +555,9 @@ export default function GrievancePage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-1">
                                 <span
-                                  className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
-                                    STATUS_STYLES[g.status] ||
+                                  className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_STYLES[g.status] ||
                                     "bg-gray-100 text-gray-700"
-                                  }`}
+                                    }`}
                                 >
                                   {STATUS_LABELS[g.status] || g.status}
                                 </span>
@@ -593,9 +589,8 @@ export default function GrievancePage() {
                                 </p>
                               ) : (
                                 <p
-                                  className={`text-xs font-medium ${
-                                    isOverdue ? "text-red-600" : "text-gray-500"
-                                  }`}
+                                  className={`text-xs font-medium ${isOverdue ? "text-red-600" : "text-gray-500"
+                                    }`}
                                 >
                                   {isOverdue
                                     ? `${Math.abs(daysRemaining)} days overdue`
@@ -642,19 +637,17 @@ export default function GrievancePage() {
                                     return (
                                       <div
                                         key={m.id}
-                                        className={`rounded-lg p-3 ${
-                                          isAdmin
-                                            ? "bg-blue-50 border border-blue-100"
-                                            : "bg-gray-50 border border-gray-200"
-                                        }`}
+                                        className={`rounded-lg p-3 ${isAdmin
+                                          ? "bg-blue-50 border border-blue-100"
+                                          : "bg-gray-50 border border-gray-200"
+                                          }`}
                                       >
                                         <div className="flex justify-between items-start mb-1">
                                           <span
-                                            className={`text-xs font-medium ${
-                                              isAdmin
-                                                ? "text-blue-700"
-                                                : "text-gray-700"
-                                            }`}
+                                            className={`text-xs font-medium ${isAdmin
+                                              ? "text-blue-700"
+                                              : "text-gray-700"
+                                              }`}
                                           >
                                             {isAdmin ? "Our team" : "You"}
                                             {m.proposesClose && (

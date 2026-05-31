@@ -233,320 +233,317 @@ export default function NomineePage() {
     <>
       <Header />
       <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <ToastContainer position="top-center" autoClose={5000} />
+        <ToastContainer position="top-center" autoClose={5000} />
 
-      <div className="max-w-xl mx-auto">
-        <div className="mb-6">
-          <Link
-            href="/my-data"
-            className="text-sm text-[#3d3c30] hover:underline"
-          >
-            &larr; Back to My Data
-          </Link>
-        </div>
-
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Nominee Appointment
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Appoint a nominee who can exercise your data rights (export or
-          deletion) in the event of your death or incapacity.{" "}
-          <span className="text-sm text-gray-500">
-            DPDP Act 2023, Rule 14
-          </span>
-        </p>
-
-        {/* Step 1: Email */}
-        {step === "email" && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Verify Your Identity
-            </h2>
-            <form onSubmit={handleSendOtp}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter the email used for your orders"
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
-              />
-              <button
-                type="submit"
-                disabled={loading || !email}
-                className="mt-4 w-full bg-[#3d3c30] text-white py-2.5 rounded-md font-medium hover:bg-[#2d2c22] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? "Sending..." : "Send OTP"}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Step 2: OTP */}
-        {step === "otp" && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Enter OTP
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              We sent a 6-digit OTP to <strong>{email}</strong>
-            </p>
-            <form onSubmit={handleVerifyOtp}>
-              <input
-                type="text"
-                value={otp}
-                onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-                placeholder="000000"
-                maxLength={6}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-md text-center text-2xl tracking-widest focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
-              />
-              {attemptsRemaining < 5 && (
-                <p className="text-sm text-red-600 mt-2">
-                  {attemptsRemaining} attempt(s) remaining
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={loading || otp.length !== 6}
-                className="mt-4 w-full bg-[#3d3c30] text-white py-2.5 rounded-md font-medium hover:bg-[#2d2c22] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? "Verifying..." : "Verify OTP"}
-              </button>
-            </form>
-            <button
-              onClick={() => {
-                setStep("email");
-                setOtp("");
-              }}
-              className="mt-3 w-full text-sm text-gray-500 hover:text-gray-700"
+        <div className="max-w-xl mx-auto">
+          <div className="mb-6">
+            <Link
+              href="/my-data"
+              className="text-sm text-[#3d3c30] hover:underline"
             >
-              Use a different email
-            </button>
+              &larr; Back to My Data
+            </Link>
           </div>
-        )}
 
-        {/* Step 3: Nominee Management */}
-        {step === "nominee" && (
-          <>
-            {/* Current nominee */}
-            {nominee ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  Your Current Nominee
-                </h2>
-                <div className="bg-green-50 border border-green-200 rounded-md p-4 space-y-2">
-                  <p>
-                    <span className="font-medium text-gray-700">Name:</span>{" "}
-                    {nominee.nomineeName}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-700">Email:</span>{" "}
-                    {nominee.nomineeEmail}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-700">
-                      Relationship:
-                    </span>{" "}
-                    {RELATIONSHIP_LABELS[nominee.relationship] ||
-                      nominee.relationship}
-                  </p>
-                  <p>
-                    <span className="font-medium text-gray-700">
-                      Appointed:
-                    </span>{" "}
-                    {new Date(nominee.createdAt).toLocaleDateString("en-IN", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </p>
-                </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            Nominee Appointment
+          </h1>
+          <p className="text-gray-600 mb-6">
+            Appoint a nominee who can exercise your data rights (export or
+            deletion) in the event of your death or incapacity.{" "}
+          </p>
 
-                {!showRevokeConfirm ? (
-                  <button
-                    onClick={() => setShowRevokeConfirm(true)}
-                    className="mt-4 w-full bg-red-600 text-white py-2.5 rounded-md font-medium hover:bg-red-700 transition-colors"
-                  >
-                    Revoke Nominee
-                  </button>
-                ) : (
-                  <div className="mt-4 bg-red-50 border border-red-200 rounded-md p-4">
-                    <p className="text-sm text-red-800 mb-3">
-                      Are you sure you want to revoke{" "}
-                      <strong>{nominee.nomineeName}</strong> as your nominee?
-                      They will no longer be able to exercise data rights on
-                      your behalf.
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={handleRevoke}
-                        disabled={loading}
-                        className="flex-1 bg-red-600 text-white py-2 rounded-md font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-                      >
-                        {loading ? "Revoking..." : "Yes, Revoke"}
-                      </button>
-                      <button
-                        onClick={() => setShowRevokeConfirm(false)}
-                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-md font-medium hover:bg-gray-300 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+          {/* Step 1: Email */}
+          {step === "email" && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Verify Your Identity
+              </h2>
+              <form onSubmit={handleSendOtp}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter the email used for your orders"
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !email}
+                  className="mt-4 w-full bg-[#3d3c30] text-white py-2.5 rounded-md font-medium hover:bg-[#2d2c22] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? "Sending..." : "Send OTP"}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Step 2: OTP */}
+          {step === "otp" && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Enter OTP
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                We sent a 6-digit OTP to <strong>{email}</strong>
+              </p>
+              <form onSubmit={handleVerifyOtp}>
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) =>
+                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="000000"
+                  maxLength={6}
+                  required
+                  className="w-full px-4 py-3 border border-gray-300 rounded-md text-center text-2xl tracking-widest focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
+                />
+                {attemptsRemaining < 5 && (
+                  <p className="text-sm text-red-600 mt-2">
+                    {attemptsRemaining} attempt(s) remaining
+                  </p>
                 )}
-              </div>
-            ) : (
-              /* Appointment form */
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                  Appoint a Nominee
-                </h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  A nominee can request export or deletion of your data in the
-                  event of your death or incapacity. An OTP will be sent to the
-                  nominee&apos;s email for verification.
-                </p>
+                <button
+                  type="submit"
+                  disabled={loading || otp.length !== 6}
+                  className="mt-4 w-full bg-[#3d3c30] text-white py-2.5 rounded-md font-medium hover:bg-[#2d2c22] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading ? "Verifying..." : "Verify OTP"}
+                </button>
+              </form>
+              <button
+                onClick={() => {
+                  setStep("email");
+                  setOtp("");
+                }}
+                className="mt-3 w-full text-sm text-gray-500 hover:text-gray-700"
+              >
+                Use a different email
+              </button>
+            </div>
+          )}
 
-                <form onSubmit={handleAppoint} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nominee Name
-                    </label>
-                    <input
-                      type="text"
-                      value={nomineeName}
-                      onChange={(e) => setNomineeName(e.target.value)}
-                      placeholder="Full name"
-                      required
-                      maxLength={100}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
-                    />
+          {/* Step 3: Nominee Management */}
+          {step === "nominee" && (
+            <>
+              {/* Current nominee */}
+              {nominee ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    Your Current Nominee
+                  </h2>
+                  <div className="bg-green-50 border border-green-200 rounded-md p-4 space-y-2">
+                    <p>
+                      <span className="font-medium text-gray-700">Name:</span>{" "}
+                      {nominee.nomineeName}
+                    </p>
+                    <p>
+                      <span className="font-medium text-gray-700">Email:</span>{" "}
+                      {nominee.nomineeEmail}
+                    </p>
+                    <p>
+                      <span className="font-medium text-gray-700">
+                        Relationship:
+                      </span>{" "}
+                      {RELATIONSHIP_LABELS[nominee.relationship] ||
+                        nominee.relationship}
+                    </p>
+                    <p>
+                      <span className="font-medium text-gray-700">
+                        Appointed:
+                      </span>{" "}
+                      {new Date(nominee.createdAt).toLocaleDateString("en-IN", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nominee Email
-                    </label>
-                    <input
-                      type="email"
-                      value={nomineeEmail}
-                      onChange={(e) => setNomineeEmail(e.target.value)}
-                      placeholder="nominee@example.com"
-                      required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Relationship
-                    </label>
-                    <select
-                      value={relationship}
-                      onChange={(e) => setRelationship(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
-                    >
-                      {Object.entries(RELATIONSHIP_LABELS).map(
-                        ([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        )
-                      )}
-                    </select>
-                  </div>
-
-                  {!nomineeOtpSent ? (
+                  {!showRevokeConfirm ? (
                     <button
-                      type="button"
-                      onClick={handleSendNomineeOtp}
-                      disabled={loading || !nomineeName || !nomineeEmail}
-                      className="w-full bg-[#3d3c30] text-white py-2.5 rounded-md font-medium hover:bg-[#2d2c22] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => setShowRevokeConfirm(true)}
+                      className="mt-4 w-full bg-red-600 text-white py-2.5 rounded-md font-medium hover:bg-red-700 transition-colors"
                     >
-                      {loading ? "Sending..." : "Send OTP to Nominee"}
+                      Revoke Nominee
                     </button>
                   ) : (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Nominee OTP
-                        </label>
-                        <p className="text-xs text-gray-500 mb-2">
-                          Enter the 6-digit OTP sent to{" "}
-                          <strong>{nomineeEmail}</strong>. The nominee needs to
-                          share this code with you.
-                        </p>
-                        <input
-                          type="text"
-                          value={nomineeOtp}
-                          onChange={(e) =>
-                            setNomineeOtp(
-                              e.target.value.replace(/\D/g, "").slice(0, 6)
-                            )
-                          }
-                          placeholder="000000"
-                          maxLength={6}
-                          required
-                          className="w-full px-4 py-3 border border-gray-300 rounded-md text-center text-2xl tracking-widest focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
-                        />
+                    <div className="mt-4 bg-red-50 border border-red-200 rounded-md p-4">
+                      <p className="text-sm text-red-800 mb-3">
+                        Are you sure you want to revoke{" "}
+                        <strong>{nominee.nomineeName}</strong> as your nominee?
+                        They will no longer be able to exercise data rights on
+                        your behalf.
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleRevoke}
+                          disabled={loading}
+                          className="flex-1 bg-red-600 text-white py-2 rounded-md font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                        >
+                          {loading ? "Revoking..." : "Yes, Revoke"}
+                        </button>
+                        <button
+                          onClick={() => setShowRevokeConfirm(false)}
+                          className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-md font-medium hover:bg-gray-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
                       </div>
-                      <button
-                        type="submit"
-                        disabled={loading || nomineeOtp.length !== 6}
-                        className="w-full bg-green-600 text-white py-2.5 rounded-md font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {loading ? "Appointing..." : "Confirm Appointment"}
-                      </button>
-                    </>
+                    </div>
                   )}
-                </form>
-              </div>
-            )}
+                </div>
+              ) : (
+                /* Appointment form */
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                    Appoint a Nominee
+                  </h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    A nominee can request export or deletion of your data in the
+                    event of your death or incapacity. An OTP will be sent to the
+                    nominee&apos;s email for verification.
+                  </p>
 
-            {/* Info box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-medium text-blue-900 mb-2">
-                About Nominee Appointment
-              </h3>
-              <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                <li>You can have one active nominee at a time</li>
-                <li>
-                  Your nominee can only act after providing proof of your death
-                  or incapacity
-                </li>
-                <li>
-                  Actions are limited to data export and deletion — processed
-                  by our admin team
-                </li>
-                <li>You can revoke and re-appoint a nominee at any time</li>
-                <li>
-                  <Link
-                    href="/privacy-policy"
-                    className="underline hover:text-blue-900"
-                  >
-                    Privacy Policy
-                  </Link>
-                  {" | "}
-                  <Link
-                    href="/nominee-claim"
-                    className="underline hover:text-blue-900"
-                  >
-                    Submit a Nominee Claim
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </>
-        )}
+                  <form onSubmit={handleAppoint} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nominee Name
+                      </label>
+                      <input
+                        type="text"
+                        value={nomineeName}
+                        onChange={(e) => setNomineeName(e.target.value)}
+                        placeholder="Full name"
+                        required
+                        maxLength={100}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nominee Email
+                      </label>
+                      <input
+                        type="email"
+                        value={nomineeEmail}
+                        onChange={(e) => setNomineeEmail(e.target.value)}
+                        placeholder="nominee@example.com"
+                        required
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Relationship
+                      </label>
+                      <select
+                        value={relationship}
+                        onChange={(e) => setRelationship(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
+                      >
+                        {Object.entries(RELATIONSHIP_LABELS).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </div>
+
+                    {!nomineeOtpSent ? (
+                      <button
+                        type="button"
+                        onClick={handleSendNomineeOtp}
+                        disabled={loading || !nomineeName || !nomineeEmail}
+                        className="w-full bg-[#3d3c30] text-white py-2.5 rounded-md font-medium hover:bg-[#2d2c22] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {loading ? "Sending..." : "Send OTP to Nominee"}
+                      </button>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Nominee OTP
+                          </label>
+                          <p className="text-xs text-gray-500 mb-2">
+                            Enter the 6-digit OTP sent to{" "}
+                            <strong>{nomineeEmail}</strong>. The nominee needs to
+                            share this code with you.
+                          </p>
+                          <input
+                            type="text"
+                            value={nomineeOtp}
+                            onChange={(e) =>
+                              setNomineeOtp(
+                                e.target.value.replace(/\D/g, "").slice(0, 6)
+                              )
+                            }
+                            placeholder="000000"
+                            maxLength={6}
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-md text-center text-2xl tracking-widest focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={loading || nomineeOtp.length !== 6}
+                          className="w-full bg-green-600 text-white py-2.5 rounded-md font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {loading ? "Appointing..." : "Confirm Appointment"}
+                        </button>
+                      </>
+                    )}
+                  </form>
+                </div>
+              )}
+
+              {/* Info box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-medium text-blue-900 mb-2">
+                  About Nominee Appointment
+                </h3>
+                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                  <li>You can have one active nominee at a time</li>
+                  <li>
+                    Your nominee can only act after providing proof of your death
+                    or incapacity
+                  </li>
+                  <li>
+                    Actions are limited to data export and deletion — processed
+                    by our admin team
+                  </li>
+                  <li>You can revoke and re-appoint a nominee at any time</li>
+                  <li>
+                    <Link
+                      href="/privacy-policy"
+                      className="underline hover:text-blue-900"
+                    >
+                      Privacy Policy
+                    </Link>
+                    {" | "}
+                    <Link
+                      href="/nominee-claim"
+                      className="underline hover:text-blue-900"
+                    >
+                      Submit a Nominee Claim
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
-    <Footer />
+      <Footer />
     </>
   );
 }

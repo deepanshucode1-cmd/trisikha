@@ -58,7 +58,7 @@ export default function PrivacyPolicy() {
             <section className="bg-white rounded-xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">3. Legal Basis &amp; How We Use Your Information</h2>
               <p className="text-gray-700 leading-relaxed mb-4">
-                Your personal data is processed under <strong>Section 7 of the DPDP Act, 2023 (Legitimate Uses)</strong> — processing is necessary to fulfill orders you voluntarily place. No separate consent is required for order processing.
+                Data processing is necessary to fulfill orders you voluntarily place. No separate consent is required for order processing.
               </p>
               <p className="text-gray-700 leading-relaxed mb-4">
                 We use the information we collect for the following purposes:

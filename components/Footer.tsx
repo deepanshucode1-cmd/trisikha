@@ -96,6 +96,11 @@ const Footer = () => {
               </Link>
             </li>
             <li>
+              <Link href="/correct-data" className="hover:text-white transition-colors duration-300 inline-block py-1">
+                Correct data
+              </Link>
+            </li>
+            <li>
               <Link href="/grievance" className="hover:text-white transition-colors duration-300 inline-block py-1">
                 Grievance Redressal
               </Link>

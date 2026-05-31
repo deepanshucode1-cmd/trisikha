@@ -357,10 +357,9 @@ export default function CheckoutPage() {
   };
 
   const getInputClasses = (fieldName: string) =>
-    `w-full bg-white border text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none transition-all ${
-      touched[fieldName] && errors[fieldName]
-        ? "border-red-500 focus:ring-red-500"
-        : "border-gray-300"
+    `w-full bg-white border text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-[#3d3c30] focus:border-transparent outline-none transition-all ${touched[fieldName] && errors[fieldName]
+      ? "border-red-500 focus:ring-red-500"
+      : "border-gray-300"
     }`;
   const labelClasses = "block text-sm font-medium text-gray-700 mb-1.5";
 
@@ -623,11 +622,10 @@ export default function CheckoutPage() {
                       {shippingOptions.map((c) => (
                         <label
                           key={c.id}
-                          className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                            selectedCourier?.id === c.id
+                          className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedCourier?.id === c.id
                               ? "border-[#3d3c30] bg-[#f5f5f0]"
                               : "border-gray-200 hover:border-gray-300"
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <input
@@ -940,7 +938,7 @@ function OrderSummary({
         </p>
       )}
 
-      {/* Data Collection Notice — DPDP Rule 3 */}
+
       <DataCollectionNotice />
 
       {/* Actions */}
@@ -950,11 +948,10 @@ function OrderSummary({
             type="button"
             disabled={!shippingCalculated || estimating || placingOrder}
             onClick={() => formRef?.current?.requestSubmit()}
-            className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
-              shippingCalculated && !placingOrder
+            className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${shippingCalculated && !placingOrder
                 ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
                 : "bg-gray-200 text-gray-500 cursor-not-allowed"
-            }`}
+              }`}
           >
             {placingOrder ? (
               <>
@@ -977,11 +974,10 @@ function OrderSummary({
           <button
             type="submit"
             disabled={!shippingCalculated || estimating || placingOrder}
-            className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${
-              shippingCalculated && !placingOrder
+            className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${shippingCalculated && !placingOrder
                 ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
                 : "bg-gray-200 text-gray-500 cursor-not-allowed"
-            }`}
+              }`}
           >
             {placingOrder ? (
               <>
