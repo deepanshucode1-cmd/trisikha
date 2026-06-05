@@ -123,6 +123,8 @@ export default function MyDataPage() {
     }
   };
 
+
+
   // Fetch data
   const fetchData = async (token: string) => {
     try {
@@ -622,7 +624,7 @@ export default function MyDataPage() {
                   <li>• <strong>Portability:</strong> Download your data in JSON format</li>
                   <li>• <strong>Correction:</strong> <Link href="/correct-data" className="underline">Request correction</Link> of inaccurate personal data on confirmed orders</li>
                   <li>• <strong>Erasure:</strong> Request deletion of your personal data</li>
-                  <li>• <strong>Retention:</strong> Order records are kept for 8 years (tax compliance) but personal info can be anonymized</li>
+                  <li>• <strong>Retention:</strong> Order records are kept for 6 years from due date of filing return for the financial year (tax compliance) but personal info can be anonymized</li>
                 </ul>
                 <p className="mt-2 text-sm text-blue-700">
                   For questions, contact us at <a href="mailto:trishikhaorganic@gmail.com" className="underline">trishikhaorganic@gmail.com</a>
@@ -646,7 +648,7 @@ export default function MyDataPage() {
                 </div>
 
                 <p className="text-gray-600 mb-4">
-                  After the waiting period, order records will be retained for tax compliance but all identifying information (name, email, phone, address) will be permanently removed.
+                  After the waiting period, order records will be retained for tax compliance but all identifying information ( email, phone) will be permanently removed.
                 </p>
 
                 <div className="mb-4">

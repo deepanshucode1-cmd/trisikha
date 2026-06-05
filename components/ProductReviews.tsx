@@ -165,7 +165,6 @@ export default function ProductReviews({
       {reviewCount === 0 ? (
         <div className="text-center py-12 bg-[#3d3c30] rounded-xl">
           <p className="text-[#c5c0a0] text-lg">No reviews yet.</p>
-          <p className="text-[#7a7660] mt-1">Be the first to review this product!</p>
         </div>
       ) : (
         <>
@@ -291,11 +290,10 @@ export default function ProductReviews({
                   <button
                     onClick={() => handleHelpful(review.id)}
                     disabled={helpfulVoted.has(review.id)}
-                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                      helpfulVoted.has(review.id)
-                        ? "border-[#555440] text-[#7a7660] cursor-default"
-                        : "border-[#555440] text-[#c5c0a0] hover:border-[#bdb88c] hover:text-[#e0dbb5]"
-                    }`}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${helpfulVoted.has(review.id)
+                      ? "border-[#555440] text-[#7a7660] cursor-default"
+                      : "border-[#555440] text-[#c5c0a0] hover:border-[#bdb88c] hover:text-[#e0dbb5]"
+                      }`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />

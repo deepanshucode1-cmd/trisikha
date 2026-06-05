@@ -50,32 +50,6 @@ export async function POST(req: Request) {
 
     // Check if email has any orders
     const supabase = createServiceClient();
-    const { data: orders, error: orderError } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("guest_email", normalizedEmail)
-      .limit(1);
-
-    if (orderError) {
-      throw new Error("Failed to check orders");
-    }
-
-    if (!orders || orders.length === 0) {
-      logSecurityEvent("data_otp_no_orders", {
-        email: normalizedEmail,
-        ip,
-      });
-
-      return NextResponse.json(
-        {
-          error:
-            "No orders found for this email address. " +
-            "Please check that you are using the same email you used to place your order. " +
-            "If you believe this is an error, contact our Grievance Officer at trishikhaorganic@gmail.com.",
-        },
-        { status: 404 }
-      );
-    }
 
     // Generate secure OTP
     const otp = crypto.randomInt(100000, 999999).toString();

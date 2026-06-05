@@ -84,7 +84,7 @@ export function CookieConsent() {
               <div className="flex-1">
                 <p className="text-sm text-gray-700">
                   We use cookies to enhance your browsing experience and analyze site traffic.
-                  By clicking &quot;Accept All&quot;, you consent to our use of cookies.
+                  By clicking &quot;Accept&quot;, you consent to our use of cookies.
                   Read our{" "}
                   <Link href="/privacy-policy" className="text-[#4a7c59] underline hover:text-[#3d6549]">
                     Privacy Policy
@@ -103,13 +103,13 @@ export function CookieConsent() {
                   onClick={rejectAll}
                   className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
                 >
-                  Reject All
+                  Reject
                 </button>
                 <button
                   onClick={acceptAll}
                   className="px-4 py-2 text-sm font-medium text-white bg-[#4a7c59] rounded-md hover:bg-[#3d6549] transition-colors"
                 >
-                  Accept All
+                  Accept
                 </button>
               </div>
             </div>
@@ -149,51 +149,6 @@ export function CookieConsent() {
                   </div>
                 </div>
 
-                {/* Analytics cookies */}
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900">Analytics Cookies</h4>
-                    <p className="text-xs text-gray-500">Help us understand how visitors use our site</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPreferences(p => ({ ...p, analytics: !p.analytics }))}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${
-                      preferences.analytics ? "bg-[#4a7c59]" : "bg-gray-300"
-                    }`}
-                    role="switch"
-                    aria-checked={preferences.analytics}
-                  >
-                    <span
-                      className={`absolute w-4 h-4 bg-white rounded-full shadow top-0.5 transition-transform ${
-                        preferences.analytics ? "right-0.5" : "left-0.5"
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Marketing cookies */}
-                <div className="flex items-center justify-between py-2">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900">Marketing Cookies</h4>
-                    <p className="text-xs text-gray-500">Used to deliver personalized advertisements</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPreferences(p => ({ ...p, marketing: !p.marketing }))}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${
-                      preferences.marketing ? "bg-[#4a7c59]" : "bg-gray-300"
-                    }`}
-                    role="switch"
-                    aria-checked={preferences.marketing}
-                  >
-                    <span
-                      className={`absolute w-4 h-4 bg-white rounded-full shadow top-0.5 transition-transform ${
-                        preferences.marketing ? "right-0.5" : "left-0.5"
-                      }`}
-                    />
-                  </button>
-                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -201,7 +156,7 @@ export function CookieConsent() {
                   onClick={rejectAll}
                   className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
                 >
-                  Reject All
+                  Reject
                 </button>
                 <button
                   onClick={savePreferences}

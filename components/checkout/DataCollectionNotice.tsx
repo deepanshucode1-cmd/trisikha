@@ -11,7 +11,7 @@ const content = {
     hideDetails: "Hide details",
     title: "Data Collection Notice",
     intro:
-      "By placing this order, Trishikha Organics will collect and process the following personal data for order fulfillment under Section 7 of the DPDP Act 2023 (legitimate use):",
+      "By placing this order, Trishikha Organics will collect and process the following personal data for order fulfillment:",
     dataHeading: "Data We Collect",
     dataItems: [
       "Name, email, phone number — for order processing and communication",
@@ -32,7 +32,6 @@ const content = {
       "Correct inaccurate data",
       "Request erasure of your data (subject to legal retention requirements)",
       "File a grievance with our Grievance Officer",
-      "Complain to the Data Protection Board of India",
       "Nominate another person to exercise these rights on your behalf",
     ],
     exerciseRights: "Exercise your rights at:",

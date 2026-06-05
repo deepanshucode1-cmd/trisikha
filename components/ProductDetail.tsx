@@ -188,7 +188,7 @@ export default function ProductDetail(product: Product) {
             </a>
           ) : (
             <a href="#reviews" className="text-sm text-gray-400 hover:text-gray-600 transition-colors w-fit">
-              No ratings yet — be the first to review!
+              No ratings yet
             </a>
           )}
 
@@ -214,8 +214,8 @@ export default function ProductDetail(product: Product) {
               onClick={handleAddToCart}
               disabled={isOutOfStock}
               className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${isOutOfStock
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-white border-2 border-green-700 text-green-700 hover:bg-green-50'
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'bg-white border-2 border-green-700 text-green-700 hover:bg-green-50'
                 }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -227,8 +227,8 @@ export default function ProductDetail(product: Product) {
               onClick={handleBuyNow}
               disabled={isOutOfStock}
               className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${isOutOfStock
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-700 text-white hover:bg-green-800'
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'bg-green-700 text-white hover:bg-green-800'
                 }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

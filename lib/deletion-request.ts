@@ -294,7 +294,7 @@ export async function getPendingDeletionRequest(
     .from("deletion_requests")
     .select("*")
     .eq("guest_email", normalizedEmail)
-    .in("status", ["pending", "deferred_legal"])
+    .in("status", ["pending"])
     .single();
 
   if (error) {

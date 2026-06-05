@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import DataCollectionNotice from "./DataCollectionNotice";
+import { toast, ToastContainer } from "react-toastify";
 
 // Validation rules based on backend schema
 interface ValidationRule {
@@ -24,8 +25,8 @@ const validation: Record<string, ValidationRule> = {
     message: "Please enter a valid email address",
   },
   phone: {
-    pattern: /^[0-9]{10,15}$/,
-    message: "Phone must be 10-15 digits",
+    pattern: /^[0-9]{10}$/,
+    message: "Phone must be 10 digits",
   },
   firstName: {
     pattern: /^[a-zA-Z\s.'-]+$/,
@@ -78,6 +79,14 @@ export default function CheckoutPage() {
   const [shippingCharge, setShippingCharge] = useState<number | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [shippingCalculated, setShippingCalculated] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [showOTPVerifyModal, setShowOTPVerifyModal] = useState(false);
+  const [sendOtpSuccess, setSendOtpSuccess] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [otpExpiry, setOtpExpiry] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number>(0);
+  const [sendOtpLoading, setSendOtpLoading] = useState(false);
 
   const [shipping, setShipping] = useState({
     firstName: "",
@@ -240,6 +249,84 @@ export default function CheckoutPage() {
     }
   }, [shipping.pincode]);
 
+  const verifyEmail = async (email: string) => {
+    await handleSendOtp(email);
+  }
+
+  const handleSendOtp = async (email: string) => {
+    setLoading(true);
+    setSendOtpLoading(true);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      toast.error("Invalid email address");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/guest/send-data-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error("Failed to send OTP");
+      }
+
+      toast("An OTP has been sent to your email. Please check your inbox.");
+      setShowOTPVerifyModal(true);
+      if (data.expiresAt) {
+        setOtpExpiry(new Date(data.expiresAt));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send OTP");
+    } finally {
+      setLoading(false);
+      setSendOtpLoading(false);
+    }
+  };
+
+  // Verify OTP
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/guest/verify-data-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.attemptsRemaining !== undefined) {
+          setAttemptsRemaining(data.attemptsRemaining);
+        }
+        toast.error(data.error.toString() || "Invalid OTP");
+        return;
+      }
+
+      setShowOTPVerifyModal(false);
+      setIsEmailVerified(true);
+
+      //setSessionToken(data.sessionToken);
+      //setSuccess("");
+
+      // Fetch data immediately after verification
+
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to verify OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (placingOrder) return;
@@ -375,6 +462,7 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-[#f5f5f0]">
+      <ToastContainer />
       {/* Header */}
       <div className="bg-[#3d3c30] text-[#e0dbb5] py-6 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto">
@@ -387,6 +475,77 @@ export default function CheckoutPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">Checkout</h1>
         </div>
       </div>
+
+      {showOTPVerifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[90%] max-w-sm relative">
+            <button
+              type="button"
+              onClick={() => setShowOTPVerifyModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              Enter Verification Code
+            </h2>
+            <p className="text-gray-600 mb-2">
+              We&apos;ve sent a 6-digit code to <strong>{email}</strong>
+            </p>
+            {otpExpiry && (
+              <p className="text-sm text-gray-500 mb-6">
+                Code expires at {otpExpiry.toLocaleTimeString()}
+              </p>
+            )}
+
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-1">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  id="otp"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  required
+                  maxLength={6}
+                  placeholder="000000"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#3d3c30] focus:border-[#3d3c30] text-center text-2xl tracking-widest"
+                />
+                {attemptsRemaining > 0 && attemptsRemaining < 5 && (
+                  <p className="mt-1 text-sm text-orange-600">
+                    {attemptsRemaining} attempts remaining
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full py-3 px-4 bg-[#3d3c30] text-white font-medium rounded-lg hover:bg-[#2e2d24] focus:outline-none focus:ring-2 focus:ring-[#3d3c30] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                {loading ? "Verifying..." : "Verify"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOtp("");
+                  setShowOTPVerifyModal(false);
+                }}
+                className="w-full py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Use a different email
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
 
       {/* Verifying Modal */}
       {verifying && (
@@ -452,10 +611,46 @@ export default function CheckoutPage() {
                     <ErrorMessage field="email" />
                     {!errors.email && <p className="text-xs text-gray-500 mt-1">We&apos;ll send your order confirmation here</p>}
                   </div>
+
+                  {sendOtpLoading ? (
+                    <div className="mt-3 w-48">
+                      <div className="flex items-center gap-2 mb-1">
+                        <svg className="w-4 h-4 animate-spin text-[#3d3c30]" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span className="text-sm text-gray-600">Sending OTP...</span>
+                      </div>
+                      {/* <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#3d3c30] rounded-full animate-[progress_1.5s_ease-in-out_infinite]" style={{ width: '70%', animation: 'progress 1.5s ease-in-out infinite' }} />
+                      </div>
+                      <style>{`
+                        @keyframes progress {
+                          0% { width: 0%; }
+                          50% { width: 80%; }
+                          100% { width: 100%; }
+                        }
+                      `}</style> */}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!email || !!errors.email || isEmailVerified}
+                      onClick={() => verifyEmail(email)}
+                      className={`mt-3 px-5 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${isEmailVerified
+                        ? "bg-green-600 text-white cursor-default"
+                        : !email || !!errors.email
+                          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                          : "bg-[#3d3c30] text-white hover:bg-[#2e2d24] active:scale-[0.97] shadow-sm hover:shadow-md"
+                        }`}
+                    >
+                      {isEmailVerified ? "✓ Verified" : "Verify"}
+                    </button>
+                  )}
                 </div>
 
                 {/* Shipping Section */}
-                <div className="bg-white rounded-xl p-6 shadow-sm">
+                <div className="bg-white rounded-xl p-6 shadow-sm relative group">
                   <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                     <span className="w-6 h-6 bg-[#3d3c30] text-white rounded-full flex items-center justify-center text-sm">2</span>
                     Shipping Address
@@ -464,15 +659,18 @@ export default function CheckoutPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className={labelClasses}>First Name</label>
-                      <input
-                        name="firstName"
-                        required
-                        value={shipping.firstName}
-                        onChange={(e) => handleChange(e, "shipping")}
-                        onBlur={() => handleBlur("firstName", shipping.firstName)}
-                        maxLength={50}
-                        className={getInputClasses("firstName")}
-                      />
+                      <div className="relative group">
+                        <input
+                          name="firstName"
+                          required
+                          value={shipping.firstName}
+                          disabled={!isEmailVerified}
+                          onChange={(e) => handleChange(e, "shipping")}
+                          onBlur={() => handleBlur("firstName", shipping.firstName)}
+                          maxLength={50}
+                          className={getInputClasses("firstName")}
+                        />
+                      </div>
                       <ErrorMessage field="firstName" />
                     </div>
                     <div>
@@ -480,6 +678,7 @@ export default function CheckoutPage() {
                       <input
                         name="lastName"
                         value={shipping.lastName}
+                        disabled={!isEmailVerified}
                         onChange={(e) => handleChange(e, "shipping")}
                         onBlur={() => handleBlur("lastName", shipping.lastName, false)}
                         maxLength={50}
@@ -495,6 +694,7 @@ export default function CheckoutPage() {
                       name="address"
                       required
                       value={shipping.address}
+                      disabled={!isEmailVerified}
                       onChange={(e) => handleChange(e, "shipping")}
                       onBlur={() => handleBlur("address", shipping.address)}
                       placeholder="House number and street name"
@@ -511,6 +711,7 @@ export default function CheckoutPage() {
                     <input
                       name="apartment"
                       value={shipping.apartment}
+                      disabled={!isEmailVerified}
                       onChange={(e) => handleChange(e, "shipping")}
                       onBlur={() => handleBlur("apartment", shipping.apartment, false)}
                       maxLength={200}
@@ -526,6 +727,7 @@ export default function CheckoutPage() {
                         name="city"
                         required
                         value={shipping.city}
+                        disabled={!isEmailVerified}
                         onChange={(e) => handleChange(e, "shipping")}
                         onBlur={() => handleBlur("city", shipping.city)}
                         maxLength={100}
@@ -539,6 +741,7 @@ export default function CheckoutPage() {
                         name="state"
                         required
                         value={shipping.state}
+                        disabled={!isEmailVerified}
                         onChange={(e) => handleChange(e, "shipping")}
                         onBlur={() => {
                           setTouched((prev) => ({ ...prev, state: true }));
@@ -561,6 +764,7 @@ export default function CheckoutPage() {
                         name="pincode"
                         autoComplete="postal-code"
                         required
+                        disabled={!isEmailVerified}
                         ref={pincodeRef}
                         value={shipping.pincode}
                         maxLength={6}
@@ -579,6 +783,9 @@ export default function CheckoutPage() {
                       />
                       <ErrorMessage field="pincode" />
                     </div>
+
+
+
                   </div>
 
                   <div>
@@ -588,6 +795,7 @@ export default function CheckoutPage() {
                       required
                       type="tel"
                       value={shipping.phone}
+                      disabled={!isEmailVerified}
                       onChange={(e) => {
                         const value = e.target.value.replace(/\D/g, "");
                         setShipping({ ...shipping, phone: value });
@@ -609,6 +817,14 @@ export default function CheckoutPage() {
                       Calculating shipping options...
                     </div>
                   )}
+
+
+                  {!isEmailVerified && (
+                    <span className="absolute -top-8 left-0 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                      Please verify your email first
+                    </span>
+                  )}
+
                 </div>
 
                 {/* Shipping Options */}
@@ -623,8 +839,8 @@ export default function CheckoutPage() {
                         <label
                           key={c.id}
                           className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedCourier?.id === c.id
-                              ? "border-[#3d3c30] bg-[#f5f5f0]"
-                              : "border-gray-200 hover:border-gray-300"
+                            ? "border-[#3d3c30] bg-[#f5f5f0]"
+                            : "border-gray-200 hover:border-gray-300"
                             }`}
                         >
                           <div className="flex items-center gap-3">
@@ -673,7 +889,7 @@ export default function CheckoutPage() {
                   </label>
 
                   {!sameAsShipping && (
-                    <div className="pt-4 border-t border-gray-200">
+                    <div className="pt-4 border-t border-gray-200 relative group">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                         <div>
                           <label className={labelClasses}>First Name</label>
@@ -681,6 +897,7 @@ export default function CheckoutPage() {
                             name="firstName"
                             required
                             value={billing.firstName}
+                            disabled={!isEmailVerified}
                             onChange={(e) => handleChange(e, "billing")}
                             onBlur={() => handleBlur("billingFirstName", billing.firstName)}
                             maxLength={50}
@@ -693,6 +910,7 @@ export default function CheckoutPage() {
                           <input
                             name="lastName"
                             value={billing.lastName}
+                            disabled={!isEmailVerified}
                             onChange={(e) => handleChange(e, "billing")}
                             onBlur={() => handleBlur("billingLastName", billing.lastName, false)}
                             maxLength={50}
@@ -708,6 +926,7 @@ export default function CheckoutPage() {
                           name="address"
                           required
                           value={billing.address}
+                          disabled={!isEmailVerified}
                           onChange={(e) => handleChange(e, "billing")}
                           onBlur={() => handleBlur("billingAddress", billing.address)}
                           maxLength={200}
@@ -723,6 +942,7 @@ export default function CheckoutPage() {
                         <input
                           name="apartment"
                           value={billing.apartment}
+                          disabled={!isEmailVerified}
                           onChange={(e) => handleChange(e, "billing")}
                           onBlur={() => handleBlur("billingApartment", billing.apartment, false)}
                           maxLength={200}
@@ -738,6 +958,7 @@ export default function CheckoutPage() {
                             name="city"
                             required
                             value={billing.city}
+                            disabled={!isEmailVerified}
                             onChange={(e) => handleChange(e, "billing")}
                             onBlur={() => handleBlur("billingCity", billing.city)}
                             maxLength={100}
@@ -751,6 +972,7 @@ export default function CheckoutPage() {
                             name="state"
                             required
                             value={billing.state}
+                            disabled={!isEmailVerified}
                             onChange={(e) => handleChange(e, "billing")}
                             onBlur={() => {
                               setTouched((prev) => ({ ...prev, billingState: true }));
@@ -773,6 +995,7 @@ export default function CheckoutPage() {
                             name="pincode"
                             required
                             value={billing.pincode}
+                            disabled={!isEmailVerified}
                             maxLength={6}
                             onChange={(e) => {
                               const value = e.target.value.replace(/\D/g, "");
@@ -792,6 +1015,7 @@ export default function CheckoutPage() {
                           required
                           type="tel"
                           value={billing.phone}
+                          disabled={!isEmailVerified}
                           onChange={(e) => {
                             const value = e.target.value.replace(/\D/g, "");
                             setBilling({ ...billing, phone: value });
@@ -803,6 +1027,12 @@ export default function CheckoutPage() {
                         />
                         <ErrorMessage field="billingPhone" />
                       </div>
+
+                      {!isEmailVerified && (
+                        <span className="absolute -top-8 left-0 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                          Please verify your email first
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -949,8 +1179,8 @@ function OrderSummary({
             disabled={!shippingCalculated || estimating || placingOrder}
             onClick={() => formRef?.current?.requestSubmit()}
             className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${shippingCalculated && !placingOrder
-                ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
-                : "bg-gray-200 text-gray-500 cursor-not-allowed"
+              ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
+              : "bg-gray-200 text-gray-500 cursor-not-allowed"
               }`}
           >
             {placingOrder ? (
@@ -975,8 +1205,8 @@ function OrderSummary({
             type="submit"
             disabled={!shippingCalculated || estimating || placingOrder}
             className={`w-full py-3.5 rounded-full font-semibold transition-all flex items-center justify-center gap-2 ${shippingCalculated && !placingOrder
-                ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
-                : "bg-gray-200 text-gray-500 cursor-not-allowed"
+              ? "bg-[#3d3c30] text-white hover:bg-[#4a493a]"
+              : "bg-gray-200 text-gray-500 cursor-not-allowed"
               }`}
           >
             {placingOrder ? (
